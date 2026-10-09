@@ -1,0 +1,27 @@
+{
+  "name": "extra-marketing",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types \"tests/*.test.ts\"",
+    "db:migrate": "node --env-file=.env scripts/migrate.mjs",
+    "db:seed-admin": "node --env-file=.env scripts/seed-admin.mjs"
+  },
+  "dependencies": {
+    "next": "^16.4.0",
+    "pg": "^8.23.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^7.0.2"
+  }
+}
