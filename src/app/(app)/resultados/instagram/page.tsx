@@ -28,8 +28,8 @@ export default async function InstagramResultados({ searchParams }: { searchPara
   ])
   const mapList = maps.map((m) => ({ account_name: m.account_name, kind: m.kind, brand_id: m.brand_id, branch_id: m.branch_id }))
   const ids = { brandId: scope.brand?.id, branchId: scope.branch?.id }
-  const dPart = daily.status === 'ok' ? partitionByScope(daily.rows, 'instagram', mapList, ids) : { rows: [] as Daily[], unmapped: [] as string[] }
-  const mPart = media.status === 'ok' ? partitionByScope(media.rows, 'instagram', mapList, ids) : { rows: [] as Media[], unmapped: [] as string[] }
+  const dPart = daily.status === 'ok' ? partitionByScope(daily.rows, 'instagram', mapList, scope.brands, ids) : { rows: [] as Daily[], unmapped: [] as string[] }
+  const mPart = media.status === 'ok' ? partitionByScope(media.rows, 'instagram', mapList, scope.brands, ids) : { rows: [] as Media[], unmapped: [] as string[] }
   const unmapped = [...new Set([...dPart.unmapped, ...mPart.unmapped])]
 
   // seguidores: último valor não nulo de cada conta
@@ -69,7 +69,7 @@ export default async function InstagramResultados({ searchParams }: { searchPara
 
         <WindsorNotice result={ok ? { status: 'ok' } : status} />
         {unmapped.length > 0 && (
-          <div className="notice"><AlertTriangle size={18} /><span>Conta(s) sem rede/filial associada: <b>{unmapped.join(', ')}</b>. <Link href="/configuracoes/integracoes" style={{ textDecoration: 'underline' }}>Associar agora</Link></span></div>
+          <div className="notice"><AlertTriangle size={18} /><span>Conta(s) sem filial identificada: <b>{unmapped.join(', ')}</b>. <Link href="/configuracoes/integracoes" style={{ textDecoration: 'underline' }}>Associar agora</Link></span></div>
         )}
 
         {ok && (

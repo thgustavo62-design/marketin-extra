@@ -21,7 +21,7 @@ export async function GET(req: Request) {
     format: formato in FORMATS ? formato : undefined,
   })
   const csv = toCsv(
-    ['Data', 'Horário', 'Rede', 'Unidade', 'Título', 'Formato', 'Pilar', 'Etapa', 'Campanha', 'Origem', 'Revisão farmacêutica', 'Legenda', 'Roteiro', 'Alcance', 'Salvamentos', 'Compartilhamentos'],
+    ['Data', 'Horário', 'Filial', 'Unidade', 'Título', 'Formato', 'Pilar', 'Etapa', 'Campanha', 'Origem', 'Revisão farmacêutica', 'Legenda', 'Roteiro', 'Alcance', 'Salvamentos', 'Compartilhamentos'],
     posts.map((p) => [
       formatBR(p.post_date), p.post_time ?? '', p.brand_name, p.branch_name ?? 'Todas as unidades', p.title,
       FORMATS[p.format], PILLARS[p.pillar], STAGES[p.stage], p.campaign_name ?? '', p.origin,

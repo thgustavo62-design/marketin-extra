@@ -25,14 +25,17 @@ export function ScopeBar({ brands, branches, brandSlug, branchId }: { brands: B[
   return (
     <div className="scope">
       <span className="scope-label">Visualizando</span>
-      <select aria-label="Rede" value={cur.brandSlug} onChange={(e) => apply(e.target.value, '')}>
-        <option value="">Todas as redes</option>
+      <select aria-label="Filial" value={cur.brandSlug} onChange={(e) => apply(e.target.value, '')}>
+        <option value="">Todas as filiais</option>
         {brands.map((b) => <option key={b.id} value={b.slug}>{b.name}</option>)}
       </select>
-      <select aria-label="Filial" value={cur.branchId} onChange={(e) => apply(cur.brandSlug, e.target.value)} disabled={!brand}>
-        <option value="">{brand ? 'Todas as filiais' : 'Escolha uma rede'}</option>
-        {mine.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-      </select>
+      {/* Unidades (lojas) são opcionais: o seletor só aparece quando a filial escolhida tem alguma cadastrada. */}
+      {mine.length > 0 && (
+        <select aria-label="Unidade" value={cur.branchId} onChange={(e) => apply(cur.brandSlug, e.target.value)}>
+          <option value="">Todas as unidades</option>
+          {mine.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select>
+      )}
     </div>
   )
 }

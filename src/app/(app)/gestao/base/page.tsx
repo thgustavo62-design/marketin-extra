@@ -20,7 +20,7 @@ export default async function Base({ searchParams }: { searchParams: Promise<{ e
     <>
       <header className="page-head">
         <h1>Base de informações</h1>
-        <p>O que é usado para escrever os conteúdos de cada rede. Informação vencida ou não confirmada vira pendência e não é tratada como fato atual.</p>
+        <p>O que é usado para escrever os conteúdos de cada filial. Informação vencida ou não confirmada vira pendência e não é tratada como fato atual.</p>
         {sp.salvo && <p className="form-ok" role="status">Salvo.</p>}
       </header>
 
@@ -68,7 +68,7 @@ export default async function Base({ searchParams }: { searchParams: Promise<{ e
           {editing && <input type="hidden" name="id" value={editing.id} />}
           <div className="grid-2">
             <div>
-              <label htmlFor="brand_id">Rede</label>
+              <label htmlFor="brand_id">Filial</label>
               <select id="brand_id" name="brand_id" defaultValue={editing?.brand_id ?? scope.brand?.id}>
                 {allBrands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>

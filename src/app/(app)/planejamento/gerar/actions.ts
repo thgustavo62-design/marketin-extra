@@ -13,11 +13,11 @@ export async function generateWeekAction(_prev: FormState, fd: FormData): Promis
   const brandId = str(fd, 'brand_id')
   const start = str(fd, 'start')
   const campaignId = str(fd, 'campaign_id')
-  if (!isUuid(brandId)) return { error: 'Escolha a rede.' }
+  if (!isUuid(brandId)) return { error: 'Escolha a filial.' }
   if (!isIsoDate(start)) return { error: 'Informe a data inicial.' }
 
   const brand = (await pool.query(`select name from brands where id = $1`, [brandId])).rows[0]
-  if (!brand) return { error: 'Rede não encontrada.' }
+  if (!brand) return { error: 'Filial não encontrada.' }
   let campaign = null
   if (campaignId) {
     if (!isUuid(campaignId)) return { error: 'Campanha inválida.' }
@@ -25,7 +25,7 @@ export async function generateWeekAction(_prev: FormState, fd: FormData): Promis
       `select id, name, starts_on::text as starts_on, ends_on::text as ends_on from campaigns where id = $1 and brand_id = $2`,
       [campaignId, brandId],
     )).rows[0]
-    if (!campaign) return { error: 'A campanha escolhida não pertence a essa rede.' }
+    if (!campaign) return { error: 'A campanha escolhida não pertence a essa filial.' }
   }
 
   const end = addDays(start, 6)

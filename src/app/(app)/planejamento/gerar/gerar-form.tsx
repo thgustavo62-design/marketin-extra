@@ -11,7 +11,7 @@ export function GerarForm({ brands, campaigns, today, defaultBrandId }: { brands
   const mine = campaigns.filter((c) => c.brand_id === brandId)
   return (
     <ActionForm action={generateWeekAction} submit="Gerar rascunhos" pending="Gerando…">
-      <label htmlFor="brand_id">Rede</label>
+      <label htmlFor="brand_id">Filial</label>
       <select id="brand_id" name="brand_id" value={brandId} onChange={(e) => setBrandId(e.target.value)}>
         {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
       </select>

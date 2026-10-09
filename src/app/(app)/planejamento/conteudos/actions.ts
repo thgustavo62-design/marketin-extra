@@ -27,24 +27,24 @@ export async function savePostAction(_prev: FormState, fd: FormData): Promise<Fo
   const pharma = fd.get('pharma_review') === 'on'
 
   if (!title) return { error: 'Informe o título da pauta.' }
-  if (!isUuid(brandId)) return { error: 'Escolha a rede.' }
+  if (!isUuid(brandId)) return { error: 'Escolha a filial.' }
   if (!isIsoDate(date)) return { error: 'Informe uma data válida.' }
   if (time && !TIME.test(time)) return { error: 'Horário inválido (use HH:MM).' }
   if (!isFormat(format) || !isPillar(pillar) || !isStage(stage)) return { error: 'Formato, pilar ou etapa inválidos.' }
   const blocked = stageBlockedReason(pillar, stage, pharma)
   if (blocked) return { error: blocked }
 
-  // Unidade e campanha precisam pertencer à rede escolhida.
+  // Unidade e campanha precisam pertencer à filial escolhida.
   if (branchId) {
     if (!isUuid(branchId)) return { error: 'Unidade inválida.' }
     const ok = await pool.query(`select 1 from branches where id = $1 and brand_id = $2`, [branchId, brandId])
-    if (!ok.rowCount) return { error: 'A unidade escolhida não pertence a essa rede.' }
+    if (!ok.rowCount) return { error: 'A unidade escolhida não pertence a essa filial.' }
   }
   let campaignName: string | null = null
   if (campaignId) {
     if (!isUuid(campaignId)) return { error: 'Campanha inválida.' }
     const c = await pool.query(`select name from campaigns where id = $1 and brand_id = $2`, [campaignId, brandId])
-    if (!c.rowCount) return { error: 'A campanha escolhida não pertence a essa rede.' }
+    if (!c.rowCount) return { error: 'A campanha escolhida não pertence a essa filial.' }
     campaignName = c.rows[0].name
   }
 

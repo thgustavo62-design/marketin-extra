@@ -55,14 +55,14 @@ export default async function Conteudos({ searchParams }: { searchParams: Promis
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Data</th><th>Título</th><th>Rede / filial</th><th>Formato</th><th>Pilar</th><th>Etapa</th></tr>
+              <tr><th>Data</th><th>Título</th><th>Filial / unidade</th><th>Formato</th><th>Pilar</th><th>Etapa</th></tr>
             </thead>
             <tbody>
               {posts.map((p) => (
                 <tr key={p.id}>
                   <td>{formatBR(p.post_date)}{p.post_time ? ` ${p.post_time}` : ''}</td>
                   <td><Link href={`/planejamento/conteudos/${p.id}`}>{p.title}</Link></td>
-                  <td>{p.brand_name}<br /><small className="muted">{p.branch_name ?? 'Todas as filiais'}</small></td>
+                  <td>{p.brand_name}<br /><small className="muted">{p.branch_name ?? 'Todas as unidades'}</small></td>
                   <td><FormatBadge format={p.format} /></td>
                   <td>{PILLARS[p.pillar]}</td>
                   <td><StageBadge stage={p.stage} /></td>

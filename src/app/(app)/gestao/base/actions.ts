@@ -17,7 +17,7 @@ export async function saveKnowledgeAction(_prev: FormState, fd: FormData): Promi
   const title = str(fd, 'title')
   const validUntil = str(fd, 'valid_until')
   const confirmed = fd.get('confirmed') === 'on'
-  if (!isUuid(brandId)) return { error: 'Escolha a rede.' }
+  if (!isUuid(brandId)) return { error: 'Escolha a filial.' }
   if (!isKind(kind)) return { error: 'Escolha o tipo da informação.' }
   if (!title) return { error: 'Informe um título.' }
   if (validUntil && !isIsoDate(validUntil)) return { error: 'Validade inválida.' }

@@ -8,8 +8,8 @@ const LABELS: Record<string, string> = {
   usuario_senha_redefinida: 'Redefiniu senha de usuário', conteudo_criado: 'Criou conteúdo', conteudo_editado: 'Editou conteúdo',
   conteudo_excluido: 'Excluiu conteúdo', campanha_criada: 'Criou campanha', campanha_editada: 'Editou campanha', campanha_excluida: 'Excluiu campanha',
   base_criada: 'Criou informação', base_editada: 'Editou informação', base_confirmada: 'Confirmou informação', base_excluida: 'Excluiu informação',
-  unidade_criada: 'Criou filial', unidade_editada: 'Editou filial', unidade_ativacao: 'Ativou/desativou filial', semana_gerada: 'Gerou semana',
-  metricas_registradas: 'Registrou métricas', integracao_mapeada: 'Associou conta a rede/filial', integracao_removida: 'Removeu associação de conta',
+  unidade_criada: 'Criou unidade', unidade_editada: 'Editou unidade', unidade_ativacao: 'Ativou/desativou unidade', semana_gerada: 'Gerou semana',
+  metricas_registradas: 'Registrou métricas', integracao_mapeada: 'Associou conta a filial', integracao_removida: 'Removeu associação de conta',
 }
 
 export default async function Auditoria({ searchParams }: { searchParams: Promise<{ q?: string }> }) {

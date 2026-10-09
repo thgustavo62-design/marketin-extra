@@ -34,7 +34,7 @@ export function PostForm({
 
       <div className="grid-2">
         <div>
-          <label htmlFor="brand_id">Rede</label>
+          <label htmlFor="brand_id">Filial</label>
           <select id="brand_id" name="brand_id" value={brandId} onChange={(e) => setBrandId(e.target.value)}>
             {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>

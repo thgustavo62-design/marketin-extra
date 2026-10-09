@@ -2,7 +2,7 @@
 import { pool } from './db'
 import { normalizeReels, type Format, type Pillar, type ReelsScript, type Stage, type KnowledgeKind } from './domain'
 
-export type Brand = { id: string; slug: string; name: string }
+export type Brand = { id: string; slug: string; name: string; aliases: string[] }
 export type Branch = { id: string; brand_id: string; name: string; city: string | null; address: string | null; phone: string | null; hours: string | null; active: boolean }
 export type Campaign = { id: string; brand_id: string; brand_name: string; name: string; starts_on: string; ends_on: string; objective: string; briefing: string; approver: string }
 export type Post = {
@@ -20,7 +20,7 @@ export type Knowledge = {
 }
 
 export async function getBrands(): Promise<Brand[]> {
-  return (await pool.query(`select id, slug, name from brands order by name`)).rows
+  return (await pool.query(`select id, slug, name, aliases from brands order by name`)).rows
 }
 
 export async function getBranches(): Promise<Branch[]> {

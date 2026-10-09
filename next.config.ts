@@ -8,7 +8,8 @@ const MOVED: [string, string][] = [
   ['/reels', '/planejamento/reels'],
   ['/gerar', '/planejamento/gerar'],
   ['/base', '/gestao/base'],
-  ['/unidades', '/gestao/filiais'],
+  ['/unidades', '/gestao/unidades'],
+  ['/gestao/filiais', '/gestao/unidades'],
   ['/conta', '/configuracoes/conta'],
   ['/fontes', '/configuracoes/integracoes'],
 ]

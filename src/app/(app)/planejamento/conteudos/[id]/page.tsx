@@ -30,7 +30,7 @@ export default async function EditarConteudo({
         <header className="page-head">
           {back}
           <h1>{post.title}</h1>
-          <p>{post.brand_name} · {post.branch_name ?? 'Todas as filiais'} · {formatBR(post.post_date)} · {PILLARS[post.pillar]}</p>
+          <p>{post.brand_name} · {post.branch_name ?? 'Todas as unidades'} · {formatBR(post.post_date)} · {PILLARS[post.pillar]}</p>
         </header>
         <div className="card narrow-lg">
           <p><FormatBadge format={post.format} /> <StageBadge stage={post.stage} /></p>

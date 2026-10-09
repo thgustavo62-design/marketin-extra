@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { accountInScope, partitionByScope, type Mapping } from '../src/lib/integrations.ts'
+import { accountInScope, identifyBrand, normalizeAliases, partitionByScope, resolveAccount, type BrandAliases, type Mapping } from '../src/lib/integrations.ts'
 import { canWrite, generateTempPassword, isAdmin, userChangeBlockedReason, validatePassword, validateUsername } from '../src/lib/perms.ts'
 import { classifyWindsorPayload, sumAds } from '../src/lib/windsor.ts'
 
@@ -43,6 +43,11 @@ test('senha provisória gerada passa na própria validação e varia', () => {
   assert.ok(seen.size > 15)
 })
 
+const BR: BrandAliases[] = [
+  { id: 'minas', aliases: ['minas farma', 'minasfarma'] },
+  { id: 'ff', aliases: ['farma e farma', 'farmaefarma', 'drogaria melhor preco'] },
+]
+
 const maps: Mapping[] = [
   { account_name: 'Loja A Ads', kind: 'ads', brand_id: 'minas', branch_id: null },
   { account_name: 'Loja B Ads', kind: 'ads', brand_id: 'minas', branch_id: 'bg' },
@@ -50,21 +55,21 @@ const maps: Mapping[] = [
 ]
 
 test('contas por escopo: rede e filial separam os resultados', () => {
-  assert.equal(accountInScope('Loja A Ads', 'ads', maps, {}), 'in')
-  assert.equal(accountInScope('Loja A Ads', 'ads', maps, { brandId: 'ff' }), 'out')
-  assert.equal(accountInScope('Loja A Ads', 'ads', maps, { brandId: 'minas', branchId: 'qualquer' }), 'in') // conta da rede inteira vale p/ toda filial
-  assert.equal(accountInScope('Loja B Ads', 'ads', maps, { brandId: 'minas', branchId: 'bg' }), 'in')
-  assert.equal(accountInScope('Loja B Ads', 'ads', maps, { brandId: 'minas', branchId: 'outra' }), 'out')
-  assert.equal(accountInScope('ff_insta', 'instagram', maps, { brandId: 'minas' }), 'out')
+  assert.equal(accountInScope('Loja A Ads', 'ads', maps, BR, {}), 'in')
+  assert.equal(accountInScope('Loja A Ads', 'ads', maps, BR, { brandId: 'ff' }), 'out')
+  assert.equal(accountInScope('Loja A Ads', 'ads', maps, BR, { brandId: 'minas', branchId: 'qualquer' }), 'in') // conta da rede inteira vale p/ toda filial
+  assert.equal(accountInScope('Loja B Ads', 'ads', maps, BR, { brandId: 'minas', branchId: 'bg' }), 'in')
+  assert.equal(accountInScope('Loja B Ads', 'ads', maps, BR, { brandId: 'minas', branchId: 'outra' }), 'out')
+  assert.equal(accountInScope('ff_insta', 'instagram', maps, BR, { brandId: 'minas' }), 'out')
 })
 
 test('contas sem associação só aparecem sem filtro e sempre sinalizadas', () => {
-  assert.equal(accountInScope('Nova', 'ads', maps, {}), 'unmapped')
-  assert.equal(accountInScope('Nova', 'ads', maps, { brandId: 'minas' }), 'out')
-  const all = partitionByScope([{ account_name: 'Nova' }, { account_name: 'Loja A Ads' }], 'ads', maps, {})
+  assert.equal(accountInScope('Nova', 'ads', maps, BR, {}), 'unmapped')
+  assert.equal(accountInScope('Nova', 'ads', maps, BR, { brandId: 'minas' }), 'out')
+  const all = partitionByScope([{ account_name: 'Nova' }, { account_name: 'Loja A Ads' }], 'ads', maps, BR, {})
   assert.equal(all.rows.length, 2)
   assert.deepEqual(all.unmapped, ['Nova'])
-  const scoped = partitionByScope([{ account_name: 'Nova' }, { account_name: 'Loja A Ads' }], 'ads', maps, { brandId: 'minas' })
+  const scoped = partitionByScope([{ account_name: 'Nova' }, { account_name: 'Loja A Ads' }], 'ads', maps, BR, { brandId: 'minas' })
   assert.equal(scoped.rows.length, 1)
   assert.deepEqual(scoped.unmapped, [])
 })
@@ -88,4 +93,45 @@ test('anúncios: totais e razões (sem divisão por zero)', () => {
   assert.equal(t.cpm, 7.5)
   assert.equal(sumAds([]).ctr, null)
   assert.equal(sumAds([{ spend: 3 }]).cpc, null)
+})
+
+test('identificação pelo nome da conta (Windsor)', () => {
+  assert.equal(identifyBrand('Baixo Guandu - Minas Farma', BR), 'minas')
+  assert.equal(identifyBrand('Filial MINAS FARMA', BR), 'minas')
+  assert.equal(identifyBrand('farmaefarmabg', BR), 'ff')
+  assert.equal(identifyBrand('Drogaria Melhor Preço', BR), 'ff')
+  assert.equal(identifyBrand('Conta qualquer', BR), null)
+  assert.equal(identifyBrand('', BR), null)
+})
+
+test('nome que casa com as duas filiais é ambíguo e não é adivinhado', () => {
+  assert.equal(identifyBrand('Minas Farma e Farma e Farma', BR), null)
+})
+
+test('associação manual vence a identificação pelo nome', () => {
+  const m: Mapping[] = [{ account_name: 'Baixo Guandu - Minas Farma', kind: 'ads', brand_id: 'ff', branch_id: null }]
+  assert.deepEqual(resolveAccount('Baixo Guandu - Minas Farma', 'ads', m, BR), { brandId: 'ff', branchId: null, source: 'manual' })
+  assert.deepEqual(resolveAccount('Baixo Guandu - Minas Farma', 'ads', [], BR), { brandId: 'minas', branchId: null, source: 'auto' })
+  assert.equal(resolveAccount('Sem nome útil', 'ads', [], BR), null)
+})
+
+test('as duas filiais ficam separadas nos resultados, sem precisar associar nada à mão', () => {
+  const rows = [{ account_name: 'Baixo Guandu - Minas Farma' }, { account_name: 'Drogaria Melhor Preço' }, { account_name: 'farmaefarmabg' }]
+  const minas = partitionByScope(rows, 'ads', [], BR, { brandId: 'minas' })
+  assert.deepEqual(minas.rows.map((r) => r.account_name), ['Baixo Guandu - Minas Farma'])
+  const ff = partitionByScope(rows, 'ads', [], BR, { brandId: 'ff' })
+  assert.deepEqual(ff.rows.map((r) => r.account_name), ['Drogaria Melhor Preço', 'farmaefarmabg'])
+  const all = partitionByScope(rows, 'ads', [], BR, {})
+  assert.equal(all.rows.length, 3)
+  assert.deepEqual(all.unmapped, [])
+})
+
+test('apelidos: limpeza, limite e tamanho mínimo', () => {
+  const ok = normalizeAliases('Minas Farma, MINASFARMA; Filial Minas')
+  assert.ok(ok.ok && ok.list.includes('minas farma') && ok.list.length === 3)
+  assert.equal(normalizeAliases('').ok, false)
+  assert.equal(normalizeAliases('ab, minas farma').ok, false)
+  assert.equal(normalizeAliases('Drogaria Melhor Preço').ok && true, true)
+  const many = normalizeAliases(Array.from({ length: 13 }, (_, i) => 'apelido numero ' + i).join(','))
+  assert.equal(many.ok, false)
 })

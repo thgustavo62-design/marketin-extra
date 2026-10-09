@@ -27,7 +27,7 @@ export default async function MetaAds({ searchParams }: { searchParams: Promise<
     getIntegrationAccounts(),
   ])
   const part = res.status === 'ok'
-    ? partitionByScope(res.rows, 'ads', maps.map((m) => ({ account_name: m.account_name, kind: m.kind, brand_id: m.brand_id, branch_id: m.branch_id })), { brandId: scope.brand?.id, branchId: scope.branch?.id })
+    ? partitionByScope(res.rows, 'ads', maps.map((m) => ({ account_name: m.account_name, kind: m.kind, brand_id: m.brand_id, branch_id: m.branch_id })), scope.brands, { brandId: scope.brand?.id, branchId: scope.branch?.id })
     : { rows: [] as AdRow[], unmapped: [] as string[] }
   const t = sumAds(part.rows)
   const rows = view === 'conta' ? groupBy(part.rows, (r) => r.account_name ?? '—') : groupBy(part.rows, (r) => `${r.campaign ?? '—'}\u0000${r.account_name ?? '—'}`)
@@ -43,7 +43,7 @@ export default async function MetaAds({ searchParams }: { searchParams: Promise<
       <div className="dark-surface">
         <div className="tabs">
           <Link href={href({ v: 'campanha' })} className={`tab${view === 'campanha' ? ' active' : ''}`}>Por campanha</Link>
-          <Link href={href({ v: 'conta' })} className={`tab${view === 'conta' ? ' active' : ''}`}>Por conta (rede/filial)</Link>
+          <Link href={href({ v: 'conta' })} className={`tab${view === 'conta' ? ' active' : ''}`}>Por conta (filial)</Link>
         </div>
         <form className="filters" method="get">
           <input type="hidden" name="v" value={view} />
@@ -55,7 +55,7 @@ export default async function MetaAds({ searchParams }: { searchParams: Promise<
 
         <WindsorNotice result={res.status === 'ok' ? { status: 'ok' } : res} />
         {part.unmapped.length > 0 && (
-          <div className="notice"><AlertTriangle size={18} /><span>Conta(s) sem rede/filial associada: <b>{part.unmapped.join(', ')}</b>. <Link href="/configuracoes/integracoes" style={{ textDecoration: 'underline' }}>Associar agora</Link></span></div>
+          <div className="notice"><AlertTriangle size={18} /><span>Conta(s) sem filial identificada: <b>{part.unmapped.join(', ')}</b>. <Link href="/configuracoes/integracoes" style={{ textDecoration: 'underline' }}>Associar agora</Link></span></div>
         )}
 
         {res.status === 'ok' && (

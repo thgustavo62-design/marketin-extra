@@ -17,7 +17,7 @@ export async function saveCampaignAction(_prev: FormState, fd: FormData): Promis
   const start = str(fd, 'starts_on')
   const end = str(fd, 'ends_on')
   if (!name) return { error: 'Informe o nome da campanha.' }
-  if (!isUuid(brandId)) return { error: 'Escolha a rede.' }
+  if (!isUuid(brandId)) return { error: 'Escolha a filial.' }
   if (!isIsoDate(start) || !isIsoDate(end)) return { error: 'Informe início e fim válidos.' }
   if (end < start) return { error: 'O fim da campanha não pode ser antes do início.' }
 
@@ -25,7 +25,7 @@ export async function saveCampaignAction(_prev: FormState, fd: FormData): Promis
   if (id) {
     if (!isUuid(id)) return { error: 'Campanha inválida.' }
     const used = await pool.query(`select count(*)::int n from posts where campaign_id = $1 and brand_id <> $2`, [id, brandId])
-    if (used.rows[0].n) return { error: 'Esta campanha tem conteúdos de outra rede; não é possível mudar a rede dela.' }
+    if (used.rows[0].n) return { error: 'Esta campanha tem conteúdos de outra filial; não é possível mudar a filial dela.' }
     await pool.query(
       `update campaigns set brand_id=$1, name=$2, starts_on=$3, ends_on=$4, objective=$5, briefing=$6, approver=$7, updated_at=now() where id=$8`,
       [...vals, id],

@@ -18,4 +18,4 @@ export const getScope = cache(async (): Promise<Scope> => {
 })
 
 export const scopeLabel = (s: Scope): string =>
-  s.branch ? `${s.brand?.name} · ${s.branch.name}` : s.brand ? `${s.brand.name} · todas as filiais` : 'Todas as redes'
+  s.branch ? `${s.brand?.name} · ${s.branch.name}` : s.brand ? `${s.brand.name} · todas as unidades` : 'Todas as filiais'

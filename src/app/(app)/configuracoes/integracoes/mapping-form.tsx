@@ -27,15 +27,15 @@ export function MappingForm({ brands, branches, discovered }: { brands: Brand[];
       </div>
       <div className="grid-2">
         <div>
-          <label htmlFor="brand_id">Rede</label>
+          <label htmlFor="brand_id">Filial</label>
           <select id="brand_id" name="brand_id" value={brandId} onChange={(e) => setBrandId(e.target.value)}>
             {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </div>
         <div>
-          <label htmlFor="branch_id">Filial</label>
+          <label htmlFor="branch_id">Unidade</label>
           <select id="branch_id" name="branch_id" key={brandId} defaultValue="">
-            <option value="">Rede inteira (todas as filiais)</option>
+            <option value="">Filial inteira (todas as unidades)</option>
             {mine.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </div>

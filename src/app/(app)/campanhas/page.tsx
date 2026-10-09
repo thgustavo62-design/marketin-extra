@@ -59,7 +59,7 @@ export default async function Campanhas({ searchParams }: { searchParams: Promis
           {editing && <input type="hidden" name="id" value={editing.id} />}
           <label htmlFor="name">Nome</label>
           <input id="name" name="name" type="text" defaultValue={editing?.name} required />
-          <label htmlFor="brand_id">Rede</label>
+          <label htmlFor="brand_id">Filial</label>
           <select id="brand_id" name="brand_id" defaultValue={editing?.brand_id ?? scope.brand?.id}>
             {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>

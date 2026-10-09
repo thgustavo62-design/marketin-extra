@@ -37,13 +37,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const byStage = (s: string) => monthPosts.filter((p) => p.stage === s).length
   const published = byStage('publicado')
 
-  // Rede › filial
+  // Filial (Minas Farma / Farma e Farma) › unidades, quando houver
   const brandsShown = scope.brand ? scope.brands.filter((b) => b.id === scope.brand!.id) : scope.brands
   const rollup = brandsShown.map((b) => {
     const mine = monthPosts.filter((p) => p.brand_id === b.id)
     const branches = scope.branches.filter((x) => x.brand_id === b.id && x.active)
     return {
       brand: b,
+      formats: Object.fromEntries((Object.keys(FORMATS) as Format[]).map((f) => [f, mine.filter((p) => p.format === f).length])) as Record<Format, number>,
       total: mine.length,
       shared: mine.filter((p) => !p.branch_id).length,
       branches: branches.map((x) => ({ id: x.id, name: x.name, total: mine.filter((p) => p.branch_id === x.id).length })),
@@ -125,13 +126,20 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             </div>
           </div>
           <div className="panel-col">
-            <h3>Por rede e filial</h3>
+            <h3>Por filial</h3>
             {rollup.map((r) => (
               <div key={r.brand.id} className="metric-box">
                 <h4>{r.brand.name}</h4>
-                {r.branches.length === 0 && <div className="mrow"><span>Nenhuma filial cadastrada</span><b>—</b></div>}
-                {r.branches.map((b) => <div key={b.id} className="mrow"><span>{b.name}</span><b>{b.total}</b></div>)}
-                <div className="mrow"><span>Todas as filiais</span><b>{r.shared}</b></div>
+                {r.branches.length === 0
+                  ? (Object.keys(FORMATS) as Format[]).map((f) => (
+                      <div key={f} className="mrow"><span>{FORMATS[f]}</span><b>{r.formats[f]}</b></div>
+                    ))
+                  : (
+                    <>
+                      {r.branches.map((b) => <div key={b.id} className="mrow"><span>{b.name}</span><b>{b.total}</b></div>)}
+                      <div className="mrow"><span>Todas as unidades</span><b>{r.shared}</b></div>
+                    </>
+                  )}
                 <div className="mrow total"><span>Total</span><b className="v-blue">{r.total}</b></div>
               </div>
             ))}
@@ -177,7 +185,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                 {upcoming.map((p) => (
                   <tr key={p.id}>
                     <td>{formatBR(p.post_date)}</td>
-                    <td><Link href={`/planejamento/conteudos/${p.id}`}>{p.title}</Link><br /><small className="muted">{p.brand_name} · {p.branch_name ?? 'Todas as filiais'}</small></td>
+                    <td><Link href={`/planejamento/conteudos/${p.id}`}>{p.title}</Link><br /><small className="muted">{p.brand_name} · {p.branch_name ?? 'Todas as unidades'}</small></td>
                     <td><FormatBadge format={p.format} /></td>
                     <td><StageBadge stage={p.stage} /></td>
                   </tr>

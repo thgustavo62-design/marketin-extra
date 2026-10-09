@@ -37,7 +37,7 @@ export default async function Unidades({ searchParams }: { searchParams: Promise
                     {u.phone && <p>WhatsApp/telefone: {u.phone}</p>}
                     {u.hours && <p className="pre">{u.hours}</p>}
                     <div className="card-actions">
-                      <Link href={`/gestao/filiais?editar=${u.id}#form`}>Editar</Link>
+                      <Link href={`/gestao/unidades?editar=${u.id}#form`}>Editar</Link>
                       <form action={toggleBranchAction}><input type="hidden" name="id" value={u.id} /><button type="submit" className="link">{u.active ? 'Desativar' : 'Reativar'}</button></form>
                     </div>
                   </article>
@@ -50,9 +50,9 @@ export default async function Unidades({ searchParams }: { searchParams: Promise
 
       <section id="form" aria-labelledby="nova" className="card narrow-lg">
         <h2 id="nova" className="eyebrow">{editing ? `Editar: ${editing.name}` : 'Nova unidade'}</h2>
-        <ActionForm action={saveBranchAction} submit={editing ? 'Salvar alterações' : 'Adicionar unidade'} secondary={editing && <Link href="/gestao/filiais" className="btn">Cancelar</Link>}>
+        <ActionForm action={saveBranchAction} submit={editing ? 'Salvar alterações' : 'Adicionar unidade'} secondary={editing && <Link href="/gestao/unidades" className="btn">Cancelar</Link>}>
           {editing && <input type="hidden" name="id" value={editing.id} />}
-          <label htmlFor="brand_id">Rede</label>
+          <label htmlFor="brand_id">Filial</label>
           <select id="brand_id" name="brand_id" defaultValue={editing?.brand_id ?? scope.brand?.id}>
             {allBrands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>

@@ -26,8 +26,8 @@ export default async function Resultados({ searchParams }: { searchParams: Promi
   const posts = (await listPosts({ brand: scope.brand?.slug, branchId: scope.branch?.id, onlyPublished: true })).reverse()
 
   const blocks = [
-    { title: 'Por rede', rows: group(posts, (p) => p.brand_name) },
-    { title: 'Por filial', rows: group(posts, (p) => `${p.brand_name} · ${p.branch_name ?? 'Todas as filiais'}`) },
+    { title: 'Por filial', rows: group(posts, (p) => p.brand_name) },
+    { title: 'Por unidade', rows: group(posts, (p) => `${p.brand_name} · ${p.branch_name ?? 'Todas as unidades'}`) },
     { title: 'Por formato', rows: group(posts, (p) => FORMATS[p.format]) },
     { title: 'Por pilar', rows: group(posts, (p) => PILLARS[p.pillar]) },
   ]
@@ -70,7 +70,7 @@ export default async function Resultados({ searchParams }: { searchParams: Promi
                 {posts.map((p) => (
                   <tr key={p.id}>
                     <td>{formatBR(p.post_date)}</td>
-                    <td><Link href={`/planejamento/conteudos/${p.id}`}>{p.title}</Link><br /><small className="muted">{p.brand_name} · {p.branch_name ?? 'Todas as filiais'}</small></td>
+                    <td><Link href={`/planejamento/conteudos/${p.id}`}>{p.title}</Link><br /><small className="muted">{p.brand_name} · {p.branch_name ?? 'Todas as unidades'}</small></td>
                     <td><FormatBadge format={p.format} /></td>
                     <td>
                       <form action={saveMetricsAction} className="inline-metrics">

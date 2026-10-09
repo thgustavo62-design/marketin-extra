@@ -36,7 +36,7 @@ const GROUPS: Group[] = [
     title: 'Gestão',
     items: [
       { href: '/gestao/base', label: 'Base de informações', icon: BookOpen },
-      { href: '/gestao/filiais', label: 'Filiais', icon: Store },
+      { href: '/gestao/unidades', label: 'Unidades', icon: Store },
     ],
   },
   {
