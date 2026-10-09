@@ -63,7 +63,7 @@ export const DATE_PRESETS = {
   last_month: 'Mês passado',
 } as const
 export type DatePreset = keyof typeof DATE_PRESETS
-export const isDatePreset = (v: unknown): v is DatePreset => typeof v === 'string' && v in DATE_PRESETS
+export const isDatePreset = (v: unknown): v is DatePreset => typeof v === 'string' && Object.hasOwn(DATE_PRESETS, v)
 
 // ----- indicadores de anúncios -----
 export type AdRow = { account_name?: string; campaign?: string; date?: string; spend?: number; clicks?: number; impressions?: number; conversions?: number }

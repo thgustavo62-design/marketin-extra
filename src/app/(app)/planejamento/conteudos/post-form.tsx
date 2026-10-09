@@ -128,8 +128,10 @@ export function PostForm({
       <label className="check">
         <input type="checkbox" name="pharma_review" defaultChecked={post?.pharma_review} />
         Revisão farmacêutica concluída
-        {pillar === 'medicamentos' && <small> — obrigatória para aprovar ou publicar</small>}
+        {pillar === 'medicamentos' && <small> — obrigatória para aprovar, agendar ou publicar</small>}
       </label>
+      <label htmlFor="compliance_note">Observação de conformidade (opcional)</label>
+      <textarea id="compliance_note" name="compliance_note" rows={2} maxLength={1000} defaultValue={post?.compliance_note ?? ''} placeholder="Ex.: categoria do produto e informações obrigatórias conferidas por quem" />
     </ActionForm>
   )
 }

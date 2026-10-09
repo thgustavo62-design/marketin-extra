@@ -5,7 +5,9 @@ import { rowAllowed } from '@/lib/access'
 import { brandAllowed, NO_BRAND_ACCESS } from '@/lib/perms'
 import { audit, writerOrError, writerOrRedirect } from '@/lib/auth'
 import { pool } from '@/lib/db'
-import { isFormat, isIsoDate, isPillar, isStage, stageBlockedReason, REELS_TEMPLATE_TIMES } from '@/lib/domain'
+import { invalidateIfChanged } from '@/lib/approvals/service'
+import { isFormat, isIsoDate, isPillar, isStage, stageBlockedReason, REELS_TEMPLATE_TIMES, type Stage } from '@/lib/domain'
+import { changeStage } from '@/lib/production/stage'
 import { isUuid, str, type FormState } from '@/lib/form'
 import { clientIp } from '@/lib/session'
 
@@ -62,6 +64,7 @@ export async function savePostAction(_prev: FormState, fd: FormData): Promise<Fo
       onscreen: str(fd, `scene_onscreen_${i}`),
     })),
   }
+  const compliance = String(fd.get('compliance_note') ?? '').trim().slice(0, 1000) || null
   const values = [
     brandId, branchId || null, campaignId || null, campaignName, title, date, time || null, format, pillar, stage,
     String(fd.get('caption') ?? ''), String(fd.get('script') ?? ''), JSON.stringify(reels), str(fd, 'origin'), pharma,
@@ -69,11 +72,15 @@ export async function savePostAction(_prev: FormState, fd: FormData): Promise<Fo
   const ip = await clientIp()
 
   if (!id) {
+    // Aprovação, agendamento e publicação não se pulam na criação: o conteúdo nasce antes e avança pelo fluxo.
+    if (['aprovacao', 'aprovado', 'agendado', 'publicado'].includes(stage)) {
+      return { error: 'Crie o conteúdo em Ideia, Briefing, Em produção ou Em revisão e avance pelo quadro: a aprovação não pode ser pulada.' }
+    }
     const r = await pool.query(
       `insert into posts (brand_id, branch_id, campaign_id, campaign_name, title, post_date, post_time, format, pillar, stage,
-                          caption, script, reels, origin, pharma_review, created_by, updated_by)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16) returning id`,
-      [...values, user.id],
+                          caption, script, reels, origin, pharma_review, created_by, updated_by, compliance_note, pharma_reviewed_by, pharma_reviewed_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16,$17, case when $15 then $16::uuid end, case when $15 then now() end) returning id`,
+      [...values, user.id, compliance],
     )
     await pool.query(`insert into post_status_events (post_id, from_stage, to_stage, actor_id) values ($1, null, $2, $3)`, [r.rows[0].id, stage, user.id])
     await audit('conteudo_criado', { userId: user.id, ip, target: r.rows[0].id })
@@ -83,13 +90,18 @@ export async function savePostAction(_prev: FormState, fd: FormData): Promise<Fo
   if (!isUuid(id)) return { error: 'Conteúdo inválido.' }
   if (!(await rowAllowed(user, 'posts', id))) return { error: NO_BRAND_ACCESS }
   const revision = Number(str(fd, 'revision'))
-  const prev = (await pool.query(`select stage from posts where id = $1`, [id])).rows[0]?.stage as string | undefined
+  const prev = (await pool.query(`select stage from posts where id = $1`, [id])).rows[0]?.stage as Stage | undefined
+  // Os campos são salvos com a etapa ATUAL; a troca de etapa passa depois pelas regras do fluxo (aprovação, bloqueio...).
+  const updateValues = [...values.slice(0, 9), prev ?? stage, ...values.slice(10)]
   const r = await pool.query(
     `update posts set brand_id=$1, branch_id=$2, campaign_id=$3, campaign_name=$4, title=$5, post_date=$6, post_time=$7,
-            format=$8, pillar=$9, stage=$10, caption=$11, script=$12, reels=$13, origin=$14, pharma_review=$15,
+            format=$8, pillar=$9, stage=$10, caption=$11, script=$12, reels=$13, origin=$14,
+            pharma_reviewed_by = case when $15 and not pharma_review then $18::uuid when not $15 then null else pharma_reviewed_by end,
+            pharma_reviewed_at = case when $15 and not pharma_review then now() when not $15 then null else pharma_reviewed_at end,
+            pharma_review=$15, compliance_note=$19,
             revision = revision + 1, updated_at = now(), updated_by = $18
       where id = $16 and revision = $17 returning id`,
-    [...values, id, revision, user.id],
+    [...updateValues, id, revision, user.id, compliance],
   )
   if (!r.rowCount) {
     const exists = await pool.query(`select 1 from posts where id = $1`, [id])
@@ -99,12 +111,16 @@ export async function savePostAction(_prev: FormState, fd: FormData): Promise<Fo
         : 'Este conteúdo foi excluído.',
     }
   }
-  // Histórico de etapa: só quando a etapa realmente mudou.
+  let aviso = ''
   if (prev && prev !== stage) {
-    await pool.query(`insert into post_status_events (post_id, from_stage, to_stage, actor_id) values ($1, $2, $3, $4)`, [id, prev, stage, user.id])
+    const sr = await changeStage({ postId: id, to: stage as Stage, actorId: user.id, confirmPublish: true })
+    if (!sr.ok) aviso = sr.error
+    else await audit('conteudo_etapa', { userId: user.id, ip, target: id, meta: { de: prev, para: stage } })
   }
+  // Se o texto ou os anexos mudaram depois de enviado/aprovado, a aprovação deixa de valer.
+  await invalidateIfChanged(id, user.id, 'O conteúdo foi alterado depois do envio para aprovação.')
   await audit('conteudo_editado', { userId: user.id, ip, target: id })
-  redirect(`/planejamento/conteudos/${id}?salvo=1`)
+  redirect(`/planejamento/conteudos/${id}?salvo=1${aviso ? '&aviso=' + encodeURIComponent('Conteúdo salvo, mas a etapa não mudou: ' + aviso) : ''}`)
 }
 
 export async function deletePostAction(fd: FormData) {

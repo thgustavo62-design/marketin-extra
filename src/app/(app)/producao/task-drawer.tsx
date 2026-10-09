@@ -2,11 +2,13 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, ExternalLink, Lock, Plus, Trash2, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ExternalLink, Lock, Paperclip, Plus, Send, Trash2, X, XCircle } from 'lucide-react'
 import { FORMATS, PILLARS, PRIORITIES, STAGES, STAGE_ORDER, formatBR, type Priority, type Stage } from '@/lib/domain'
-import type { TaskDetail } from '@/lib/data'
+import type { FullDetail } from './actions'
+import { linkAssetAction, listPickerAction, unlinkAssetAction } from './biblioteca/actions'
+import { DECISION_LABELS, formatBytes, type Decision } from '@/lib/domain'
 import {
-  addChecklistAction, addCommentAction, deleteChecklistAction, getTaskDetailAction, moveCardAction, toggleChecklistAction, updateTaskAction,
+  addChecklistAction, addCommentAction, decideApprovalAction, deleteChecklistAction, getTaskDetailAction, moveCardAction, toggleChecklistAction, updateTaskAction,
 } from './actions'
 
 const fmtTime = (iso: string) => new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })
@@ -14,11 +16,14 @@ const fmtTime = (iso: string) => new Date(iso).toLocaleString('pt-BR', { timeZon
 // Detalhe da tarefa: campos de produção, etapa, checklist, comentários e histórico. Quem só pode ver não vê os campos de edição.
 export function TaskDrawer({ cardId, canEdit, onClose, onChanged }: { cardId: string | null; canEdit: boolean; onClose: () => void; onChanged: () => void }) {
   const ref = useRef<HTMLDialogElement>(null)
-  const [detail, setDetail] = useState<TaskDetail | null>(null)
+  const [detail, setDetail] = useState<FullDetail | null>(null)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [item, setItem] = useState('')
   const [comment, setComment] = useState('')
+  const [reason, setReason] = useState('')
+  const [picker, setPicker] = useState<{ open: boolean; q: string; items: { id: string; title: string; kind: 'file' | 'link'; mime_type: string | null; version_number: number }[] }>({ open: false, q: '', items: [] })
+  const upRef = useRef<HTMLInputElement>(null)
   const [f, setF] = useState({ assigned_to: '', reviewer_id: '', priority: 'normal', due_at: '', blocked_reason: '', post_date: '' })
 
   const load = useCallback(async (id: string) => {
@@ -114,6 +119,98 @@ export function TaskDrawer({ cardId, canEdit, onClose, onChanged }: { cardId: st
               <div className="form-actions">
                 <button type="button" className="primary" disabled={busy} onClick={() => run(() => updateTaskAction(c.id, c.revision, f), 'Alterações salvas.')}>Salvar produção</button>
               </div>
+            )}
+          </section>
+
+          <section>
+            <h4>Arquivos</h4>
+            <ul className="files">
+              {detail.assets.map((a) => (
+                <li key={a.asset_id}>
+                  <Paperclip size={13} />
+                  <a href={a.kind === 'link' ? (a.external_url ?? '#') : '/api/media/' + a.asset_id} target="_blank" rel="noopener noreferrer" className="inline-link">{a.title}</a>
+                  <small className="muted">v{a.version_number}{a.kind === 'file' ? ' · ' + formatBytes(a.size_bytes ?? 0) : ' · link'}</small>
+                  <select aria-label={'Papel de ' + a.title} value={a.role} disabled={!canEdit || busy} onChange={(e) => run(() => linkAssetAction(c.id, a.asset_id, e.target.value))}>
+                    <option value="reference">Referência</option><option value="draft">Rascunho</option><option value="final">Final</option><option value="thumbnail">Miniatura</option>
+                  </select>
+                  {canEdit && <button type="button" className="ghost" aria-label={'Desvincular ' + a.title} onClick={() => run(() => unlinkAssetAction(c.id, a.asset_id))}><Trash2 size={14} /></button>}
+                </li>
+              ))}
+              {detail.assets.length === 0 && <li className="muted">Nenhum arquivo anexado.</li>}
+            </ul>
+            {canEdit && (
+              <>
+                <div className="inline-add">
+                  <input ref={upRef} type="file" aria-label="Arquivo para anexar" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" />
+                  <button type="button" className="secondary" disabled={busy} onClick={async () => {
+                    const file = upRef.current?.files?.[0]
+                    if (!file) { setMsg({ kind: 'error', text: 'Escolha um arquivo.' }); return }
+                    const body = new FormData(); body.set('file', file); body.set('brand_id', c.brand_id)
+                    setBusy(true); setMsg(null)
+                    const res = await fetch('/api/media', { method: 'POST', body })
+                    const j = await res.json().catch(() => ({}))
+                    setBusy(false)
+                    const assetId: string | undefined = res.ok ? j.id : j.existingId
+                    if (!assetId) { setMsg({ kind: 'error', text: j.error ?? 'Não foi possível enviar.' }); return }
+                    if (await run(() => linkAssetAction(c.id, assetId, 'draft'), res.ok ? 'Arquivo enviado e anexado.' : 'Esse arquivo já estava na biblioteca; foi só anexado.')) { if (upRef.current) upRef.current.value = '' }
+                  }}>Enviar e anexar</button>
+                  <button type="button" className="secondary" onClick={async () => {
+                    const open = !picker.open
+                    setPicker({ ...picker, open })
+                    if (open) { const r = await listPickerAction(c.brand_id, ''); if (r.ok) setPicker({ open: true, q: '', items: r.items }) }
+                  }}>Anexar da biblioteca</button>
+                </div>
+                {picker.open && (
+                  <div className="picker">
+                    <input type="text" aria-label="Buscar na biblioteca" placeholder="Buscar pelo título" value={picker.q} onChange={async (e) => {
+                      const q = e.target.value
+                      setPicker((p) => ({ ...p, q }))
+                      const r = await listPickerAction(c.brand_id, q); if (r.ok) setPicker((p) => ({ ...p, items: r.items }))
+                    }} />
+                    <ul>
+                      {picker.items.map((i) => (
+                        <li key={i.id}><span>{i.title} <small className="muted">v{i.version_number}{i.kind === 'link' ? ' · link' : ''}</small></span>
+                          <button type="button" className="mini-btn" disabled={busy} onClick={async () => { if (await run(() => linkAssetAction(c.id, i.id, 'draft'), 'Anexado.')) setPicker((p) => ({ ...p, open: false })) }}>Anexar</button></li>
+                      ))}
+                      {picker.items.length === 0 && <li className="muted">Nada encontrado.</li>}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+          <section>
+            <h4>Aprovação <small className="muted">{detail.approvalRequired ? 'exigida nesta filial' : 'opcional nesta filial'}</small></h4>
+            {(() => {
+              const ap = detail.approval.latest
+              if (!ap) return <p className="muted">Nenhum envio para aprovação ainda.</p>
+              if (ap.status === 'pending') return <p><b>Aguardando decisão</b> de {ap.reviewer_name ?? 'um administrador'} · versão {ap.version_number} enviada por {ap.submitted_by_name ?? '—'}.</p>
+              if (ap.status === 'approved') return ap.valid
+                ? <p className="form-ok"><CheckCircle2 size={14} style={{ verticalAlign: '-2px' }} /> Aprovado por {ap.decided_by_name ?? '—'} (versão {ap.version_number}). Vale para o conteúdo como está.</p>
+                : <p className="form-error"><AlertTriangle size={14} style={{ verticalAlign: '-2px' }} /> A aprovação da versão {ap.version_number} está desatualizada: o conteúdo mudou depois dela.</p>
+              if (ap.status === 'invalidated') return <p className="muted">Último envio invalidado: {ap.invalidated_reason ?? '—'}</p>
+              return <p className="form-error"><XCircle size={14} style={{ verticalAlign: '-2px' }} /> {DECISION_LABELS[ap.status as Decision]} por {ap.decided_by_name ?? '—'}: {ap.reason}</p>
+            })()}
+            {canEdit && !['aprovacao', 'publicado', 'cancelado'].includes(c.stage) && (
+              <div className="form-actions"><button type="button" className="secondary" disabled={busy} onClick={() => run(() => moveCardAction(c.id, 'aprovacao', c.revision), 'Enviado para aprovação (versão congelada).')}><Send size={14} /> Enviar para aprovação</button></div>
+            )}
+            {detail.canDecide && (
+              <div className="decide">
+                <textarea aria-label="Motivo da decisão" rows={2} maxLength={2000} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Motivo (obrigatório para reprovar ou pedir ajustes)" />
+                <div className="form-actions">
+                  <button type="button" className="primary" disabled={busy} onClick={async () => { if (await run(() => decideApprovalAction(c.id, 'approved', reason), 'Aprovado.')) setReason('') }}>Aprovar</button>
+                  <button type="button" className="secondary" disabled={busy} onClick={async () => { if (await run(() => decideApprovalAction(c.id, 'changes_requested', reason), 'Ajustes solicitados.')) setReason('') }}>Pedir ajustes</button>
+                  <button type="button" className="danger" disabled={busy} onClick={async () => { if (await run(() => decideApprovalAction(c.id, 'rejected', reason), 'Reprovado.')) setReason('') }}>Reprovar</button>
+                </div>
+              </div>
+            )}
+            {detail.approval.history.length > 0 && (
+              <ol className="events">
+                {detail.approval.history.map((h, i) => (
+                  <li key={i}><b>{({ submitted: 'Enviado', approved: 'Aprovado', rejected: 'Reprovado', changes_requested: 'Ajustes solicitados', invalidated: 'Invalidado', withdrawn: 'Retirado' } as Record<string, string>)[h.event] ?? h.event}</b>{h.note && <> — {h.note}</>}<small className="muted"> · {h.actor_name ?? 'sistema'} · {fmtTime(h.created_at)}</small></li>
+                ))}
+              </ol>
             )}
           </section>
 

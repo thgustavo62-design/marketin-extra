@@ -49,8 +49,8 @@ export const STAGE_ORDER = Object.keys(STAGES) as Stage[]
 export const CLOSED_STAGES: Stage[] = ['publicado', 'cancelado']
 export const isOpenStage = (s: Stage): boolean => !CLOSED_STAGES.includes(s)
 
-export const isFormat = (v: unknown): v is Format => typeof v === 'string' && v in FORMATS
-export const isPillar = (v: unknown): v is Pillar => typeof v === 'string' && v in PILLARS
-export const isStage = (v: unknown): v is Stage => typeof v === 'string' && v in STAGES
-export const isPriority = (v: unknown): v is Priority => typeof v === 'string' && v in PRIORITIES
-export const isKind = (v: unknown): v is KnowledgeKind => typeof v === 'string' && v in KNOWLEDGE_KINDS
+export const isFormat = (v: unknown): v is Format => typeof v === 'string' && Object.hasOwn(FORMATS, v)
+export const isPillar = (v: unknown): v is Pillar => typeof v === 'string' && Object.hasOwn(PILLARS, v)
+export const isStage = (v: unknown): v is Stage => typeof v === 'string' && Object.hasOwn(STAGES, v)
+export const isPriority = (v: unknown): v is Priority => typeof v === 'string' && Object.hasOwn(PRIORITIES, v)
+export const isKind = (v: unknown): v is KnowledgeKind => typeof v === 'string' && Object.hasOwn(KNOWLEDGE_KINDS, v)

@@ -8,6 +8,7 @@ export default async function ConfiguracoesLayout({ children }: { children: Reac
     ...(user.role === 'admin'
       ? [
           { href: '/configuracoes/usuarios', label: 'Usuários' },
+          { href: '/configuracoes/fluxo', label: 'Fluxo de aprovação' },
           { href: '/configuracoes/integracoes', label: 'Integrações' },
           { href: '/configuracoes/auditoria', label: 'Auditoria' },
         ]

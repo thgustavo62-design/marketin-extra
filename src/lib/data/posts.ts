@@ -12,7 +12,7 @@ export type PostRow = {
 // Completo: edição, Reels, resultados, CSV.
 export type Post = PostRow & {
   campaign_id: string | null; campaign_name: string | null
-  caption: string; script: string; reels: ReelsScript; origin: string; pharma_review: boolean
+  caption: string; script: string; reels: ReelsScript; origin: string; pharma_review: boolean; compliance_note: string | null
   reach: number | null; saves: number | null; shares: number | null; revision: number
 }
 
@@ -25,7 +25,7 @@ const JOINS = `from posts p join brands b on b.id = p.brand_id left join branche
 const LITE_COLS = `p.id, p.brand_id, b.name as brand_name, b.slug as brand_slug, p.branch_id, br.name as branch_name,
   p.title, p.post_date::text as post_date, to_char(p.post_time, 'HH24:MI') as post_time, p.format, p.pillar, p.stage`
 const FULL_COLS = `${LITE_COLS}, p.campaign_id, coalesce(c.name, p.campaign_name) as campaign_name,
-  p.caption, p.script, p.reels, p.origin, p.pharma_review, p.reach, p.saves, p.shares, p.revision`
+  p.caption, p.script, p.reels, p.origin, p.pharma_review, p.compliance_note, p.reach, p.saves, p.shares, p.revision`
 const FULL_JOINS = `${JOINS} left join campaigns c on c.id = p.campaign_id`
 const ORDER = `order by p.post_date, p.post_time nulls last, p.created_at`
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { listPosts } from '@/lib/data'
-import { FORMATS, PILLARS, STAGES, formatBR, isIsoDate, toCsv } from '@/lib/domain'
+import { FORMATS, PILLARS, STAGES, formatBR, isFormat, isIsoDate, isStage, toCsv } from '@/lib/domain'
 import { getScope } from '@/lib/scope'
 import { getSession } from '@/lib/session'
 
@@ -20,8 +20,8 @@ export async function GET(req: Request) {
     q: u.get('q')?.trim() || undefined,
     from: isIsoDate(from) ? from : undefined,
     to: isIsoDate(to) ? to : undefined,
-    stage: etapa in STAGES ? etapa : undefined,
-    format: formato in FORMATS ? formato : undefined,
+    stage: isStage(etapa) ? etapa : undefined,
+    format: isFormat(formato) ? formato : undefined,
   })
   const csv = toCsv(
     ['Data', 'Horário', 'Filial', 'Unidade', 'Título', 'Formato', 'Pilar', 'Etapa', 'Campanha', 'Origem', 'Revisão farmacêutica', 'Legenda', 'Roteiro', 'Alcance', 'Salvamentos', 'Compartilhamentos'],

@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react'
 import { FormatBadge, StageBadge } from '@/components/badges'
 import { requireUser } from '@/lib/auth'
 import { countPosts, listPostsLite } from '@/lib/data'
-import { FORMATS, PILLARS, STAGES, formatBR } from '@/lib/domain'
+import { FORMATS, PILLARS, STAGES, formatBR, isStage } from '@/lib/domain'
 import { canWrite } from '@/lib/perms'
 import { getScope, scopeLabel } from '@/lib/scope'
 
@@ -15,7 +15,7 @@ export default async function Conteudos({ searchParams }: { searchParams: Promis
   const user = await requireUser()
   const sp = await searchParams
   const scope = await getScope()
-  const stage = sp.etapa && sp.etapa in STAGES ? sp.etapa : undefined
+  const stage = isStage(sp.etapa) ? sp.etapa : undefined
   const format = sp.formato && sp.formato in FORMATS ? sp.formato : undefined
   const q = sp.q?.trim() || undefined
   const filter = { brand: scope.brand?.slug, branchId: scope.branch?.id, q, stage, format }

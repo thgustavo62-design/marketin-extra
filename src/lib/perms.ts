@@ -6,7 +6,7 @@ export const ROLES = {
 } as const
 
 export type Role = keyof typeof ROLES
-export const isRole = (v: unknown): v is Role => typeof v === 'string' && v in ROLES
+export const isRole = (v: unknown): v is Role => typeof v === 'string' && Object.hasOwn(ROLES, v)
 
 export const canWrite = (role: string): boolean => role === 'admin' || role === 'editor'
 export const isAdmin = (role: string): boolean => role === 'admin'

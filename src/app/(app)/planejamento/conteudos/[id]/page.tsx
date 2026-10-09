@@ -13,7 +13,7 @@ import { PostForm } from '../post-form'
 
 export default async function EditarConteudo({
   params, searchParams,
-}: { params: Promise<{ id: string }>; searchParams: Promise<{ salvo?: string }> }) {
+}: { params: Promise<{ id: string }>; searchParams: Promise<{ salvo?: string; aviso?: string }> }) {
   const user = await requireUser()
   const { id } = await params
   if (!isUuid(id)) notFound()
@@ -51,6 +51,7 @@ export default async function EditarConteudo({
         {back}
         <h1>{post.title}</h1>
         {sp.salvo && <p className="form-ok" role="status">Salvo.</p>}
+        {sp.aviso && <div className="notice" role="alert">{sp.aviso.slice(0, 400)}</div>}
       </header>
       {/* key = revisão: após salvar, o formulário remonta com os dados novos */}
       <PostForm key={post.revision} brands={brands} branches={branches} campaigns={campaigns} post={post} />

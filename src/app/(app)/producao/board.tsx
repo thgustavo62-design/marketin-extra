@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { AlertTriangle, CheckSquare, Lock, MessageSquare, Plus } from 'lucide-react'
-import { FORMATS, PRIORITIES, STAGES, STAGE_ORDER, formatBR, type Stage } from '@/lib/domain'
+import { FORMATS, PRIORITIES, STAGES, STAGE_ORDER, formatBR, isStage, type Stage } from '@/lib/domain'
 import type { BoardCard } from '@/lib/data'
 import { moveCardAction, quickCreateAction } from './actions'
 import { TaskDrawer } from './task-drawer'
@@ -13,14 +13,14 @@ type Brand = { id: string; name: string }
 const initials = (name: string | null) => (name ? name.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase() : '—')
 
 export function Board({
-  cards: initial, canEdit, today, brands, defaultBrandId, defaultBranchId, onlyStage,
+  cards: initial, canEdit, today, brands, defaultBrandId, defaultBranchId, onlyStage, initialOpen,
 }: {
   cards: BoardCard[]; canEdit: boolean; today: string; brands: Brand[]
-  defaultBrandId?: string; defaultBranchId?: string; onlyStage?: string
+  defaultBrandId?: string; defaultBranchId?: string; onlyStage?: string; initialOpen?: string
 }) {
   const router = useRouter()
   const [cards, setCards] = useState(initial)
-  const [open, setOpen] = useState<string | null>(null)
+  const [open, setOpen] = useState<string | null>(initialOpen ?? null)
   const [dragOver, setDragOver] = useState<Stage | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [adding, setAdding] = useState<Stage | null>(null)
@@ -31,7 +31,7 @@ export function Board({
   useEffect(() => setCards(initial), [initial])
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 6000); return () => clearTimeout(t) }, [toast])
 
-  const stages = onlyStage && onlyStage in STAGES ? [onlyStage as Stage] : STAGE_ORDER
+  const stages = isStage(onlyStage) ? [onlyStage] : STAGE_ORDER
 
   async function move(card: BoardCard, to: Stage) {
     if (!canEdit || card.stage === to) return

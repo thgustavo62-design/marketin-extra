@@ -24,3 +24,19 @@ export const pool: pg.Pool =
   })
 
 if (process.env.NODE_ENV !== 'production') globalThis.__pgPool = pool
+
+// Transação: tudo ou nada. Use para operações que mexem em várias tabelas (aprovações, versões).
+export async function withTx<T>(fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect()
+  try {
+    await client.query('begin')
+    const out = await fn(client)
+    await client.query('commit')
+    return out
+  } catch (e) {
+    await client.query('rollback').catch(() => {})
+    throw e
+  } finally {
+    client.release()
+  }
+}

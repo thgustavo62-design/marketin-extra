@@ -3,11 +3,13 @@
 import { revalidatePath } from 'next/cache'
 import { rowAllowed } from '@/lib/access'
 import { audit, writerOrError } from '@/lib/auth'
-import { getTaskDetail, listAssignableUsers, type TaskDetail } from '@/lib/data'
+import { decideApproval, getApprovalInfo } from '@/lib/approvals/service'
+import { getTaskDetail, listAssignableUsers, listPostAssets, type PostAsset, type TaskDetail } from '@/lib/data'
 import { pool } from '@/lib/db'
-import { isIsoDate, isPriority, isStage, moveBlockedReason, needsPublishConfirmation, stageBlockedReason, todayISO, type Pillar, type Stage } from '@/lib/domain'
+import { canDecide, isIsoDate, isPriority, isStage, needsPublishConfirmation, stageBlockedReason, todayISO, type Decision, type Pillar, type Stage } from '@/lib/domain'
+import { changeStage } from '@/lib/production/stage'
 import { isUuid } from '@/lib/form'
-import { NO_BRAND_ACCESS, brandAllowed } from '@/lib/perms'
+import { NO_BRAND_ACCESS, brandAllowed, canWrite } from '@/lib/perms'
 import { clientIp, getSession } from '@/lib/session'
 
 export type ActionResult<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string; conflict?: boolean; needsConfirm?: boolean }
@@ -27,35 +29,46 @@ export async function moveCardAction(id: string, to: string, revision: number, o
   if (!g.ok) return fail(g.error)
   if (!isUuid(id) || !isStage(to)) return fail('Cartão ou etapa inválidos.')
   if (!(await rowAllowed(g.user, 'posts', id))) return fail(NO_BRAND_ACCESS)
-  const p = await post(id)
-  if (!p) return fail('Este conteúdo não existe mais.', { conflict: true })
-  if (p.revision !== revision) return fail(CONFLICT, { conflict: true })
-  if (p.stage === to) return { ok: true, revision: p.revision }
-
-  const why = stageBlockedReason(p.pillar, to, p.pharma_review) ?? moveBlockedReason(p.stage, to, p.blocked_reason)
-  if (why) return fail(why)
-  // "Publicado" é uma afirmação sobre o mundo real: exige confirmação humana explícita.
-  if (needsPublishConfirmation(to) && !opts.confirmPublish) return fail('Confirme que a publicação foi realizada.', { needsConfirm: true })
-
-  const r = await pool.query(
-    `update posts set stage = $1, revision = revision + 1, updated_at = now(), updated_by = $2 where id = $3 and revision = $4 returning revision`,
-    [to, g.user.id, id, revision],
-  )
-  if (!r.rowCount) return fail(CONFLICT, { conflict: true })
-  await pool.query(`insert into post_status_events (post_id, from_stage, to_stage, actor_id, note) values ($1,$2,$3,$4,$5)`, [id, p.stage, to, g.user.id, opts.note?.slice(0, 300) || null])
-  await audit('conteudo_etapa', { userId: g.user.id, ip: await clientIp(), target: id, meta: { de: p.stage, para: to } })
+  const before = (await post(id))?.stage
+  const r = await changeStage({ postId: id, to, actorId: g.user.id, revision, confirmPublish: opts.confirmPublish, note: opts.note })
+  if (!r.ok) return fail(r.error, { conflict: r.conflict, needsConfirm: r.needsConfirm })
+  if (before !== to) await audit('conteudo_etapa', { userId: g.user.id, ip: await clientIp(), target: id, meta: { de: before, para: to } })
   revalidatePath('/producao')
-  return { ok: true, revision: r.rows[0].revision }
+  return { ok: true, revision: r.revision }
+}
+
+// ---------- decisão de aprovação ----------
+export async function decideApprovalAction(postId: string, decision: string, reason: string): Promise<ActionResult<{ stage: Stage }>> {
+  const g = await writerOrError()
+  if (!g.ok) return fail(g.error)
+  if (!isUuid(postId) || !['approved', 'rejected', 'changes_requested'].includes(decision)) return fail('Decisão inválida.')
+  if (!(await rowAllowed(g.user, 'posts', postId))) return fail(NO_BRAND_ACCESS)
+  const r = await decideApproval(postId, decision as Decision, reason, { id: g.user.id, role: g.user.role })
+  if (!r.ok) return fail(r.error)
+  await audit('aprovacao_decisao', { userId: g.user.id, ip: await clientIp(), target: postId, meta: { decisao: decision } })
+  revalidatePath('/producao')
+  return { ok: true, stage: r.stage }
 }
 
 // ---------- detalhe (leitura) ----------
-export async function getTaskDetailAction(id: string): Promise<ActionResult<{ detail: TaskDetail }>> {
+export type FullDetail = TaskDetail & { approval: Awaited<ReturnType<typeof getApprovalInfo>>; assets: PostAsset[]; approvalRequired: boolean; canDecide: boolean }
+
+export async function getTaskDetailAction(id: string): Promise<ActionResult<{ detail: FullDetail }>> {
   const user = await getSession()
   if (!user || user.mustChange) return fail('Sessão expirada. Entre novamente.')
   if (!isUuid(id)) return fail('Cartão inválido.')
   if (!(await rowAllowed(user, 'posts', id))) return fail(NO_BRAND_ACCESS)
   const detail = await getTaskDetail(id)
-  return detail ? { ok: true, detail } : fail('Este conteúdo não existe mais.', { conflict: true })
+  if (!detail) return fail('Este conteúdo não existe mais.', { conflict: true })
+  const [approval, assets, brand] = await Promise.all([
+    getApprovalInfo(id),
+    listPostAssets(id),
+    pool.query('select approval_required from brands where id = $1', [detail.card.brand_id]),
+  ])
+  const pending = approval.latest?.status === 'pending' ? approval.latest : null
+  const sub = pending ? (await pool.query('select submitted_by from approvals where id = $1', [pending.id])).rows[0]?.submitted_by ?? null : null
+  const canDecideNow = Boolean(pending) && canWrite(user.role) && canDecide({ userId: user.id, role: user.role, reviewerId: pending?.reviewer_id ?? detail.card.reviewer_id, submittedBy: sub }) === null
+  return { ok: true, detail: { ...detail, approval, assets, approvalRequired: brand.rows[0]?.approval_required ?? true, canDecide: canDecideNow } }
 }
 
 // ---------- campos de produção ----------

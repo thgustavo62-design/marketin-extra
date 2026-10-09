@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
-  BarChart3, BookOpen, ClipboardList, Columns3, CalendarDays, Camera, ChevronLeft, ChevronRight, Clapperboard, FileText, LayoutDashboard,
-  LogOut, Megaphone, Menu, Settings, Sparkles, Store, Target, X,
+  BarChart3, BookOpen, ClipboardCheck, ClipboardList, Columns3, CalendarDays, Camera, ChevronLeft, ChevronRight, Clapperboard, FileText, LayoutDashboard,
+  FolderOpen, Inbox, LogOut, Megaphone, Menu, Settings, Sparkles, Store, Target, X,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -24,7 +24,15 @@ const GROUPS: Group[] = [
       { href: '/campanhas', label: 'Campanhas', icon: Megaphone },
     ],
   },
-  { title: 'Produção', items: [{ href: '/producao', label: 'Quadro de produção', icon: Columns3 }] },
+  {
+    title: 'Produção',
+    items: [
+      { href: '/producao', label: 'Quadro de produção', icon: Columns3, exact: true },
+      { href: '/producao/aprovacoes', label: 'Aprovações', icon: ClipboardCheck },
+      { href: '/producao/solicitacoes', label: 'Solicitações', icon: Inbox },
+      { href: '/producao/biblioteca', label: 'Biblioteca de mídias', icon: FolderOpen },
+    ],
+  },
   {
     title: 'Resultados',
     items: [

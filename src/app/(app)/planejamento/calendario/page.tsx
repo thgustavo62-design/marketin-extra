@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { requireUser } from '@/lib/auth'
 import { listPostsLite } from '@/lib/data'
-import { FORMATS, MONTH_NAMES, STAGES, WEEKDAYS, monthGrid, parseMonth, shiftMonth, todayISO } from '@/lib/domain'
+import { FORMATS, MONTH_NAMES, STAGES, isStage, WEEKDAYS, monthGrid, parseMonth, shiftMonth, todayISO } from '@/lib/domain'
 import { canWrite } from '@/lib/perms'
 import { getScope, scopeLabel } from '@/lib/scope'
 
@@ -18,7 +18,7 @@ export default async function Calendario({ searchParams }: { searchParams: Promi
   const weeks = monthGrid(year, month)
   const from = weeks[0][0].iso
   const to = weeks[weeks.length - 1][6].iso
-  const stage = sp.etapa && sp.etapa in STAGES ? sp.etapa : undefined
+  const stage = isStage(sp.etapa) ? sp.etapa : undefined
   const q = sp.q?.trim() || undefined
   const posts = await listPostsLite({ brand: scope.brand?.slug, branchId: scope.branch?.id, q, stage, from, to }, { limit: 1500 })
 

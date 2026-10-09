@@ -7,7 +7,7 @@ import { canWrite } from '@/lib/perms'
 import { getScope, scopeLabel } from '@/lib/scope'
 import { Board } from './board'
 
-type SP = { eu?: string; resp?: string; camp?: string; formato?: string; etapa?: string; atrasados?: string; q?: string }
+type SP = { eu?: string; resp?: string; camp?: string; formato?: string; etapa?: string; atrasados?: string; q?: string; abrir?: string }
 
 export default async function Producao({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireUser()
@@ -81,6 +81,7 @@ export default async function Producao({ searchParams }: { searchParams: Promise
         defaultBrandId={scope.brand?.id}
         defaultBranchId={scope.branch?.id}
         onlyStage={stage}
+        initialOpen={isUuid(sp.abrir) ? sp.abrir : undefined}
       />
     </>
   )
