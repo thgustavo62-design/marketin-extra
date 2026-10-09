@@ -3,15 +3,10 @@ import { AlertTriangle, BookOpen, CalendarDays, CheckCircle2, Megaphone, Plus, S
 import { FormatBadge, StageBadge } from '@/components/badges'
 import { MonthSelect } from '@/components/month-select'
 import { requireUser } from '@/lib/auth'
-import { getCampaigns, listKnowledge, listPosts } from '@/lib/data'
-import { FORMATS, MONTH_NAMES, STAGES, STAGE_ORDER, addDays, formatBR, isExpired, parseMonth, shiftMonth, todayISO, type Format } from '@/lib/domain'
+import { getDashboard } from '@/lib/data'
+import { FORMATS, MONTH_NAMES, STAGES, STAGE_ORDER, formatBR, parseMonth, todayISO, type Format } from '@/lib/domain'
 import { canWrite } from '@/lib/perms'
 import { getScope, scopeLabel } from '@/lib/scope'
-
-const mondayOf = (iso: string) => {
-  const d = new Date(iso + 'T00:00:00Z')
-  return addDays(iso, -((d.getUTCDay() + 6) % 7))
-}
 
 export default async function Dashboard({ searchParams }: { searchParams: Promise<{ m?: string; 'sem-permissao'?: string }> }) {
   const user = await requireUser()
@@ -20,69 +15,23 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const today = todayISO()
   const { year, month } = parseMonth(sp.m, today)
   const ym = `${year}-${String(month).padStart(2, '0')}`
-  const prevYm = shiftMonth(year, month, -1)
 
-  const [posts, allCampaigns, allKnowledge] = await Promise.all([
-    listPosts({ brand: scope.brand?.slug, branchId: scope.branch?.id }),
-    getCampaigns(),
-    listKnowledge(),
-  ])
-  const campaigns = scope.brand ? allCampaigns.filter((c) => c.brand_id === scope.brand!.id) : allCampaigns
-  const knowledge = scope.brand ? allKnowledge.filter((k) => k.brand_id === scope.brand!.id) : allKnowledge
-
-  const monthPosts = posts.filter((p) => p.post_date.startsWith(ym))
-  const prevCount = posts.filter((p) => p.post_date.startsWith(prevYm)).length
-  const variation = prevCount > 0 ? ((monthPosts.length - prevCount) / prevCount) * 100 : null
-  const byFormat = (f: Format) => monthPosts.filter((p) => p.format === f).length
-  const byStage = (s: string) => monthPosts.filter((p) => p.stage === s).length
-  const published = byStage('publicado')
-
-  // Filial (Minas Farma / Farma e Farma) › unidades, quando houver
-  const brandsShown = scope.brand ? scope.brands.filter((b) => b.id === scope.brand!.id) : scope.brands
-  const rollup = brandsShown.map((b) => {
-    const mine = monthPosts.filter((p) => p.brand_id === b.id)
-    const branches = scope.branches.filter((x) => x.brand_id === b.id && x.active)
-    return {
-      brand: b,
-      formats: Object.fromEntries((Object.keys(FORMATS) as Format[]).map((f) => [f, mine.filter((p) => p.format === f).length])) as Record<Format, number>,
-      total: mine.length,
-      shared: mine.filter((p) => !p.branch_id).length,
-      branches: branches.map((x) => ({ id: x.id, name: x.name, total: mine.filter((p) => p.branch_id === x.id).length })),
-    }
+  const data = await getDashboard({
+    brandId: scope.brand?.id, branchId: scope.branch?.id, monthStart: `${ym}-01`, today,
+    brands: scope.brands, branches: scope.branches,
   })
-
-  // Conteúdos por semana (8 semanas a partir da atual)
-  const week0 = mondayOf(today)
-  const weeks = Array.from({ length: 8 }, (_, i) => {
-    const from = addDays(week0, i * 7)
-    const to = addDays(from, 6)
-    return { from, n: posts.filter((p) => p.post_date >= from && p.post_date <= to).length }
-  })
+  const { month: m, rollup, weeks, overdue, upcoming, gaps, knowledge, campaigns } = data
+  const variation = m.prevTotal > 0 ? ((m.total - m.prevTotal) / m.prevTotal) * 100 : null
+  const published = m.byStage.publicado
   const maxWeek = Math.max(1, ...weeks.map((w) => w.n))
+  const writable = canWrite(user.role)
 
-  // Pendências
-  const overdue = posts.filter((p) => p.post_date < today && p.stage !== 'publicado')
-  const ending = campaigns.filter((c) => c.ends_on >= today && c.ends_on <= addDays(today, 7))
-  const active = campaigns.filter((c) => c.starts_on <= today && c.ends_on >= today)
-  const staleInfo = knowledge.filter((k) => isExpired(k.valid_until, today) || !k.confirmed)
-  const gaps: string[] = []
-  for (const b of brandsShown) {
-    for (let w = 0; w < 3; w++) {
-      const from = addDays(today, w * 7)
-      const to = addDays(from, 6)
-      if (!posts.some((p) => p.brand_id === b.id && p.post_date >= from && p.post_date <= to)) {
-        gaps.push(`${b.name}: sem conteúdo de ${formatBR(from)} a ${formatBR(to)}`)
-      }
-    }
-  }
   const alerts = [
-    ...overdue.map((p) => ({ key: p.id, href: `/planejamento/conteudos/${p.id}`, text: `Atrasado desde ${formatBR(p.post_date)}: ${p.title} (${p.brand_name})` })),
-    ...ending.map((c) => ({ key: c.id, href: `/campanhas?editar=${c.id}`, text: `Campanha termina em ${formatBR(c.ends_on)}: ${c.name} (${c.brand_name})` })),
-    ...staleInfo.map((k) => ({ key: k.id, href: `/gestao/base?editar=${k.id}`, text: `${isExpired(k.valid_until, today) ? 'Informação vencida' : 'Informação não confirmada'}: ${k.title} (${k.brand_name})` })),
+    ...overdue.items.map((p) => ({ key: p.id, href: `/planejamento/conteudos/${p.id}`, text: `Atrasado desde ${formatBR(p.post_date)}: ${p.title} (${p.brand_name})` })),
+    ...campaigns.endingSoon.map((c) => ({ key: c.id, href: `/campanhas?editar=${c.id}`, text: `Campanha termina em ${formatBR(c.ends_on)}: ${c.name} (${c.brand_name})` })),
+    ...knowledge.items.map((k) => ({ key: k.id, href: `/gestao/base?editar=${k.id}`, text: `${k.expired ? 'Informação vencida' : 'Informação não confirmada'}: ${k.title} (${k.brand_name})` })),
     ...gaps.map((g) => ({ key: g, href: '/planejamento/gerar', text: g })),
   ]
-  const upcoming = posts.filter((p) => p.post_date >= today && p.stage !== 'publicado').slice(0, 8)
-  const writable = canWrite(user.role)
 
   return (
     <>
@@ -116,13 +65,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <h3>Composição do planejamento</h3>
             <div className="metric-box">
               <h4>Conteúdos do mês</h4>
-              {(Object.keys(FORMATS) as Format[]).map((f) => <div key={f} className="mrow"><span>{FORMATS[f]}</span><b>{byFormat(f)}</b></div>)}
-              <div className="mrow total"><span>Total</span><b className="v-blue">{monthPosts.length}</b></div>
+              {(Object.keys(FORMATS) as Format[]).map((f) => <div key={f} className="mrow"><span>{FORMATS[f]}</span><b>{m.byFormat[f]}</b></div>)}
+              <div className="mrow total"><span>Total</span><b className="v-blue">{m.total}</b></div>
             </div>
             <div className="metric-box">
               <h4>Andamento por etapa</h4>
-              {STAGE_ORDER.map((s) => <div key={s} className="mrow"><span>{STAGES[s]}</span><b>{byStage(s)}</b></div>)}
-              <div className="mrow total"><span>Publicados</span><b className="v-green">{monthPosts.length ? Math.round((published / monthPosts.length) * 100) : 0}%</b></div>
+              {STAGE_ORDER.map((s) => <div key={s} className="mrow"><span>{STAGES[s]}</span><b>{m.byStage[s]}</b></div>)}
+              <div className="mrow total"><span>Publicados</span><b className="v-green">{m.total ? Math.round((published / m.total) * 100) : 0}%</b></div>
             </div>
           </div>
           <div className="panel-col">
@@ -131,9 +80,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
               <div key={r.brand.id} className="metric-box">
                 <h4>{r.brand.name}</h4>
                 {r.branches.length === 0
-                  ? (Object.keys(FORMATS) as Format[]).map((f) => (
-                      <div key={f} className="mrow"><span>{FORMATS[f]}</span><b>{r.formats[f]}</b></div>
-                    ))
+                  ? (Object.keys(FORMATS) as Format[]).map((f) => <div key={f} className="mrow"><span>{FORMATS[f]}</span><b>{r.formats[f]}</b></div>)
                   : (
                     <>
                       {r.branches.map((b) => <div key={b.id} className="mrow"><span>{b.name}</span><b>{b.total}</b></div>)}
@@ -160,10 +107,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       </div>
 
       <section className="kpis" aria-label="Indicadores">
-        <div className="kpi"><small>Atrasados</small><strong className={overdue.length ? 'v-red' : ''}>{overdue.length}</strong><em>não publicados com data passada</em><span className="ico"><AlertTriangle size={18} /></span></div>
-        <div className="kpi"><small>Campanhas vigentes</small><strong className="v-blue">{active.length}</strong><em>{ending.length} terminam em 7 dias</em><span className="ico blue"><Megaphone size={18} /></span></div>
-        <div className="kpi"><small>Pendências da base</small><strong className={staleInfo.length ? 'v-amber' : ''}>{staleInfo.length}</strong><em>vencidas ou não confirmadas</em><span className="ico amber"><BookOpen size={18} /></span></div>
-        <div className="kpi"><small>Publicados no mês</small><strong className="v-green">{published}</strong><em>de {monthPosts.length} planejados</em><span className="ico green"><CheckCircle2 size={18} /></span></div>
+        <div className="kpi"><small>Atrasados</small><strong className={overdue.total ? 'v-red' : ''}>{overdue.total}</strong><em>não publicados com data passada</em><span className="ico"><AlertTriangle size={18} /></span></div>
+        <div className="kpi"><small>Campanhas vigentes</small><strong className="v-blue">{campaigns.active}</strong><em>{campaigns.endingSoon.length} terminam em 7 dias</em><span className="ico blue"><Megaphone size={18} /></span></div>
+        <div className="kpi"><small>Pendências da base</small><strong className={knowledge.total ? 'v-amber' : ''}>{knowledge.total}</strong><em>vencidas ou não confirmadas</em><span className="ico amber"><BookOpen size={18} /></span></div>
+        <div className="kpi"><small>Publicados no mês</small><strong className="v-green">{published}</strong><em>de {m.total} planejados</em><span className="ico green"><CheckCircle2 size={18} /></span></div>
       </section>
 
       {writable && (

@@ -63,6 +63,11 @@ export async function checkCredentials(username: string, password: string, ip: s
     return { ok: false, reason: 'invalid' }
   }
   await audit('login_ok', { userId: user.id, ip })
+  // Manutenção barata: não deixa as tabelas de sessão/tentativas crescerem sem limite (falha aqui não afeta o login).
+  void Promise.all([
+    pool.query(`delete from sessions where expires_at < now() - interval '7 days'`),
+    pool.query(`delete from login_attempts where created_at < now() - interval '2 days'`),
+  ]).catch(() => {})
   return { ok: true, userId: user.id }
 }
 

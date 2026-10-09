@@ -17,8 +17,8 @@ export function ActionForm({
 }: {
   action: Action
   children: React.ReactNode
-  submit?: string
-  pending?: string
+  submit?: React.ReactNode
+  pending?: React.ReactNode
   className?: string
   secondary?: React.ReactNode
 }) {

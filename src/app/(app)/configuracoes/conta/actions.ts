@@ -36,7 +36,10 @@ export async function changePasswordAction(_prev: FormState, fd: FormData): Prom
   // Encerra todas as outras sessões; mantém só a atual.
   await pool.query(`update sessions set revoked_at = now() where user_id = $1 and id <> $2 and revoked_at is null`, [user.id, user.sessionId])
   await audit('troca_senha_ok', { userId: user.id, ip })
-  if (user.mustChange) redirect('/') // primeiro acesso: segue para o sistema
+  if (user.mustChange) {
+    revalidatePath('/', 'layout') // o menu e o seletor de filial passam a aparecer na hora
+    redirect('/') // primeiro acesso: segue para o sistema
+  }
   return { ok: 'Senha alterada. As outras sessões foram encerradas.' }
 }
 

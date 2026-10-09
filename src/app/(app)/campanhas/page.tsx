@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { ActionForm } from '@/components/action-form'
 import { ConfirmButton } from '@/components/confirm-button'
 import { requireUser } from '@/lib/auth'
-import { getBrands, getCampaigns } from '@/lib/data'
+import { getCampaigns } from '@/lib/data'
 import { getScope } from '@/lib/scope'
 import { formatBR, todayISO } from '@/lib/domain'
 import { deleteCampaignAction, saveCampaignAction } from './actions'
@@ -11,7 +11,8 @@ export default async function Campanhas({ searchParams }: { searchParams: Promis
   await requireUser()
   const sp = await searchParams
   const scope = await getScope()
-  const [brands, allCampaigns] = await Promise.all([getBrands(), getCampaigns()])
+  const brands = scope.brands
+  const allCampaigns = (await getCampaigns()).filter((c) => brands.some((b) => b.id === c.brand_id))
   const campaigns = scope.brand ? allCampaigns.filter((c) => c.brand_id === scope.brand!.id) : allCampaigns
   const today = todayISO()
   const editing = allCampaigns.find((c) => c.id === sp.editar)

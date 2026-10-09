@@ -2,12 +2,14 @@ import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { FormatBadge, StageBadge } from '@/components/badges'
 import { requireUser } from '@/lib/auth'
-import { listPosts } from '@/lib/data'
+import { countPosts, listPostsLite } from '@/lib/data'
 import { FORMATS, PILLARS, STAGES, formatBR } from '@/lib/domain'
 import { canWrite } from '@/lib/perms'
 import { getScope, scopeLabel } from '@/lib/scope'
 
-type SP = { q?: string; etapa?: string; formato?: string }
+type SP = { q?: string; etapa?: string; formato?: string; p?: string }
+
+const PAGE_SIZE = 50
 
 export default async function Conteudos({ searchParams }: { searchParams: Promise<SP> }) {
   const user = await requireUser()
@@ -16,7 +18,19 @@ export default async function Conteudos({ searchParams }: { searchParams: Promis
   const stage = sp.etapa && sp.etapa in STAGES ? sp.etapa : undefined
   const format = sp.formato && sp.formato in FORMATS ? sp.formato : undefined
   const q = sp.q?.trim() || undefined
-  const posts = await listPosts({ brand: scope.brand?.slug, branchId: scope.branch?.id, q, stage, format })
+  const filter = { brand: scope.brand?.slug, branchId: scope.branch?.id, q, stage, format }
+  const total = await countPosts(filter)
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const page = Math.min(pages, Math.max(1, Number(sp.p) || 1))
+  const posts = await listPostsLite(filter, { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE })
+  const pageHref = (n: number) => {
+    const u = new URLSearchParams()
+    if (q) u.set('q', q)
+    if (stage) u.set('etapa', stage)
+    if (format) u.set('formato', format)
+    u.set('p', String(n))
+    return `/planejamento/conteudos?${u}`
+  }
 
   const exportQs = new URLSearchParams()
   if (scope.brand) exportQs.set('rede', scope.brand.slug)
@@ -30,7 +44,7 @@ export default async function Conteudos({ searchParams }: { searchParams: Promis
       <header className="page-head row">
         <div>
           <h1>Conteúdos</h1>
-          <p>{scopeLabel(scope)} · {posts.length} {posts.length === 1 ? 'conteúdo' : 'conteúdos'} com os filtros atuais.</p>
+          <p>{scopeLabel(scope)} · {total} {total === 1 ? 'conteúdo' : 'conteúdos'} com os filtros atuais.</p>
         </div>
         {canWrite(user.role) && <Link href="/planejamento/conteudos/novo" className="btn primary-link"><Plus size={16} /> Novo conteúdo</Link>}
       </header>
@@ -71,6 +85,14 @@ export default async function Conteudos({ searchParams }: { searchParams: Promis
             </tbody>
           </table>
         </div>
+      )}
+
+      {pages > 1 && (
+        <nav className="pager" aria-label="Paginação">
+          {page > 1 && <Link href={pageHref(page - 1)} className="btn">← Anterior</Link>}
+          <span className="muted">Página {page} de {pages}</span>
+          {page < pages && <Link href={pageHref(page + 1)} className="btn">Próxima →</Link>}
+        </nav>
       )}
     </>
   )

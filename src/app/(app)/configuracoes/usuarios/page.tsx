@@ -1,67 +1,83 @@
+import { KeyRound, UserCheck, UserX } from 'lucide-react'
 import { ActionForm } from '@/components/action-form'
 import { requireAdmin } from '@/lib/auth'
-import { listUsers } from '@/lib/data'
+import { getBrands, listUsers } from '@/lib/data'
 import { ROLES, roleLabel, type Role } from '@/lib/perms'
-import { createUserAction, resetPasswordAction, setActiveAction, setRoleAction } from './actions'
+import { resetPasswordAction, setActiveAction } from './actions'
+import { RoleSelect } from './role-select'
+import { UserDialog } from './user-dialog'
 
 const fmt = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' }) : 'nunca'
 
 export default async function Usuarios() {
   const me = await requireAdmin()
-  const users = await listUsers()
+  const [users, brands] = await Promise.all([listUsers(), getBrands()])
+  const brandName = (id: string) => brands.find((b) => b.id === id)?.name ?? '—'
+  const accessLabel = (ids: string[] | null, role: string) => (role === 'admin' || !ids ? 'Todas' : ids.map(brandName).join(', '))
+
   return (
     <>
-      <header className="page-head">
-        <h1>Usuários</h1>
-        <p>Quem acessa o sistema e com qual perfil. Senhas nunca são exibidas depois de criadas; a provisória aparece uma única vez.</p>
-      </header>
-
-      <section aria-labelledby="perfis">
-        <h2 id="perfis" className="eyebrow">Perfis de acesso</h2>
-        <div className="cards">
-          {(Object.keys(ROLES) as Role[]).map((r) => (
-            <article key={r} className="card"><span className="pill soft">{ROLES[r].label}</span><p>{ROLES[r].desc}</p></article>
-          ))}
+      <section className="dcard panel-card" aria-labelledby="conta">
+        <h2 id="conta">Conta do Usuário</h2>
+        <p className="sub">Informações da conta logada</p>
+        <div className="account-row">
+          <div className="avatar lg" aria-hidden>{me.displayName.charAt(0).toUpperCase()}</div>
+          <div className="account-info">
+            <b>{me.displayName}</b>
+            <small>{me.email ?? `@${me.username}`}</small>
+          </div>
+          <span className="role-badge">{roleLabel(me.role)}</span>
         </div>
       </section>
 
-      <section aria-labelledby="lista">
-        <h2 id="lista" className="eyebrow">Usuários cadastrados</h2>
-        <div className="table-wrap">
+      <section className="dcard panel-card" aria-labelledby="lista">
+        <div className="card-head">
+          <div>
+            <h2 id="lista">Usuários do sistema</h2>
+            <p className="sub">Cada pessoa entra com a própria conta — a trilha de auditoria registra quem fez o quê.</p>
+          </div>
+          <UserDialog brands={brands} />
+        </div>
+
+        <div className="role-legend">
+          {(Object.keys(ROLES) as Role[]).map((r) => <span key={r}><b>{ROLES[r].label}:</b> {ROLES[r].desc}</span>)}
+        </div>
+
+        <div className="dark-table users-table">
           <table>
-            <thead><tr><th>Nome</th><th>Perfil</th><th>Situação</th><th>Último acesso</th><th>Ações</th></tr></thead>
+            <thead>
+              <tr><th>Nome</th><th>E-mail</th><th>Papel</th><th>Filiais</th><th>Situação</th><th>Último acesso</th><th className="right">Ações</th></tr>
+            </thead>
             <tbody>
               {users.map((u) => {
                 const self = u.id === me.id
                 return (
                   <tr key={u.id}>
                     <td><b>{u.display_name}</b><br /><small className="muted">@{u.username}{self && ' · você'}</small></td>
+                    <td>{u.email ?? '—'}</td>
+                    <td><RoleSelect id={u.id} role={u.role} disabled={self} /></td>
+                    <td>{accessLabel(u.brand_ids, u.role)}</td>
                     <td>
-                      <ActionForm action={setRoleAction} submit="Salvar" pending="…" className="row-form">
-                        <input type="hidden" name="id" value={u.id} />
-                        <select name="role" defaultValue={u.role} aria-label={`Perfil de ${u.username}`} disabled={self}>
-                          {(Object.keys(ROLES) as Role[]).map((r) => <option key={r} value={r}>{ROLES[r].label}</option>)}
-                        </select>
-                      </ActionForm>
-                    </td>
-                    <td>
-                      {u.active ? <span className="pill on">Ativo</span> : <span className="pill off">Desativado</span>}
-                      {u.must_change_password && <span className="pill warn">Senha provisória</span>}
+                      {u.active ? <span className="st on">Ativo</span> : <span className="st off">Inativo</span>}
+                      {u.must_change_password && <span className="st warn">Senha provisória</span>}
                     </td>
                     <td>{fmt(u.last_login)}</td>
-                    <td>
-                      {self ? <small className="muted">Use “Minha conta”.</small> : (
-                        <div className="row-actions">
-                          <ActionForm action={setActiveAction} submit={u.active ? 'Desativar' : 'Reativar'} pending="…" className="row-form">
-                            <input type="hidden" name="id" value={u.id} />
-                            <input type="hidden" name="active" value={u.active ? '0' : '1'} />
-                          </ActionForm>
-                          <ActionForm action={resetPasswordAction} submit="Redefinir senha" pending="…" className="row-form">
-                            <input type="hidden" name="id" value={u.id} />
-                          </ActionForm>
-                        </div>
-                      )}
+                    <td className="right">
+                      <div className="row-actions end">
+                        <UserDialog brands={brands} user={u} />
+                        {!self && (
+                          <>
+                            <ActionForm action={resetPasswordAction} submit={<><KeyRound size={13} /> Redefinir senha</>} pending="…" className="row-form">
+                              <input type="hidden" name="id" value={u.id} />
+                            </ActionForm>
+                            <ActionForm action={setActiveAction} submit={u.active ? <><UserX size={13} /> Desativar</> : <><UserCheck size={13} /> Ativar</>} pending="…" className="row-form">
+                              <input type="hidden" name="id" value={u.id} />
+                              <input type="hidden" name="active" value={u.active ? '0' : '1'} />
+                            </ActionForm>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
@@ -69,23 +85,7 @@ export default async function Usuarios() {
             </tbody>
           </table>
         </div>
-        <p className="muted" style={{ marginTop: 8 }}>Perfil “{roleLabel('admin')}” precisa existir sempre: o sistema não deixa desativar ou rebaixar o último.</p>
-      </section>
-
-      <section id="form" aria-labelledby="novo" className="card narrow-lg">
-        <h2 id="novo" className="eyebrow">Novo usuário</h2>
-        <ActionForm action={createUserAction} submit="Criar usuário" pending="Criando…">
-          <div className="grid-2">
-            <div><label htmlFor="display_name">Nome de exibição</label><input id="display_name" name="display_name" type="text" maxLength={60} /></div>
-            <div><label htmlFor="username">Usuário (para entrar)</label><input id="username" name="username" type="text" autoCapitalize="none" spellCheck={false} required /></div>
-          </div>
-          <label htmlFor="role">Perfil</label>
-          <select id="role" name="role" defaultValue="editor">
-            {(Object.keys(ROLES) as Role[]).map((r) => <option key={r} value={r}>{ROLES[r].label}</option>)}
-          </select>
-          <label htmlFor="password">Senha provisória (deixe em branco para gerar uma)</label>
-          <input id="password" name="password" type="text" autoComplete="off" placeholder="mínimo 10 caracteres, com letras e números" />
-        </ActionForm>
+        <p className="muted" style={{ marginTop: 10 }}>O sistema não deixa desativar nem rebaixar o último administrador ativo.</p>
       </section>
     </>
   )

@@ -5,11 +5,11 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
   BarChart3, BookOpen, ClipboardList, CalendarDays, Camera, ChevronLeft, ChevronRight, Clapperboard, FileText, LayoutDashboard,
-  LogOut, Megaphone, Menu, Plug, ScrollText, Sparkles, Store, Target, UserCog, Users, X,
+  LogOut, Megaphone, Menu, Settings, Sparkles, Store, Target, X,
   type LucideIcon,
 } from 'lucide-react'
 
-type Item = { href: string; label: string; icon: LucideIcon; exact?: boolean; admin?: boolean }
+type Item = { href: string; label: string; icon: LucideIcon; exact?: boolean; admin?: boolean; /** só aparece para quem pode editar */ write?: boolean }
 type Group = { title: string; items: Item[] }
 
 const GROUPS: Group[] = [
@@ -20,7 +20,7 @@ const GROUPS: Group[] = [
       { href: '/planejamento/calendario', label: 'Calendário', icon: CalendarDays },
       { href: '/planejamento/conteudos', label: 'Conteúdos', icon: FileText },
       { href: '/planejamento/reels', label: 'Estúdio de Reels', icon: Clapperboard },
-      { href: '/planejamento/gerar', label: 'Gerar semana', icon: Sparkles },
+      { href: '/planejamento/gerar', label: 'Gerar semana', icon: Sparkles, write: true },
       { href: '/campanhas', label: 'Campanhas', icon: Megaphone },
     ],
   },
@@ -40,15 +40,7 @@ const GROUPS: Group[] = [
       { href: '/gestao/unidades', label: 'Unidades', icon: Store },
     ],
   },
-  {
-    title: 'Configurações',
-    items: [
-      { href: '/configuracoes/usuarios', label: 'Usuários', icon: Users, admin: true },
-      { href: '/configuracoes/integracoes', label: 'Integrações', icon: Plug, admin: true },
-      { href: '/configuracoes/auditoria', label: 'Auditoria', icon: ScrollText, admin: true },
-      { href: '/configuracoes/conta', label: 'Minha conta', icon: UserCog },
-    ],
-  },
+  { title: 'Sistema', items: [{ href: '/configuracoes', label: 'Configurações', icon: Settings }] },
 ]
 
 const STORE_KEY = 'extra_sidebar_collapsed'
@@ -92,7 +84,7 @@ export function AppShell({
 
         <nav className="side-nav" aria-label="Principal">
           {GROUPS.map((g) => {
-            const items = g.items.filter((i) => !i.admin || user.role === 'admin')
+            const items = g.items.filter((i) => (!i.admin || user.role === 'admin') && !(i.write && user.role === 'viewer'))
             if (!items.length) return null
             return (
               <div key={g.title}>
@@ -101,7 +93,7 @@ export function AppShell({
                   const Icon = i.icon
                   const active = isActive(i)
                   return (
-                    <Link key={i.href} href={i.href} className={`nav-item${active ? ' active' : ''}`} aria-current={active ? 'page' : undefined} title={i.label}>
+                    <Link key={i.href} href={i.href === '/configuracoes' ? (user.role === 'admin' ? '/configuracoes/usuarios' : '/configuracoes/conta') : i.href} className={`nav-item${active ? ' active' : ''}`} aria-current={active ? 'page' : undefined} title={i.label}>
                       <Icon size={18} aria-hidden />
                       <span>{i.label}</span>
                     </Link>

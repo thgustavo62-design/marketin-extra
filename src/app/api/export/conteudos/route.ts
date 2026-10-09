@@ -1,18 +1,21 @@
 import { NextResponse } from 'next/server'
 import { listPosts } from '@/lib/data'
 import { FORMATS, PILLARS, STAGES, formatBR, isIsoDate, toCsv } from '@/lib/domain'
+import { getScope } from '@/lib/scope'
 import { getSession } from '@/lib/session'
 
 // CSV com os mesmos filtros da tela (rede, etapa, formato, busca, período).
 export async function GET(req: Request) {
-  if (!(await getSession())) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
+  const user = await getSession()
+  if (!user || user.mustChange) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
   const u = new URL(req.url).searchParams
+  const scope = await getScope()
   const from = u.get('from') ?? ''
   const to = u.get('to') ?? ''
   const etapa = u.get('etapa') ?? ''
   const formato = u.get('formato') ?? ''
   const posts = await listPosts({
-    brand: u.get('rede') || undefined,
+    brand: scope.restricted ? scope.brand?.slug : u.get('rede') || undefined,
     branchId: /^[0-9a-f-]{36}$/i.test(u.get('filial') ?? '') ? u.get('filial')! : undefined,
     q: u.get('q')?.trim() || undefined,
     from: isIsoDate(from) ? from : undefined,

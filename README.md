@@ -48,18 +48,20 @@ O visual segue o padrão do sistema do Grupo Extra (menu azul-marinho, item ativ
 
 ```
 src/app/(app)/
-  page.tsx                  Dashboard (mês, por filial, semanas, indicadores)
+  page.tsx                  Dashboard (mês, por filial, semanas, indicadores — agregado em SQL)
   planejamento/             calendario · conteudos (+novo, [id]) · reels · gerar
   campanhas/
-  resultados/               page (por publicação, manual) · instagram · meta-ads  (Windsor)
+  resultados/               page = Insights (Meta via Windsor) · instagram · meta-ads · publicacoes (manual)
   gestao/                   base (base de informações) · unidades (lojas, opcional)
-  configuracoes/            usuarios · integracoes · auditoria · conta
+  configuracoes/            abas escuras: usuarios · integracoes · auditoria · conta
 ```
+
+Camadas, a receita de "como adicionar uma tela/ação" e as convenções estão em **`docs/ARQUITETURA.md`**.
 
 - **Vocabulário**: **Filial** = Minas Farma ou Farma e Farma (tabela `brands`). **Unidade** = loja dentro de uma filial, opcional (tabela `branches`; o seletor de unidade só aparece se a filial tiver alguma).
 - **Escopo global Filial › Unidade** (seletor no topo, cookie `extra_scope`): filtra calendário, conteúdos, Reels, resultados, dashboard, campanhas e base. Conteúdo de "Todas as unidades" aparece em qualquer unidade da filial.
 - **Perfis**: Administrador (tudo), Editor (cria e edita), Leitura (só vê). Regra no servidor (`writerOrError`/`requireAdmin` em `src/lib/auth.ts`); a interface só esconde o que o perfil não pode usar.
-- **Usuários** (só administrador): cria com senha provisória exibida uma única vez (a pessoa troca no primeiro acesso), muda perfil, desativa (encerra as sessões) e redefine senha. Nunca fica sem administrador ativo.
+- **Usuários** (só administrador, no estilo do sistema do Grupo Extra): nome, e-mail, papel editável na linha, filiais com acesso e situação. Cria com senha provisória exibida uma única vez (troca no primeiro acesso), edita, desativa (encerra as sessões) e redefine senha. Editor e Leitura podem ser limitados a certas filiais, e isso vale no servidor (telas, ações, CSV e Windsor). Nunca fica sem administrador ativo.
 - **Integrações**: cada conta do Windsor (Instagram, anúncios) é **identificada pelo nome** usando os apelidos de cada filial (`brands.aliases`, editáveis em Integrações; ex.: "minas farma", "farma e farma", "drogaria melhor preço"). Associação manual (`integration_accounts`) só para exceções e vence o nome. Nome que casa com as duas filiais não é adivinhado. Conta não identificada só aparece em "Todas as filiais", sinalizada.
 - **Windsor**: leitura direta (cache de 5 min), sem cópia no banco. Se o Windsor devolver o aviso de "leituras pausadas" (plano gratuito com mais contas que o permitido), nenhum número é exibido.
 - Endereços antigos (`/calendario`, `/unidades`, `/fontes`...) redirecionam para os novos.

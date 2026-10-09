@@ -1,7 +1,8 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { audit, writerOrError, writerOrRedirect } from '@/lib/auth'
+import { rowAllowed } from '@/lib/access'
+import { audit, writerOrRedirect } from '@/lib/auth'
 import { pool } from '@/lib/db'
 import { isUuid, optInt, str } from '@/lib/form'
 import { clientIp } from '@/lib/session'
@@ -10,6 +11,7 @@ export async function saveMetricsAction(fd: FormData) {
   const user = await writerOrRedirect()
   const id = str(fd, 'id')
   if (!isUuid(id)) redirect('/')
+  if (!(await rowAllowed(user, 'posts', id))) redirect('/?sem-permissao=1')
   const reach = optInt(fd, 'reach')
   const saves = optInt(fd, 'saves')
   const shares = optInt(fd, 'shares')

@@ -11,7 +11,20 @@ export const isRole = (v: unknown): v is Role => typeof v === 'string' && v in R
 export const canWrite = (role: string): boolean => role === 'admin' || role === 'editor'
 export const isAdmin = (role: string): boolean => role === 'admin'
 
-export const roleLabel = (role: string): string => (isRole(role) ? ROLES[role].label : role)
+// Acesso por filial: null = todas. (Administrador sempre tem acesso a todas.)
+export const brandAllowed = (user: { role: string; brandIds: string[] | null }, brandId: string): boolean =>
+  user.role === 'admin' || user.brandIds === null || user.brandIds.includes(brandId)
+
+export const NO_BRAND_ACCESS = 'Você não tem acesso a esta filial.'
+
+export function validateEmail(e: string): string | null {
+  const v = e.trim()
+  if (!v) return null // opcional
+  if (v.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) return 'E-mail inválido.'
+  return null
+}
+
+export const roleLabel =(role: string): string => (isRole(role) ? ROLES[role].label : role)
 
 // Regras para não travar o sistema: nunca deixar de ter um administrador ativo,
 // e ninguém altera a si mesmo em perfil/situação (evita se trancar para fora).

@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { ActionForm } from '@/components/action-form'
 import { ConfirmButton } from '@/components/confirm-button'
 import { requireUser } from '@/lib/auth'
-import { getBrands, listKnowledge } from '@/lib/data'
+import { listKnowledge } from '@/lib/data'
 import { getScope } from '@/lib/scope'
 import { KNOWLEDGE_KINDS, formatBR, isExpired, todayISO } from '@/lib/domain'
 import { confirmKnowledgeAction, deleteKnowledgeAction, saveKnowledgeAction } from './actions'
@@ -11,7 +11,8 @@ export default async function Base({ searchParams }: { searchParams: Promise<{ e
   await requireUser()
   const sp = await searchParams
   const scope = await getScope()
-  const [allBrands, items] = await Promise.all([getBrands(), listKnowledge()])
+  const allBrands = scope.brands
+  const items = (await listKnowledge()).filter((k) => allBrands.some((b) => b.id === k.brand_id))
   const brands = scope.brand ? allBrands.filter((b) => b.id === scope.brand!.id) : allBrands
   const today = todayISO()
   const editing = items.find((k) => k.id === sp.editar)

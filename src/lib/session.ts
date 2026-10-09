@@ -8,7 +8,11 @@ const PROD = process.env.NODE_ENV === 'production'
 export const COOKIE_NAME = PROD ? '__Host-extra_session' : 'extra_session'
 export const SESSION_TTL_HOURS = Number(process.env.SESSION_TTL_HOURS ?? 12)
 
-export type SessionUser = { id: string; username: string; displayName: string; role: string; mustChange: boolean; sessionId: string }
+export type SessionUser = {
+  id: string; username: string; displayName: string; email: string | null; role: string; mustChange: boolean; sessionId: string
+  /** filiais que a pessoa pode acessar; null = todas (administrador sempre null) */
+  brandIds: string[] | null
+}
 
 export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
@@ -43,14 +47,17 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
   const token = jar.get(COOKIE_NAME)?.value
   if (!token) return null
   const { rows } = await pool.query(
-    `select u.id, u.username, coalesce(u.display_name, u.username) as display_name, u.role, u.must_change_password, s.id as session_id
+    `select u.id, u.username, coalesce(u.display_name, u.username) as display_name, u.email, u.role, u.must_change_password, u.brand_ids, s.id as session_id
        from sessions s join users u on u.id = s.user_id
       where s.token_hash = $1 and s.revoked_at is null and s.expires_at > now() and u.active`,
     [hashToken(token)],
   )
   const r = rows[0]
   return r
-    ? { id: r.id, username: r.username, displayName: r.display_name, role: r.role, mustChange: r.must_change_password, sessionId: r.session_id }
+    ? {
+        id: r.id, username: r.username, displayName: r.display_name, email: r.email, role: r.role, mustChange: r.must_change_password, sessionId: r.session_id,
+        brandIds: r.role === 'admin' ? null : r.brand_ids,
+      }
     : null
 })
 

@@ -18,7 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       readOnly={!canWrite(user.role)}
       topbar={
         user.mustChange ? null : (
-          <ScopeBar brands={scope.brands} branches={scope.branches} brandSlug={scope.brand?.slug ?? ''} branchId={scope.branch?.id ?? ''} />
+          <ScopeBar brands={scope.brands} branches={scope.branches} brandSlug={scope.brand?.slug ?? ''} branchId={scope.branch?.id ?? ''} restricted={scope.restricted} />
         )
       }
     >

@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { ActionForm } from '@/components/action-form'
 import { requireUser } from '@/lib/auth'
-import { getBranches, getBrands } from '@/lib/data'
 import { getScope } from '@/lib/scope'
 import { saveBranchAction, toggleBranchAction } from './actions'
 
@@ -9,7 +8,8 @@ export default async function Unidades({ searchParams }: { searchParams: Promise
   await requireUser()
   const sp = await searchParams
   const scope = await getScope()
-  const [allBrands, branches] = await Promise.all([getBrands(), getBranches()])
+  const allBrands = scope.brands
+  const branches = scope.branches
   const brands = scope.brand ? allBrands.filter((b) => b.id === scope.brand!.id) : allBrands
   const editing = branches.find((b) => b.id === sp.editar)
 

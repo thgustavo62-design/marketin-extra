@@ -3,10 +3,11 @@ import { notFound } from 'next/navigation'
 import { FormatBadge, StageBadge } from '@/components/badges'
 import { ConfirmButton } from '@/components/confirm-button'
 import { requireUser } from '@/lib/auth'
-import { getBranches, getBrands, getCampaigns, getPost } from '@/lib/data'
+import { getBranches, getCampaigns, getPost } from '@/lib/data'
 import { PILLARS, formatBR } from '@/lib/domain'
 import { isUuid } from '@/lib/form'
-import { canWrite } from '@/lib/perms'
+import { brandAllowed, canWrite } from '@/lib/perms'
+import { getScope } from '@/lib/scope'
 import { deletePostAction } from '../actions'
 import { PostForm } from '../post-form'
 
@@ -17,7 +18,7 @@ export default async function EditarConteudo({
   const { id } = await params
   if (!isUuid(id)) notFound()
   const post = await getPost(id)
-  if (!post) notFound()
+  if (!post || !brandAllowed(user, post.brand_id)) notFound()
   const sp = await searchParams
   const back = (
     <Link href={`/planejamento/calendario?m=${post.post_date.slice(0, 7)}`} className="back">← Calendário</Link>
@@ -42,7 +43,8 @@ export default async function EditarConteudo({
     )
   }
 
-  const [brands, branches, campaigns] = await Promise.all([getBrands(), getBranches(), getCampaigns()])
+  const brands = (await getScope()).brands
+  const [branches, campaigns] = await Promise.all([getBranches(), getCampaigns()])
   return (
     <>
       <header className="page-head">

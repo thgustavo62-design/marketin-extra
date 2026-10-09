@@ -1,6 +1,8 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { rowAllowed } from '@/lib/access'
+import { brandAllowed, NO_BRAND_ACCESS } from '@/lib/perms'
 import { audit, writerOrError, writerOrRedirect } from '@/lib/auth'
 import { pool } from '@/lib/db'
 import { isFormat, isIsoDate, isPillar, isStage, stageBlockedReason, REELS_TEMPLATE_TIMES } from '@/lib/domain'
@@ -28,6 +30,7 @@ export async function savePostAction(_prev: FormState, fd: FormData): Promise<Fo
 
   if (!title) return { error: 'Informe o título da pauta.' }
   if (!isUuid(brandId)) return { error: 'Escolha a filial.' }
+  if (!brandAllowed(user, brandId)) return { error: NO_BRAND_ACCESS }
   if (!isIsoDate(date)) return { error: 'Informe uma data válida.' }
   if (time && !TIME.test(time)) return { error: 'Horário inválido (use HH:MM).' }
   if (!isFormat(format) || !isPillar(pillar) || !isStage(stage)) return { error: 'Formato, pilar ou etapa inválidos.' }
@@ -77,6 +80,7 @@ export async function savePostAction(_prev: FormState, fd: FormData): Promise<Fo
   }
 
   if (!isUuid(id)) return { error: 'Conteúdo inválido.' }
+  if (!(await rowAllowed(user, 'posts', id))) return { error: NO_BRAND_ACCESS }
   const revision = Number(str(fd, 'revision'))
   const r = await pool.query(
     `update posts set brand_id=$1, branch_id=$2, campaign_id=$3, campaign_name=$4, title=$5, post_date=$6, post_time=$7,
@@ -101,6 +105,7 @@ export async function deletePostAction(fd: FormData) {
   const user = await writerOrRedirect()
   const id = str(fd, 'id')
   if (!isUuid(id)) redirect('/')
+  if (!(await rowAllowed(user, 'posts', id))) redirect('/?sem-permissao=1')
   const r = await pool.query(`delete from posts where id = $1 returning to_char(post_date, 'YYYY-MM') as m`, [id])
   await audit('conteudo_excluido', { userId: user.id, ip: await clientIp(), target: id })
   redirect(`/planejamento/calendario?m=${r.rows[0]?.m ?? ''}`)

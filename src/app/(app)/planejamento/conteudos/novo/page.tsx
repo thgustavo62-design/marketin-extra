@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
-import { getBranches, getBrands, getCampaigns } from '@/lib/data'
+import { getBranches, getCampaigns } from '@/lib/data'
 import { isIsoDate } from '@/lib/domain'
 import { canWrite } from '@/lib/perms'
 import { getScope } from '@/lib/scope'
@@ -11,7 +11,8 @@ export default async function NovoConteudo({ searchParams }: { searchParams: Pro
   if (!canWrite(user.role)) redirect('/?sem-permissao=1')
   const sp = await searchParams
   const scope = await getScope()
-  const [brands, branches, campaigns] = await Promise.all([getBrands(), getBranches(), getCampaigns()])
+  const brands = scope.brands
+  const [branches, campaigns] = await Promise.all([getBranches(), getCampaigns()])
   return (
     <>
       <header className="page-head"><h1>Novo conteúdo</h1></header>

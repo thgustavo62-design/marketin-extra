@@ -1,6 +1,7 @@
 'use server'
 
-import { audit, writerOrError, writerOrRedirect } from '@/lib/auth'
+import { brandAllowed, NO_BRAND_ACCESS } from '@/lib/perms'
+import { audit, writerOrError } from '@/lib/auth'
 import { pool } from '@/lib/db'
 import { addDays, formatBR, generateWeek, isIsoDate } from '@/lib/domain'
 import { isUuid, str, type FormState } from '@/lib/form'
@@ -14,6 +15,7 @@ export async function generateWeekAction(_prev: FormState, fd: FormData): Promis
   const start = str(fd, 'start')
   const campaignId = str(fd, 'campaign_id')
   if (!isUuid(brandId)) return { error: 'Escolha a filial.' }
+  if (!brandAllowed(user, brandId)) return { error: NO_BRAND_ACCESS }
   if (!isIsoDate(start)) return { error: 'Informe a data inicial.' }
 
   const brand = (await pool.query(`select name from brands where id = $1`, [brandId])).rows[0]

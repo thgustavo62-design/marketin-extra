@@ -1,6 +1,8 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { rowAllowed } from '@/lib/access'
+import { brandAllowed, NO_BRAND_ACCESS } from '@/lib/perms'
 import { audit, writerOrError, writerOrRedirect } from '@/lib/auth'
 import { pool } from '@/lib/db'
 import { isIsoDate } from '@/lib/domain'
@@ -18,12 +20,14 @@ export async function saveCampaignAction(_prev: FormState, fd: FormData): Promis
   const end = str(fd, 'ends_on')
   if (!name) return { error: 'Informe o nome da campanha.' }
   if (!isUuid(brandId)) return { error: 'Escolha a filial.' }
+  if (!brandAllowed(user, brandId)) return { error: NO_BRAND_ACCESS }
   if (!isIsoDate(start) || !isIsoDate(end)) return { error: 'Informe início e fim válidos.' }
   if (end < start) return { error: 'O fim da campanha não pode ser antes do início.' }
 
   const vals = [brandId, name, start, end, str(fd, 'objective'), String(fd.get('briefing') ?? ''), str(fd, 'approver')]
   if (id) {
     if (!isUuid(id)) return { error: 'Campanha inválida.' }
+    if (!(await rowAllowed(user, 'campaigns', id))) return { error: NO_BRAND_ACCESS }
     const used = await pool.query(`select count(*)::int n from posts where campaign_id = $1 and brand_id <> $2`, [id, brandId])
     if (used.rows[0].n) return { error: 'Esta campanha tem conteúdos de outra filial; não é possível mudar a filial dela.' }
     await pool.query(
@@ -47,6 +51,7 @@ export async function deleteCampaignAction(fd: FormData) {
   const user = await writerOrRedirect()
   const id = str(fd, 'id')
   if (!isUuid(id)) redirect('/')
+  if (!(await rowAllowed(user, 'campaigns', id))) redirect('/?sem-permissao=1')
   // Os conteúdos ficam; o nome da campanha fica gravado neles como referência histórica.
   await pool.query(`update posts set campaign_name = (select name from campaigns where id = $1) where campaign_id = $1`, [id])
   await pool.query(`delete from campaigns where id = $1`, [id])

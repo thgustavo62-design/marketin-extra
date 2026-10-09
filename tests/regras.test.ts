@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { accountInScope, identifyBrand, normalizeAliases, partitionByScope, resolveAccount, type BrandAliases, type Mapping } from '../src/lib/integrations.ts'
-import { canWrite, generateTempPassword, isAdmin, userChangeBlockedReason, validatePassword, validateUsername } from '../src/lib/perms.ts'
+import { brandAllowed, canWrite, generateTempPassword, isAdmin, userChangeBlockedReason, validateEmail, validatePassword, validateUsername } from '../src/lib/perms.ts'
 import { classifyWindsorPayload, sumAds } from '../src/lib/windsor.ts'
 
 test('perfis: só administrador e editor escrevem; só administrador administra', () => {
@@ -144,4 +144,21 @@ test('regras do dono: "Extra Farma" é Minas Farma; "Drogaria Melhor Preço" é 
   assert.equal(identifyBrand('melhorprecobg', BR), 'ff')
   // "Extra Farma" sozinho nunca vira Farma e Farma
   assert.notEqual(identifyBrand('Extra Farma', BR), 'ff')
+})
+
+test('acesso por filial: administrador vê tudo; restrito só as suas', () => {
+  const restricted = { role: 'editor', brandIds: ['minas'] }
+  assert.equal(brandAllowed(restricted, 'minas'), true)
+  assert.equal(brandAllowed(restricted, 'ff'), false)
+  assert.equal(brandAllowed({ role: 'editor', brandIds: null }, 'ff'), true) // null = todas
+  assert.equal(brandAllowed({ role: 'admin', brandIds: ['minas'] }, 'ff'), true) // administrador ignora a restrição
+  assert.equal(brandAllowed({ role: 'viewer', brandIds: [] }, 'minas'), false)
+})
+
+test('e-mail é opcional, mas se vier precisa ser válido', () => {
+  assert.equal(validateEmail(''), null)
+  assert.equal(validateEmail('maria@empresa.com.br'), null)
+  assert.ok(validateEmail('maria@'))
+  assert.ok(validateEmail('sem arroba.com'))
+  assert.ok(validateEmail('a'.repeat(130) + '@x.com'))
 })

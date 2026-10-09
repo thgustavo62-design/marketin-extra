@@ -1,5 +1,5 @@
 import { requireUser } from '@/lib/auth'
-import { getBrands, getCampaigns } from '@/lib/data'
+import { getCampaigns } from '@/lib/data'
 import { todayISO } from '@/lib/domain'
 import { canWrite } from '@/lib/perms'
 import { getScope } from '@/lib/scope'
@@ -8,7 +8,8 @@ import { GerarForm } from './gerar-form'
 export default async function Gerar() {
   const user = await requireUser()
   const scope = await getScope()
-  const [brands, campaigns] = await Promise.all([getBrands(), getCampaigns()])
+  const brands = scope.brands
+  const campaigns = (await getCampaigns()).filter((c) => brands.some((b) => b.id === c.brand_id))
   return (
     <>
       <header className="page-head">
