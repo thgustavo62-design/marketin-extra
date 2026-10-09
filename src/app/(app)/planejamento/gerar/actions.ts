@@ -42,11 +42,12 @@ export async function generateWeekAction(_prev: FormState, fd: FormData): Promis
   try {
     await client.query('begin')
     for (const d of result.drafts) {
-      await client.query(
-        `insert into posts (brand_id, campaign_id, campaign_name, title, post_date, format, pillar, stage, caption, script, reels, origin, created_by)
-         values ($1,$2,$3,$4,$5,$6,$7,'rascunho',$8,$9,$10,$11,$12)`,
+      const ins = await client.query(
+        `insert into posts (brand_id, campaign_id, campaign_name, title, post_date, format, pillar, stage, caption, script, reels, origin, created_by, updated_by)
+         values ($1,$2,$3,$4,$5,$6,$7,'ideia',$8,$9,$10,$11,$12,$12) returning id`,
         [brandId, d.campaign_id, campaign?.name ?? null, d.title, d.post_date, d.format, d.pillar, d.caption, d.script, JSON.stringify(d.reels), d.origin, user.id],
       )
+      await client.query(`insert into post_status_events (post_id, from_stage, to_stage, actor_id, note) values ($1, null, 'ideia', $2, 'Gerado pelo gerador semanal')`, [ins.rows[0].id, user.id])
     }
     await client.query('commit')
   } catch (e) {
@@ -57,7 +58,7 @@ export async function generateWeekAction(_prev: FormState, fd: FormData): Promis
   }
   await audit('semana_gerada', { userId: user.id, ip: await clientIp(), target: brandId, meta: { start, criados: result.drafts.length, ignorados: result.skipped.length } })
 
-  const parts = [`${result.drafts.length} rascunho(s) criado(s) de ${formatBR(start)} a ${formatBR(end)}. Preencha os trechos entre [colchetes] antes de aprovar.`]
+  const parts = [`${result.drafts.length} rascunho(s) criado(s) na etapa Ideia de ${formatBR(start)} a ${formatBR(end)}. Preencha os trechos entre [colchetes] antes de aprovar.`]
   if (result.skipped.length) parts.push(`Ignorados por já existirem: ${result.skipped.join('; ')}.`)
   return { ok: parts.join(' ') }
 }

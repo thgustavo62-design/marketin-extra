@@ -71,10 +71,11 @@ export async function savePostAction(_prev: FormState, fd: FormData): Promise<Fo
   if (!id) {
     const r = await pool.query(
       `insert into posts (brand_id, branch_id, campaign_id, campaign_name, title, post_date, post_time, format, pillar, stage,
-                          caption, script, reels, origin, pharma_review, created_by)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) returning id`,
+                          caption, script, reels, origin, pharma_review, created_by, updated_by)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16) returning id`,
       [...values, user.id],
     )
+    await pool.query(`insert into post_status_events (post_id, from_stage, to_stage, actor_id) values ($1, null, $2, $3)`, [r.rows[0].id, stage, user.id])
     await audit('conteudo_criado', { userId: user.id, ip, target: r.rows[0].id })
     redirect(`/planejamento/conteudos/${r.rows[0].id}?salvo=1`)
   }
@@ -82,12 +83,13 @@ export async function savePostAction(_prev: FormState, fd: FormData): Promise<Fo
   if (!isUuid(id)) return { error: 'Conteúdo inválido.' }
   if (!(await rowAllowed(user, 'posts', id))) return { error: NO_BRAND_ACCESS }
   const revision = Number(str(fd, 'revision'))
+  const prev = (await pool.query(`select stage from posts where id = $1`, [id])).rows[0]?.stage as string | undefined
   const r = await pool.query(
     `update posts set brand_id=$1, branch_id=$2, campaign_id=$3, campaign_name=$4, title=$5, post_date=$6, post_time=$7,
             format=$8, pillar=$9, stage=$10, caption=$11, script=$12, reels=$13, origin=$14, pharma_review=$15,
-            revision = revision + 1, updated_at = now()
+            revision = revision + 1, updated_at = now(), updated_by = $18
       where id = $16 and revision = $17 returning id`,
-    [...values, id, revision],
+    [...values, id, revision, user.id],
   )
   if (!r.rowCount) {
     const exists = await pool.query(`select 1 from posts where id = $1`, [id])
@@ -96,6 +98,10 @@ export async function savePostAction(_prev: FormState, fd: FormData): Promise<Fo
         ? 'Este conteúdo foi alterado em outro lugar depois que você abriu. Nada foi sobrescrito: copie o que digitou, recarregue a página e aplique de novo.'
         : 'Este conteúdo foi excluído.',
     }
+  }
+  // Histórico de etapa: só quando a etapa realmente mudou.
+  if (prev && prev !== stage) {
+    await pool.query(`insert into post_status_events (post_id, from_stage, to_stage, actor_id) values ($1, $2, $3, $4)`, [id, prev, stage, user.id])
   }
   await audit('conteudo_editado', { userId: user.id, ip, target: id })
   redirect(`/planejamento/conteudos/${id}?salvo=1`)

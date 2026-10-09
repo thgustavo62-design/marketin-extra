@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { AlertTriangle, BookOpen, CalendarDays, CheckCircle2, Megaphone, Plus, Sparkles, TrendingDown, TrendingUp } from 'lucide-react'
+import { AlertTriangle, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Columns3, Megaphone, Plus, Sparkles, TrendingDown, TrendingUp } from 'lucide-react'
 import { FormatBadge, StageBadge } from '@/components/badges'
 import { MonthSelect } from '@/components/month-select'
 import { requireUser } from '@/lib/auth'
@@ -17,10 +17,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const ym = `${year}-${String(month).padStart(2, '0')}`
 
   const data = await getDashboard({
-    brandId: scope.brand?.id, branchId: scope.branch?.id, monthStart: `${ym}-01`, today,
+    brandId: scope.brand?.id, branchId: scope.branch?.id, monthStart: `${ym}-01`, today, userId: user.id,
     brands: scope.brands, branches: scope.branches,
   })
-  const { month: m, rollup, weeks, overdue, upcoming, gaps, knowledge, campaigns } = data
+  const { month: m, rollup, weeks, overdue, upcoming, gaps, knowledge, campaigns, production } = data
   const variation = m.prevTotal > 0 ? ((m.total - m.prevTotal) / m.prevTotal) * 100 : null
   const published = m.byStage.publicado
   const maxWeek = Math.max(1, ...weeks.map((w) => w.n))
@@ -107,10 +107,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       </div>
 
       <section className="kpis" aria-label="Indicadores">
-        <div className="kpi"><small>Atrasados</small><strong className={overdue.total ? 'v-red' : ''}>{overdue.total}</strong><em>não publicados com data passada</em><span className="ico"><AlertTriangle size={18} /></span></div>
-        <div className="kpi"><small>Campanhas vigentes</small><strong className="v-blue">{campaigns.active}</strong><em>{campaigns.endingSoon.length} terminam em 7 dias</em><span className="ico blue"><Megaphone size={18} /></span></div>
-        <div className="kpi"><small>Pendências da base</small><strong className={knowledge.total ? 'v-amber' : ''}>{knowledge.total}</strong><em>vencidas ou não confirmadas</em><span className="ico amber"><BookOpen size={18} /></span></div>
-        <div className="kpi"><small>Publicados no mês</small><strong className="v-green">{published}</strong><em>de {m.total} planejados</em><span className="ico green"><CheckCircle2 size={18} /></span></div>
+        <Link href="/producao?atrasados=1" className="kpi"><small>Atrasados</small><strong className={overdue.total ? 'v-red' : ''}>{overdue.total}</strong><em>em andamento com a data vencida</em><span className="ico"><AlertTriangle size={18} /></span></Link>
+        <Link href="/producao?etapa=aprovacao" className="kpi"><small>Aguardando aprovação</small><strong className={production.awaitingApproval ? 'v-amber' : ''}>{production.awaitingApproval}</strong><em>abrir os cartões</em><span className="ico amber"><ClipboardCheck size={18} /></span></Link>
+        <Link href="/producao?eu=1" className="kpi"><small>Minhas tarefas</small><strong className="v-blue">{production.mine}</strong><em>atribuídas a você, em andamento</em><span className="ico blue"><Columns3 size={18} /></span></Link>
+        <Link href="/campanhas" className="kpi"><small>Campanhas vigentes</small><strong className="v-blue">{campaigns.active}</strong><em>{campaigns.endingSoon.length} terminam em 7 dias</em><span className="ico blue"><Megaphone size={18} /></span></Link>
+        <Link href="/gestao/base" className="kpi"><small>Pendências da base</small><strong className={knowledge.total ? 'v-amber' : ''}>{knowledge.total}</strong><em>vencidas ou não confirmadas</em><span className="ico amber"><BookOpen size={18} /></span></Link>
+        <Link href="/planejamento/conteudos?etapa=publicado" className="kpi"><small>Publicados no mês</small><strong className="v-green">{published}</strong><em>de {m.total} planejados</em><span className="ico green"><CheckCircle2 size={18} /></span></Link>
       </section>
 
       {writable && (

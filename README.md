@@ -14,7 +14,7 @@ Autenticação própria (usuário + senha, sessão em cookie HttpOnly). Camadas,
 ```bash
 npm install
 cp .env.example .env        # preencha os valores (veja "Variáveis de ambiente")
-npm run db:migrate          # aplica db/migrations/*.sql (001 a 006)
+npm run db:migrate          # aplica db/migrations/*.sql (001 a 007)
 INITIAL_ADMIN_USER=Gustavo INITIAL_ADMIN_PASSWORD='...' npm run db:seed-admin   # só na 1ª vez
 npm run dev
 ```
@@ -64,6 +64,7 @@ O visual segue o padrão do sistema do Grupo Extra (menu azul-marinho, item ativ
 src/app/(app)/
   page.tsx                  Dashboard (mês, por filial, semanas, indicadores — agregado em SQL)
   planejamento/             calendario · conteudos (+novo, [id]) · reels · gerar
+  producao/                 quadro Kanban de produção (cartões, detalhe, checklist, comentários, histórico)
   campanhas/
   resultados/               page = Insights (Meta via Windsor) · instagram · meta-ads · publicacoes (manual)
   gestao/                   base (base de informações) · unidades (lojas, opcional)
@@ -72,6 +73,7 @@ src/app/(app)/
 
 - **Vocabulário**: **Filial** = Minas Farma ou Farma e Farma (tabela `brands`). **Unidade** = loja dentro de uma filial, opcional (tabela `branches`; o seletor de unidade só aparece se a filial tiver alguma).
 - **Escopo global Filial › Unidade** (seletor no topo, cookie `extra_scope`): filtra calendário, conteúdos, Reels, resultados, dashboard, campanhas e base. Conteúdo de "Todas as unidades" aparece em qualquer unidade da filial.
+- **Quadro de produção** (`/producao`): 9 etapas — Ideia, Briefing, Em produção, Em revisão, Aguardando aprovação, Aprovado, Agendado, Publicado, Cancelado. É só outra visão de `posts` (`posts.stage` é a única fonte de status; calendário e Conteúdos mostram o mesmo). Arrastar e soltar (ou o seletor do cartão), responsável, revisor, prioridade, prazo, bloqueio com motivo, checklist, comentários que não se apagam e histórico de cada mudança de etapa. Concorrência protegida por `revision`; "Publicado" exige confirmação; medicamentos exigem revisão farmacêutica antes de aprovado/agendado/publicado; cartão bloqueado só recua ou cancela.
 - **Insights** (`/resultados`): visualizações, alcance, interações, cliques no link do perfil, contas engajadas e seguidores (Instagram) + investimento, conversas iniciadas, cliques, impressões, custo por conversa e CPM (Meta Ads). Total, variação contra o período anterior do mesmo tamanho, gráfico diário, 7/28/90 dias e CSV. Só mostra o que o Windsor entrega: sem visitas ao perfil, sem Facebook orgânico; "novos seguidores" cobre no máximo 30 dias (limite da API do Instagram).
 - **Usuários** (só administrador): nome, e-mail, papel editável na linha, filiais com acesso e situação; cria, edita, desativa (encerra as sessões) e redefine senha. Nunca fica sem administrador ativo.
 - **Integrações**: cada conta do Windsor é **identificada pelo nome** usando os apelidos de cada filial (`brands.aliases`, editáveis; ex.: "minas farma", "extra farma", "farma e farma", "drogaria melhor preço"). Associação manual (`integration_accounts`) só para exceções e vence o nome. Nome que casa com as duas filiais não é adivinhado; conta não identificada só aparece em "Todas as filiais", sinalizada.
@@ -83,5 +85,7 @@ src/app/(app)/
 - [x] **1 — Acesso**: login, sessão, sair, troca de senha, limite de tentativas, auditoria.
 - [x] **2 — Base operacional**: unidades, campanhas, base de informações (validade e confirmação), calendário mensal, conteúdos (feed/carrossel/Reels) com edição e detecção de conflito, estúdio de Reels, resultados manuais, gerador semanal por modelos, exportação CSV.
 - [x] **Reorganização**: subpastas, escopo filial › unidade, visual do Grupo Extra, Configurações com Usuários (e-mail, papel, acesso por filial), Integrações e Auditoria.
+- [x] **Fase 0 — Auditoria** do plano de evolução (`docs/AUDITORIA-INICIAL.md`).
+- [x] **Fase 1 — Central de produção**: quadro Kanban, tarefas, histórico, integração com o calendário.
 - [x] **Resultados (Windsor)**: Insights no estilo da Meta, Instagram (publicações e público) e Meta Ads, separados por filial.
-- [ ] Próximas: preencher resultados por publicação a partir do Instagram · 3 — IA com contexto · 4 — Pesquisa recorrente · 5 — Publicação e métricas gravadas no banco.
+- [ ] Próximas (plano `EXTRA_MARKETING_PLANO_COMPLETO_DE_EVOLUCAO.md`): Fase 2 mídias, solicitações e aprovações · Fase 3 campanhas recorrentes · Fase 4 métricas por publicação e metas · Fase 5 relatórios e alertas · Fase 6 IA · Fase 7 links, concorrentes e publicação.

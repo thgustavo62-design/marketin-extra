@@ -12,13 +12,19 @@ export const PILLARS = {
   medicamentos: 'Medicamentos',
   relacionamento: 'Relacionamento',
 } as const
+// Etapas do fluxo de produção (a ordem é a das colunas do quadro). `posts.stage` é a fonte única de status.
 export const STAGES = {
-  rascunho: 'Rascunho',
+  ideia: 'Ideia',
+  briefing: 'Briefing',
   producao: 'Em produção',
   revisao: 'Em revisão',
+  aprovacao: 'Aguardando aprovação',
   aprovado: 'Aprovado',
+  agendado: 'Agendado',
   publicado: 'Publicado',
+  cancelado: 'Cancelado',
 } as const
+export const PRIORITIES = { low: 'Baixa', normal: 'Normal', high: 'Alta', urgent: 'Urgente' } as const
 export const KNOWLEDGE_KINDS = {
   posicionamento: 'Posicionamento',
   publico: 'Público',
@@ -35,11 +41,16 @@ export const KNOWLEDGE_KINDS = {
 export type Format = keyof typeof FORMATS
 export type Pillar = keyof typeof PILLARS
 export type Stage = keyof typeof STAGES
+export type Priority = keyof typeof PRIORITIES
 export type KnowledgeKind = keyof typeof KNOWLEDGE_KINDS
 
 export const STAGE_ORDER = Object.keys(STAGES) as Stage[]
+// Etapas em que o conteúdo ainda está em andamento (não terminou nem foi descartado).
+export const CLOSED_STAGES: Stage[] = ['publicado', 'cancelado']
+export const isOpenStage = (s: Stage): boolean => !CLOSED_STAGES.includes(s)
 
 export const isFormat = (v: unknown): v is Format => typeof v === 'string' && v in FORMATS
 export const isPillar = (v: unknown): v is Pillar => typeof v === 'string' && v in PILLARS
 export const isStage = (v: unknown): v is Stage => typeof v === 'string' && v in STAGES
+export const isPriority = (v: unknown): v is Priority => typeof v === 'string' && v in PRIORITIES
 export const isKind = (v: unknown): v is KnowledgeKind => typeof v === 'string' && v in KNOWLEDGE_KINDS

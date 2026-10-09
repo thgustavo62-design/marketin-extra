@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   actionRate, addDays, campaignCoversPeriod, csvEscape, formatRate, generateWeek, isExpired, isIsoDate,
-  monthGrid, normalizeReels, parseMonth, shiftMonth, stageBlockedReason, toCsv,
+  monthGrid, normalizeReels, parseMonth, shiftMonth, stageBlockedReason, toCsv, STAGE_ORDER, isOpenStage, isPriority, isStage, moveBlockedReason, needsPublishConfirmation,
 } from '../src/lib/domain/index.ts'
 
 test('datas ISO: validação e soma de dias', () => {
@@ -54,7 +54,7 @@ test('medicamentos exige revisão farmacêutica para aprovar/publicar', () => {
   assert.ok(stageBlockedReason('medicamentos', 'aprovado', false))
   assert.ok(stageBlockedReason('medicamentos', 'publicado', false))
   assert.equal(stageBlockedReason('medicamentos', 'aprovado', true), null)
-  assert.equal(stageBlockedReason('medicamentos', 'rascunho', false), null)
+  assert.equal(stageBlockedReason('medicamentos', 'ideia', false), null)
   assert.equal(stageBlockedReason('institucional', 'publicado', false), null)
 })
 
@@ -110,4 +110,34 @@ test('gerador: não duplica pauta equivalente', () => {
 test('gerador: nunca inventa preço — números só entre colchetes', () => {
   const r = generateWeek({ brandName: 'Minas Farma', startDate: '2026-10-12', campaign: null, existing: [] })
   for (const d of r.drafts) assert.ok(!/R\$\s*\d/.test(d.caption), d.title)
+})
+
+test('fluxo de produção: 9 etapas na ordem do quadro', () => {
+  assert.deepEqual(STAGE_ORDER, ['ideia', 'briefing', 'producao', 'revisao', 'aprovacao', 'aprovado', 'agendado', 'publicado', 'cancelado'])
+  assert.equal(isStage('rascunho'), false) // etapa antiga não existe mais
+  assert.equal(isOpenStage('revisao'), true)
+  assert.equal(isOpenStage('publicado'), false)
+  assert.equal(isOpenStage('cancelado'), false)
+  assert.equal(isPriority('urgent'), true)
+  assert.equal(isPriority('critica'), false)
+})
+
+test('medicamentos: revisão farmacêutica vale também para agendar', () => {
+  for (const s of ['aprovado', 'agendado', 'publicado'] as const) assert.ok(stageBlockedReason('medicamentos', s, false), s)
+  for (const s of ['ideia', 'briefing', 'producao', 'revisao', 'aprovacao', 'cancelado'] as const) assert.equal(stageBlockedReason('medicamentos', s, false), null, s)
+  assert.equal(stageBlockedReason('medicamentos', 'agendado', true), null)
+})
+
+test('cartão bloqueado só recua ou cancela', () => {
+  assert.ok(moveBlockedReason('producao', 'revisao', 'falta o preço'))
+  assert.ok(moveBlockedReason('ideia', 'agendado', 'falta o preço'))
+  assert.equal(moveBlockedReason('revisao', 'producao', 'falta o preço'), null) // recuar pode
+  assert.equal(moveBlockedReason('producao', 'cancelado', 'falta o preço'), null) // cancelar pode
+  assert.equal(moveBlockedReason('producao', 'revisao', null), null) // sem bloqueio, avança
+})
+
+test('publicado exige confirmação humana; agendado não', () => {
+  assert.equal(needsPublishConfirmation('publicado'), true)
+  assert.equal(needsPublishConfirmation('agendado'), false)
+  assert.equal(needsPublishConfirmation('aprovado'), false)
 })

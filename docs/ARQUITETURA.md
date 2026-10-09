@@ -23,6 +23,7 @@ Regra: **telas não escrevem SQL** (usam `@/lib/data`); **cálculo não fica na 
 ```
 (app)/page.tsx               Dashboard (getDashboard: tudo agregado em SQL)
 (app)/planejamento/          calendario · conteudos (+novo, [id]) · reels · gerar
+(app)/producao/              quadro Kanban (board.tsx, task-drawer.tsx, actions.ts) — lê `posts` via `src/lib/data/production.ts`
 (app)/campanhas/
 (app)/resultados/            page = Insights (Meta, via Windsor) · instagram · meta-ads · publicacoes (manual)
 (app)/gestao/                base · unidades
@@ -39,6 +40,8 @@ api/export/                  conteudos.csv · insights.csv
 2. valide a entrada; confira a filial: `brandAllowed(user, brandId)` e, para registro existente, `rowAllowed(user, 'tabela', id)`;
 3. grave com SQL parametrizado; `audit('acao', …)` (nunca grave senha);
 4. `redirect()` ou devolva `{ error }` / `{ ok }` (`FormState`) para o `ActionForm`.
+
+**Status de conteúdo** — a única fonte é `posts.stage` (9 etapas em `domain/labels.ts`). Qualquer tela nova que mude etapa deve usar `moveCardAction` (ou a mesma regra: `stageBlockedReason`, `moveBlockedReason`, confirmação de "Publicado", checagem de `revision`) e gravar em `post_status_events`.
 
 **Nova tabela** — arquivo novo em `db/migrations/NNN_nome.sql` com `enable row level security` e **nenhuma policy**; rode `npm run db:migrate`.
 

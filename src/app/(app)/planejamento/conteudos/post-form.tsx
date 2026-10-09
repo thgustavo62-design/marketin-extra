@@ -59,7 +59,7 @@ export function PostForm({
         </div>
         <div>
           <label htmlFor="stage">Etapa</label>
-          <select id="stage" name="stage" defaultValue={post?.stage ?? 'rascunho'}>
+          <select id="stage" name="stage" defaultValue={post?.stage ?? 'ideia'}>
             {(Object.keys(STAGES) as Stage[]).map((s) => <option key={s} value={s}>{STAGES[s]}</option>)}
           </select>
         </div>
