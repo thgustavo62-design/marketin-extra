@@ -44,8 +44,8 @@ test('senha provisória gerada passa na própria validação e varia', () => {
 })
 
 const BR: BrandAliases[] = [
-  { id: 'minas', aliases: ['minas farma', 'minasfarma'] },
-  { id: 'ff', aliases: ['farma e farma', 'farmaefarma', 'drogaria melhor preco'] },
+  { id: 'minas', aliases: ['minas farma', 'minasfarma', 'extra farma', 'extrafarma'] },
+  { id: 'ff', aliases: ['farma e farma', 'farmaefarma', 'drogaria melhor preco', 'melhor preco'] },
 ]
 
 const maps: Mapping[] = [
@@ -134,4 +134,14 @@ test('apelidos: limpeza, limite e tamanho mínimo', () => {
   assert.equal(normalizeAliases('Drogaria Melhor Preço').ok && true, true)
   const many = normalizeAliases(Array.from({ length: 13 }, (_, i) => 'apelido numero ' + i).join(','))
   assert.equal(many.ok, false)
+})
+
+test('regras do dono: "Extra Farma" é Minas Farma; "Drogaria Melhor Preço" é Farma e Farma', () => {
+  assert.equal(identifyBrand('Extra Farma Baixo Guandu', BR), 'minas')
+  assert.equal(identifyBrand('EXTRAFARMA - Instagram', BR), 'minas')
+  assert.equal(identifyBrand('extra_farma_bg', BR), 'minas')
+  assert.equal(identifyBrand('Drogaria Melhor Preço', BR), 'ff')
+  assert.equal(identifyBrand('melhorprecobg', BR), 'ff')
+  // "Extra Farma" sozinho nunca vira Farma e Farma
+  assert.notEqual(identifyBrand('Extra Farma', BR), 'ff')
 })
