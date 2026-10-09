@@ -3,6 +3,7 @@ import { FormatBadge } from '@/components/badges'
 import { requireUser } from '@/lib/auth'
 import { listPosts, type Post } from '@/lib/data'
 import { FORMATS, PILLARS, actionRate, formatBR, formatRate } from '@/lib/domain'
+import { getScope, scopeLabel } from '@/lib/scope'
 import { saveMetricsAction } from './actions'
 
 function group(posts: Post[], key: (p: Post) => string) {
@@ -21,10 +22,12 @@ function group(posts: Post[], key: (p: Post) => string) {
 export default async function Resultados({ searchParams }: { searchParams: Promise<{ salvo?: string; erro?: string }> }) {
   await requireUser()
   const sp = await searchParams
-  const posts = (await listPosts({ onlyPublished: true })).reverse()
+  const scope = await getScope()
+  const posts = (await listPosts({ brand: scope.brand?.slug, branchId: scope.branch?.id, onlyPublished: true })).reverse()
 
   const blocks = [
     { title: 'Por rede', rows: group(posts, (p) => p.brand_name) },
+    { title: 'Por filial', rows: group(posts, (p) => `${p.brand_name} · ${p.branch_name ?? 'Todas as filiais'}`) },
     { title: 'Por formato', rows: group(posts, (p) => FORMATS[p.format]) },
     { title: 'Por pilar', rows: group(posts, (p) => PILLARS[p.pillar]) },
   ]
@@ -32,17 +35,17 @@ export default async function Resultados({ searchParams }: { searchParams: Promi
   return (
     <>
       <header className="page-head">
-        <h1>Resultados</h1>
+        <h1>Resultados por publicação</h1>
         <p>
-          Métricas preenchidas manualmente para conteúdos <b>publicados</b>. Taxa de ações úteis = (salvamentos + compartilhamentos) ÷ alcance × 100
-          — indicador do painel, não a taxa oficial de engajamento do Instagram. Sem alcance, aparece “—”.
+          {scopeLabel(scope)} · métricas preenchidas à mão para conteúdos <b>publicados</b>. Taxa de ações úteis = (salvamentos + compartilhamentos) ÷ alcance × 100,
+          indicador do painel e não a taxa oficial de engajamento do Instagram. Sem alcance, aparece “—”.
         </p>
         {sp.salvo && <p className="form-ok" role="status">Métricas salvas.</p>}
         {sp.erro && <p className="form-error" role="alert">Use apenas números inteiros (0 ou mais).</p>}
       </header>
 
       {posts.length === 0 ? (
-        <p className="empty">Nenhum conteúdo publicado ainda. Mude a etapa de um conteúdo para “Publicado” em <Link href="/conteudos">Conteúdos</Link> para registrar resultados.</p>
+        <p className="empty">Nenhum conteúdo publicado neste recorte. Mude a etapa de um conteúdo para “Publicado” em <Link href="/planejamento/conteudos">Conteúdos</Link> para registrar resultados.</p>
       ) : (
         <>
           <section className="cards">
@@ -52,7 +55,7 @@ export default async function Resultados({ searchParams }: { searchParams: Promi
                 {b.rows.length === 0 ? <p className="muted">Sem alcance registrado.</p> : (
                   <table className="mini"><tbody>
                     {b.rows.map((r) => (
-                      <tr key={r.k}><td>{r.k}</td><td className="num">{formatRate(r.rate)}</td><td className="num muted">{r.n} pub.</td></tr>
+                      <tr key={r.k}><td>{r.k}</td><td className="num"><b>{formatRate(r.rate)}</b></td><td className="num muted">{r.n} pub.</td></tr>
                     ))}
                   </tbody></table>
                 )}
@@ -62,15 +65,15 @@ export default async function Resultados({ searchParams }: { searchParams: Promi
 
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Data</th><th>Conteúdo</th><th>Formato</th><th>Alcance</th><th>Salvam.</th><th>Compart.</th><th>Taxa</th><th /></tr></thead>
+              <thead><tr><th>Data</th><th>Conteúdo</th><th>Formato</th><th>Alcance · Salvam. · Compart.</th><th>Taxa</th></tr></thead>
               <tbody>
                 {posts.map((p) => (
                   <tr key={p.id}>
                     <td>{formatBR(p.post_date)}</td>
-                    <td><Link href={`/conteudos/${p.id}`}>{p.title}</Link><br /><small className="muted">{p.brand_name}</small></td>
+                    <td><Link href={`/planejamento/conteudos/${p.id}`}>{p.title}</Link><br /><small className="muted">{p.brand_name} · {p.branch_name ?? 'Todas as filiais'}</small></td>
                     <td><FormatBadge format={p.format} /></td>
-                    <td colSpan={3}>
-                      <form action={saveMetricsAction} className="inline-metrics" id={`m-${p.id}`}>
+                    <td>
+                      <form action={saveMetricsAction} className="inline-metrics">
                         <input type="hidden" name="id" value={p.id} />
                         <input name="reach" inputMode="numeric" defaultValue={p.reach ?? ''} aria-label="Alcance" placeholder="Alcance" />
                         <input name="saves" inputMode="numeric" defaultValue={p.saves ?? ''} aria-label="Salvamentos" placeholder="Salvam." />
@@ -78,8 +81,7 @@ export default async function Resultados({ searchParams }: { searchParams: Promi
                         <button type="submit" className="secondary">Salvar</button>
                       </form>
                     </td>
-                    <td className="num">{formatRate(actionRate(p.reach, p.saves, p.shares))}</td>
-                    <td />
+                    <td className="num"><b>{formatRate(actionRate(p.reach, p.saves, p.shares))}</b></td>
                   </tr>
                 ))}
               </tbody>

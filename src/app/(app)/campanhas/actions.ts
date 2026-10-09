@@ -1,15 +1,16 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { audit } from '@/lib/auth'
+import { audit, writerOrError, writerOrRedirect } from '@/lib/auth'
 import { pool } from '@/lib/db'
 import { isIsoDate } from '@/lib/domain'
 import { isUuid, str, type FormState } from '@/lib/form'
-import { clientIp, getSession } from '@/lib/session'
+import { clientIp } from '@/lib/session'
 
 export async function saveCampaignAction(_prev: FormState, fd: FormData): Promise<FormState> {
-  const user = await getSession()
-  if (!user) return { error: 'Sessão expirada. Entre novamente.' }
+  const guard = await writerOrError()
+  if (!guard.ok) return { error: guard.error }
+  const user = guard.user
   const id = str(fd, 'id')
   const brandId = str(fd, 'brand_id')
   const name = str(fd, 'name')
@@ -43,9 +44,9 @@ export async function saveCampaignAction(_prev: FormState, fd: FormData): Promis
 }
 
 export async function deleteCampaignAction(fd: FormData) {
-  const user = await getSession()
+  const user = await writerOrRedirect()
   const id = str(fd, 'id')
-  if (!user || !isUuid(id)) redirect('/login')
+  if (!isUuid(id)) redirect('/')
   // Os conteúdos ficam; o nome da campanha fica gravado neles como referência histórica.
   await pool.query(`update posts set campaign_name = (select name from campaigns where id = $1) where campaign_id = $1`, [id])
   await pool.query(`delete from campaigns where id = $1`, [id])

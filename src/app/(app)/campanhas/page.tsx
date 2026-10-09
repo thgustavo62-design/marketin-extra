@@ -3,15 +3,18 @@ import { ActionForm } from '@/components/action-form'
 import { ConfirmButton } from '@/components/confirm-button'
 import { requireUser } from '@/lib/auth'
 import { getBrands, getCampaigns } from '@/lib/data'
+import { getScope } from '@/lib/scope'
 import { formatBR, todayISO } from '@/lib/domain'
 import { deleteCampaignAction, saveCampaignAction } from './actions'
 
 export default async function Campanhas({ searchParams }: { searchParams: Promise<{ editar?: string; salvo?: string }> }) {
   await requireUser()
   const sp = await searchParams
-  const [brands, campaigns] = await Promise.all([getBrands(), getCampaigns()])
+  const scope = await getScope()
+  const [brands, allCampaigns] = await Promise.all([getBrands(), getCampaigns()])
+  const campaigns = scope.brand ? allCampaigns.filter((c) => c.brand_id === scope.brand!.id) : allCampaigns
   const today = todayISO()
-  const editing = campaigns.find((c) => c.id === sp.editar)
+  const editing = allCampaigns.find((c) => c.id === sp.editar)
   const status = (s: string, e: string) => (e < today ? ['Encerrada', 'off'] : s > today ? ['Futura', 'soft'] : ['Vigente', 'on'])
 
   return (
@@ -57,7 +60,7 @@ export default async function Campanhas({ searchParams }: { searchParams: Promis
           <label htmlFor="name">Nome</label>
           <input id="name" name="name" type="text" defaultValue={editing?.name} required />
           <label htmlFor="brand_id">Rede</label>
-          <select id="brand_id" name="brand_id" defaultValue={editing?.brand_id}>
+          <select id="brand_id" name="brand_id" defaultValue={editing?.brand_id ?? scope.brand?.id}>
             {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
           <div className="grid-2">

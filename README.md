@@ -42,14 +42,30 @@ Variáveis de ambiente do projeto na Vercel (Settings → Environment Variables)
 - Server Actions checam a origem (CSRF); route handlers de escrita devem usar `sameOrigin()` de `src/lib/auth.ts`.
 - Troca de senha exige a senha atual, mínimo de 10 caracteres e encerra as outras sessões.
 
-## Divisão de trabalho
+## Estrutura das telas
 
-- **Visual** (CSS, componentes de UI, identidade): `src/app/globals.css`, `src/components/`, `public/brand/`. Branches `visual/*`.
-- **Dados e lógica** (banco, auth, API): `db/`, `src/lib/`, `scripts/`, `tests/`. Branches `dados/*`.
-- Entram no `main` por PR.
+O visual segue o padrão do sistema do Grupo Extra (menu azul-marinho, item ativo laranja, painéis com cabeçalho escuro, páginas de métricas em tema escuro), para facilitar a integração futura. Tokens e componentes em `src/app/globals.css` e `src/components/`.
+
+```
+src/app/(app)/
+  page.tsx                  Dashboard (mês, rede › filial, semanas, indicadores)
+  planejamento/             calendario · conteudos (+novo, [id]) · reels · gerar
+  campanhas/
+  resultados/               page (por publicação, manual) · instagram · meta-ads  (Windsor)
+  gestao/                   base (base de informações) · filiais
+  configuracoes/            usuarios · integracoes · auditoria · conta
+```
+
+- **Escopo global Rede › Filial** (seletor no topo, cookie `extra_scope`): filtra calendário, conteúdos, Reels, resultados, dashboard, campanhas e base. Conteúdo de "Todas as filiais" aparece em qualquer filial da rede.
+- **Perfis**: Administrador (tudo), Editor (cria e edita), Leitura (só vê). Regra no servidor (`writerOrError`/`requireAdmin` em `src/lib/auth.ts`); a interface só esconde o que o perfil não pode usar.
+- **Usuários** (só administrador): cria com senha provisória exibida uma única vez (a pessoa troca no primeiro acesso), muda perfil, desativa (encerra as sessões) e redefine senha. Nunca fica sem administrador ativo.
+- **Integrações**: cada conta do Windsor (Instagram, anúncios) é associada a uma rede e, se quiser, a uma filial; é isso que separa os resultados. Contas sem associação só aparecem em "Todas as redes", sinalizadas.
+- **Windsor**: leitura direta (cache de 5 min), sem cópia no banco. Se o Windsor devolver o aviso de "leituras pausadas" (plano gratuito com mais contas que o permitido), nenhum número é exibido.
+- Endereços antigos (`/calendario`, `/unidades`, `/fontes`...) redirecionam para os novos.
 
 ## Etapas
 
 - [x] **1 — Acesso**: login, sessão, sair, troca de senha, limite de tentativas, auditoria.
-- [x] **2 — Base operacional**: unidades, campanhas, base de informações (validade e confirmação), calendário mensal, conteúdos (feed/carrossel/Reels) com edição e detecção de conflito, estúdio de Reels, resultados manuais, gerador semanal por modelos, exportação CSV, tela de fontes.
-- [ ] 3 — IA com contexto · 4 — Pesquisa recorrente · 5 — Instagram.
+- [x] **2 — Base operacional**: filiais, campanhas, base de informações (validade e confirmação), calendário mensal, conteúdos (feed/carrossel/Reels) com edição e detecção de conflito, estúdio de Reels, resultados manuais, gerador semanal por modelos, exportação CSV.
+- [x] **Reorganização**: subpastas, escopo rede › filial, novo visual, Configurações (usuários, integrações, auditoria), Resultados do Instagram e do Meta Ads via Windsor.
+- [ ] 3 — IA com contexto · 4 — Pesquisa recorrente · 5 — Publicação e métricas gravadas no banco.

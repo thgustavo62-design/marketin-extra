@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { pool } from './db'
 import { DUMMY_HASH, verifyPassword } from './password'
+import { canWrite, isAdmin } from './perms'
 import { getSession, type SessionUser } from './session'
 
 export function normalizeUsername(u: string): string {
@@ -65,10 +66,46 @@ export async function checkCredentials(username: string, password: string, ip: s
   return { ok: true, userId: user.id }
 }
 
-export async function requireUser(): Promise<SessionUser> {
+// Toda página chama requireUser(). Quem ainda tem senha provisória só pode ver a tela de troca.
+export async function requireUser(opts: { allowMustChange?: boolean } = {}): Promise<SessionUser> {
   const user = await getSession()
   if (!user) redirect('/login')
+  if (user.mustChange && !opts.allowMustChange) redirect('/configuracoes/conta?trocar=1')
   return user
+}
+
+export async function requireAdmin(): Promise<SessionUser> {
+  const user = await requireUser()
+  if (!isAdmin(user.role)) redirect('/?sem-permissao=1')
+  return user
+}
+
+type Guard = { ok: true; user: SessionUser } | { ok: false; error: string }
+
+// Para Server Actions de escrita: devolve o usuário se puder escrever, ou o motivo.
+export async function writerOrError(): Promise<Guard> {
+  const user = await getSession()
+  if (!user) return { ok: false, error: 'Sessão expirada. Entre novamente.' }
+  if (user.mustChange) return { ok: false, error: 'Troque a senha provisória antes de continuar.' }
+  if (!canWrite(user.role)) return { ok: false, error: 'Seu perfil é somente leitura.' }
+  return { ok: true, user }
+}
+
+// Para Server Actions que terminam em redirect (excluir, confirmar, ativar...).
+export async function writerOrRedirect(): Promise<SessionUser> {
+  const user = await getSession()
+  if (!user) redirect('/login')
+  if (user.mustChange) redirect('/configuracoes/conta?trocar=1')
+  if (!canWrite(user.role)) redirect('/?sem-permissao=1')
+  return user
+}
+
+export async function adminOrError(): Promise<Guard> {
+  const user = await getSession()
+  if (!user) return { ok: false, error: 'Sessão expirada. Entre novamente.' }
+  if (user.mustChange) return { ok: false, error: 'Troque a senha provisória antes de continuar.' }
+  if (!isAdmin(user.role)) return { ok: false, error: 'Só administradores podem fazer isso.' }
+  return { ok: true, user }
 }
 
 // Proteção CSRF para route handlers de escrita (Server Actions já checam Origin).

@@ -13,6 +13,7 @@ export async function GET(req: Request) {
   const formato = u.get('formato') ?? ''
   const posts = await listPosts({
     brand: u.get('rede') || undefined,
+    branchId: /^[0-9a-f-]{36}$/i.test(u.get('filial') ?? '') ? u.get('filial')! : undefined,
     q: u.get('q')?.trim() || undefined,
     from: isIsoDate(from) ? from : undefined,
     to: isIsoDate(to) ? to : undefined,

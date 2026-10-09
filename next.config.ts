@@ -1,7 +1,23 @@
 import type { NextConfig } from 'next'
 
+// Endereços antigos (antes da reorganização em subpastas) continuam funcionando.
+const MOVED: [string, string][] = [
+  ['/calendario', '/planejamento/calendario'],
+  ['/conteudos', '/planejamento/conteudos'],
+  ['/conteudos/:path*', '/planejamento/conteudos/:path*'],
+  ['/reels', '/planejamento/reels'],
+  ['/gerar', '/planejamento/gerar'],
+  ['/base', '/gestao/base'],
+  ['/unidades', '/gestao/filiais'],
+  ['/conta', '/configuracoes/conta'],
+  ['/fontes', '/configuracoes/integracoes'],
+]
+
 const config: NextConfig = {
   poweredByHeader: false,
+  async redirects() {
+    return MOVED.map(([source, destination]) => ({ source, destination, permanent: true }))
+  },
   async headers() {
     return [
       {

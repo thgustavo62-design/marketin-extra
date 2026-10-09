@@ -1,23 +1,28 @@
-import { Nav } from '@/components/nav'
-import { Wordmark } from '@/components/wordmark'
-import { requireUser } from '@/lib/auth'
+import { AppShell } from '@/components/app-shell'
+import { ScopeBar } from '@/components/scope-bar'
+import { getSession } from '@/lib/session'
+import { canWrite, roleLabel } from '@/lib/perms'
+import { getScope } from '@/lib/scope'
+import { redirect } from 'next/navigation'
 import { logoutAction } from './actions'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const user = await requireUser()
+  // Aqui só exige sessão; a troca obrigatória de senha é imposta por requireUser() em cada página.
+  const user = await getSession()
+  if (!user) redirect('/login')
+  const scope = await getScope()
   return (
-    <div className="shell">
-      <aside className="sidebar">
-        <Wordmark tone="white" size="sm" />
-        <Nav />
-        <div className="sidebar-foot">
-          <span className="who">{user.username}</span>
-          <form action={logoutAction}>
-            <button type="submit" className="ghost">Sair</button>
-          </form>
-        </div>
-      </aside>
-      <main className="content">{children}</main>
-    </div>
+    <AppShell
+      user={{ displayName: user.displayName, username: user.username, role: user.role, roleLabel: roleLabel(user.role) }}
+      logout={logoutAction}
+      readOnly={!canWrite(user.role)}
+      topbar={
+        user.mustChange ? null : (
+          <ScopeBar brands={scope.brands} branches={scope.branches} brandSlug={scope.brand?.slug ?? ''} branchId={scope.branch?.id ?? ''} />
+        )
+      }
+    >
+      {children}
+    </AppShell>
   )
 }

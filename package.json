@@ -12,6 +12,7 @@
     "db:seed-admin": "node --env-file=.env scripts/seed-admin.mjs"
   },
   "dependencies": {
+    "lucide-react": "^1.54.0",
     "next": "^16.4.0",
     "pg": "^8.23.1",
     "react": "^19.3.0",

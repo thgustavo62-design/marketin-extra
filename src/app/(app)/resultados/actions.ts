@@ -1,15 +1,15 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { audit } from '@/lib/auth'
+import { audit, writerOrError, writerOrRedirect } from '@/lib/auth'
 import { pool } from '@/lib/db'
 import { isUuid, optInt, str } from '@/lib/form'
-import { clientIp, getSession } from '@/lib/session'
+import { clientIp } from '@/lib/session'
 
 export async function saveMetricsAction(fd: FormData) {
-  const user = await getSession()
+  const user = await writerOrRedirect()
   const id = str(fd, 'id')
-  if (!user || !isUuid(id)) redirect('/login')
+  if (!isUuid(id)) redirect('/')
   const reach = optInt(fd, 'reach')
   const saves = optInt(fd, 'saves')
   const shares = optInt(fd, 'shares')
