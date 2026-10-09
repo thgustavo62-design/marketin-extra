@@ -20,6 +20,10 @@ npm run dev
 
 A senha inicial **nunca** fica em arquivo: é passada só na execução do seed e gravada como hash (scrypt + salt).
 
+## Deploy (Vercel)
+
+Variáveis de ambiente do projeto na Vercel (Settings → Environment Variables): `DATABASE_URL` (no Supabase, use a string do **Transaction pooler**, porta 6543), `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `WINDSOR_API_KEY`. Sem `DATABASE_URL` o login não funciona.
+
 ## Comandos
 
 | Comando | O que faz |
@@ -47,5 +51,5 @@ A senha inicial **nunca** fica em arquivo: é passada só na execução do seed 
 ## Etapas
 
 - [x] **1 — Acesso**: login, sessão, sair, troca de senha, limite de tentativas, auditoria.
-- [ ] 2 — Base operacional: unidades, campanhas, base de informações, calendário.
+- [x] **2 — Base operacional**: unidades, campanhas, base de informações (validade e confirmação), calendário mensal, conteúdos (feed/carrossel/Reels) com edição e detecção de conflito, estúdio de Reels, resultados manuais, gerador semanal por modelos, exportação CSV, tela de fontes.
 - [ ] 3 — IA com contexto · 4 — Pesquisa recorrente · 5 — Instagram.

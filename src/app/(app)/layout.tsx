@@ -1,9 +1,7 @@
-import Link from 'next/link'
+import { Nav } from '@/components/nav'
 import { Wordmark } from '@/components/wordmark'
 import { requireUser } from '@/lib/auth'
 import { logoutAction } from './actions'
-
-const SOON = ['Planejamento', 'Conteúdo', 'Calendário', 'Mídia', 'Relatórios']
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser()
@@ -11,15 +9,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="shell">
       <aside className="sidebar">
         <Wordmark tone="white" size="sm" />
-        <nav aria-label="Principal">
-          <Link href="/" className="nav-item">Visão geral</Link>
-          {SOON.map((n) => (
-            <span key={n} className="nav-item disabled" aria-disabled="true">
-              {n} <small>em breve</small>
-            </span>
-          ))}
-          <Link href="/conta" className="nav-item">Conta e senha</Link>
-        </nav>
+        <Nav />
         <div className="sidebar-foot">
           <span className="who">{user.username}</span>
           <form action={logoutAction}>
