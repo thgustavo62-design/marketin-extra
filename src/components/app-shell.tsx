@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
-  BarChart3, BookOpen, CalendarDays, Camera, ChevronLeft, ChevronRight, Clapperboard, FileText, LayoutDashboard,
+  BarChart3, BookOpen, ClipboardList, CalendarDays, Camera, ChevronLeft, ChevronRight, Clapperboard, FileText, LayoutDashboard,
   LogOut, Megaphone, Menu, Plug, ScrollText, Sparkles, Store, Target, UserCog, Users, X,
   type LucideIcon,
 } from 'lucide-react'
@@ -27,9 +27,10 @@ const GROUPS: Group[] = [
   {
     title: 'Resultados',
     items: [
-      { href: '/resultados', label: 'Por publicação', icon: BarChart3, exact: true },
+      { href: '/resultados', label: 'Insights', icon: BarChart3, exact: true },
       { href: '/resultados/instagram', label: 'Instagram', icon: Camera },
       { href: '/resultados/meta-ads', label: 'Meta Ads', icon: Target },
+      { href: '/resultados/publicacoes', label: 'Por publicação', icon: ClipboardList },
     ],
   },
   {

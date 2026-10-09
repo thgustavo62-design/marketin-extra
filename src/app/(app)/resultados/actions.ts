@@ -13,11 +13,11 @@ export async function saveMetricsAction(fd: FormData) {
   const reach = optInt(fd, 'reach')
   const saves = optInt(fd, 'saves')
   const shares = optInt(fd, 'shares')
-  if (reach === 'invalid' || saves === 'invalid' || shares === 'invalid') redirect('/resultados?erro=1')
+  if (reach === 'invalid' || saves === 'invalid' || shares === 'invalid') redirect('/resultados/publicacoes?erro=1')
   await pool.query(
     `update posts set reach=$1, saves=$2, shares=$3, revision = revision + 1, updated_at = now() where id = $4 and stage = 'publicado'`,
     [reach, saves, shares, id],
   )
   await audit('metricas_registradas', { userId: user.id, ip: await clientIp(), target: id })
-  redirect('/resultados?salvo=1')
+  redirect('/resultados/publicacoes?salvo=1')
 }

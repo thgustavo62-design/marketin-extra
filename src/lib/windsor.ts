@@ -28,19 +28,26 @@ export function classifyWindsorPayload<T extends Record<string, unknown>>(payloa
   return { status: 'ok', rows }
 }
 
+// Período: um preset do Windsor ("last_30d") ou um intervalo explícito (necessário p/ comparar com o período anterior).
+export type Period = string | { from: string; to: string }
+
 export async function windsorQuery<T extends Record<string, unknown>>(
   connector: 'instagram' | 'facebook' | 'all',
   fields: string[],
-  datePreset: string,
+  period: Period,
 ): Promise<WindsorResult<T>> {
   const key = process.env.WINDSOR_API_KEY
   if (!key) return { status: 'not_configured' }
   const u = new URL(`${BASE}/${connector}`)
-  u.searchParams.set('date_preset', datePreset)
+  if (typeof period === 'string') u.searchParams.set('date_preset', period)
+  else {
+    u.searchParams.set('date_from', period.from)
+    u.searchParams.set('date_to', period.to)
+  }
   u.searchParams.set('fields', fields.join(','))
   u.searchParams.set('api_key', key)
   try {
-    const res = await fetch(u, { next: { revalidate: 300 }, signal: AbortSignal.timeout(20_000) })
+    const res = await fetch(u, { next: { revalidate: 300 }, signal: AbortSignal.timeout(12_000) })
     return classifyWindsorPayload<T>(await res.json())
   } catch (e) {
     // Nunca incluir a URL (tem a chave) na mensagem.

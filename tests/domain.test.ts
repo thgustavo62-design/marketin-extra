@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   actionRate, addDays, campaignCoversPeriod, csvEscape, formatRate, generateWeek, isExpired, isIsoDate,
   monthGrid, normalizeReels, parseMonth, shiftMonth, stageBlockedReason, toCsv,
-} from '../src/lib/domain.ts'
+} from '../src/lib/domain/index.ts'
 
 test('datas ISO: validação e soma de dias', () => {
   assert.equal(isIsoDate('2026-10-09'), true)
