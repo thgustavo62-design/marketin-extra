@@ -22,7 +22,7 @@ export type CollectResult =
       publications: number; newPublications: number; snapshots: number; accounts: number
       unmapped: string[]; notes: string[]; skippedBrands: string[]
     }
-  | { ok: false; error: string }
+  | { ok: false; error: string; reason: 'rate_limited' | 'windsor' }
 
 type AcctRow = { account_name?: string; account_id?: string | number; date?: string; views?: unknown; total_interactions?: unknown; followers_count?: unknown; spend?: unknown } & Record<string, unknown>
 
@@ -57,7 +57,7 @@ export async function collectMetrics(opts: { brandIds: string[]; actorId: string
     else allowed.add(id)
   }
   if (allowed.size === 0) {
-    return { ok: false, error: `Já houve uma coleta há menos de ${MIN_MINUTES_BETWEEN} minutos para ${skippedBrands.join(' e ') || 'este recorte'}. Aguarde um pouco para não gastar a cota do Windsor à toa.` }
+    return { ok: false, error: `Já houve uma coleta há menos de ${MIN_MINUTES_BETWEEN} minutos para ${skippedBrands.join(' e ') || 'este recorte'}. Aguarde um pouco para não gastar a cota do Windsor à toa.`, reason: 'rate_limited' }
   }
 
   const month = opts.today.slice(0, 7)
@@ -70,7 +70,7 @@ export async function collectMetrics(opts: { brandIds: string[]; actorId: string
     windsorQuery<AcctRow>('facebook', ['account_name', 'account_id', 'date', 'spend', MESSAGES_FIELD], { from: range.from, to }, fresh),
   ])
   // Sem a leitura principal não se grava nada: o histórico existente continua como está.
-  if (media.status !== 'ok') return { ok: false, error: failureText(media) }
+  if (media.status !== 'ok') return { ok: false, error: failureText(media), reason: 'windsor' }
 
   const notes: string[] = []
   if (igAcc.status !== 'ok') notes.push('Totais da conta do Instagram indisponíveis nesta coleta (as metas continuam com o último dado guardado).')

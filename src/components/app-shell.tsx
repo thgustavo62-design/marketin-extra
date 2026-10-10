@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
-  BarChart3, BookOpen, ClipboardCheck, ClipboardList, Columns3, CalendarDays, Camera, ChevronLeft, ChevronRight, Clapperboard, FileText, Flag, LayoutDashboard,
+  BarChart3, Bell, BookOpen, ClipboardCheck, ClipboardList, Columns3, CalendarDays, Camera, ChevronLeft, ChevronRight, Clapperboard, FileBarChart, FileText, Flag, LayoutDashboard,
   FolderOpen, Inbox, Link2, LogOut, Megaphone, Menu, Repeat, Settings, Sparkles, Store, Target, X,
   type LucideIcon,
 } from 'lucide-react'
@@ -13,7 +13,7 @@ type Item = { href: string; label: string; icon: LucideIcon; exact?: boolean; ad
 type Group = { title: string; items: Item[] }
 
 const GROUPS: Group[] = [
-  { title: 'Principal', items: [{ href: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true }] },
+  { title: 'Principal', items: [{ href: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true }, { href: '/alertas', label: 'Alertas', icon: Bell }] },
   {
     title: 'Planejamento',
     items: [
@@ -43,6 +43,7 @@ const GROUPS: Group[] = [
       { href: '/resultados/publicacoes', label: 'Por publicação', icon: ClipboardList },
       { href: '/resultados/vinculos', label: 'Publicações vinculadas', icon: Link2 },
       { href: '/resultados/metas', label: 'Metas', icon: Flag },
+      { href: '/resultados/relatorios', label: 'Relatórios', icon: FileBarChart },
     ],
   },
   {

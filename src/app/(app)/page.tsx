@@ -1,14 +1,17 @@
 import Link from 'next/link'
 import { AlertTriangle, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Columns3, Megaphone, Plus, Sparkles, TrendingDown, TrendingUp } from 'lucide-react'
 import { FormatBadge, StageBadge } from '@/components/badges'
+import { DashViewTabs } from '@/components/dash-view-tabs'
 import { MonthSelect } from '@/components/month-select'
 import { requireUser } from '@/lib/auth'
 import { getDashboard } from '@/lib/data'
+import { getOperationalExtras } from '@/lib/data/executive'
 import { FORMATS, MONTH_NAMES, STAGES, STAGE_ORDER, formatBR, parseMonth, todayISO, type Format } from '@/lib/domain'
 import { canWrite } from '@/lib/perms'
 import { getScope, scopeLabel } from '@/lib/scope'
+import { ExecutiveView } from './executive-view'
 
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ m?: string; 'sem-permissao'?: string }> }) {
+export default async function Dashboard({ searchParams }: { searchParams: Promise<{ m?: string; v?: string; 'sem-permissao'?: string }> }) {
   const user = await requireUser()
   const sp = await searchParams
   const scope = await getScope()
@@ -16,10 +19,29 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const { year, month } = parseMonth(sp.m, today)
   const ym = `${year}-${String(month).padStart(2, '0')}`
 
-  const data = await getDashboard({
-    brandId: scope.brand?.id, branchId: scope.branch?.id, monthStart: `${ym}-01`, today, userId: user.id,
-    brands: scope.brands, branches: scope.branches,
-  })
+  // Visão executiva: só dados guardados, por filial. A troca é apenas de apresentação (mesmos dados e permissões).
+  if (sp.v === 'exec') {
+    return (
+      <>
+        <header className="page-head row">
+          <div>
+            <h1>Dashboard</h1>
+            <p>Visão executiva — {scopeLabel(scope)}</p>
+          </div>
+          <DashViewTabs view="exec" month={ym} />
+        </header>
+        <ExecutiveView brands={scope.brand ? [scope.brand] : scope.brands} branchId={scope.branch?.id ?? null} today={today} />
+      </>
+    )
+  }
+
+  const [data, extras] = await Promise.all([
+    getDashboard({
+      brandId: scope.brand?.id, branchId: scope.branch?.id, monthStart: `${ym}-01`, today, userId: user.id,
+      brands: scope.brands, branches: scope.branches,
+    }),
+    getOperationalExtras(user, { brandId: scope.brand?.id, branchId: scope.branch?.id, brandSlug: scope.brand?.slug }, today),
+  ])
   const { month: m, rollup, weeks, overdue, upcoming, gaps, knowledge, campaigns, production } = data
   const variation = m.prevTotal > 0 ? ((m.total - m.prevTotal) / m.prevTotal) * 100 : null
   const published = m.byStage.publicado
@@ -40,7 +62,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <h1>Dashboard</h1>
           <p>Visão geral do planejamento — {MONTH_NAMES[month - 1]} de {year} · {scopeLabel(scope)}</p>
         </div>
-        <MonthSelect value={ym} />
+        <div className="head-tools"><DashViewTabs view="op" month={ym} /><MonthSelect value={ym} /></div>
       </header>
 
       {sp['sem-permissao'] && <div className="notice" role="alert"><AlertTriangle size={18} /> Seu perfil não tem permissão para essa área.</div>}
@@ -113,6 +135,20 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <Link href="/campanhas" className="kpi"><small>Campanhas vigentes</small><strong className="v-blue">{campaigns.active}</strong><em>{campaigns.endingSoon.length} terminam em 7 dias</em><span className="ico blue"><Megaphone size={18} /></span></Link>
         <Link href="/gestao/base" className="kpi"><small>Pendências da base</small><strong className={knowledge.total ? 'v-amber' : ''}>{knowledge.total}</strong><em>vencidas ou não confirmadas</em><span className="ico amber"><BookOpen size={18} /></span></Link>
         <Link href="/planejamento/conteudos?etapa=publicado" className="kpi"><small>Publicados no mês</small><strong className="v-green">{published}</strong><em>de {m.total} planejados</em><span className="ico green"><CheckCircle2 size={18} /></span></Link>
+      </section>
+
+      <section aria-labelledby="hoje">
+        <h2 id="hoje" className="eyebrow">Hoje e esta semana</h2>
+        <div className="kpis">
+          <Link href={`/planejamento/calendario?m=${ym}`} className="kpi"><small>Publicações de hoje</small><strong className="v-blue">{extras.today}</strong><em>no calendário</em></Link>
+          <Link href="/planejamento/calendario" className="kpi"><small>Nesta semana</small><strong className="v-blue">{extras.weekDone}/{extras.week}</strong><em>publicadas de planejadas</em></Link>
+          <Link href="/alertas" className="kpi"><small>Alertas ativos</small><strong className={extras.topAlerts.length ? 'v-amber' : ''}>{extras.topAlerts.length}{extras.topAlerts.length >= 5 ? '+' : ''}</strong><em>abrir a central</em></Link>
+        </div>
+        {extras.topAlerts.length > 0 && (
+          <ul className="alerts">
+            {extras.topAlerts.map((a) => <li key={a.id}><Link href={a.href}>{a.title}</Link> <small className="muted">· {a.brand_name}</small></li>)}
+          </ul>
+        )}
       </section>
 
       {writable && (

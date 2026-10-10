@@ -544,3 +544,24 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .goal-numbers b { font-size: 18px; }
 .bar { height: 8px; border-radius: 6px; background: var(--box, #e8edf2); overflow: hidden; margin-bottom: 6px; }
 .bar i { display: block; height: 100%; background: var(--accent, #f28c00); }
+.bell { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 999px; background: #fff; border: 1px solid var(--line); color: var(--ink, #0b2545); }
+.bell-count { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #d92d20; color: #fff; font-size: 10.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.alert-list { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 10px; }
+.alert-list li { display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+.alert-list li[data-severity="critical"] { border-left-color: #d92d20; }
+.alert-list li[data-severity="warning"] { border-left-color: #f28c00; }
+.alert-list li[data-severity="info"] { border-left-color: #2e90fa; }
+.alert-list h3 { margin: 4px 0; font-size: 14px; }
+.alert-list p { margin: 0; font-size: 12.5px; color: var(--muted); }
+.alert-actions { display: flex; gap: 6px; align-items: flex-start; flex-wrap: wrap; }
+.report { display: grid; gap: 14px; }
+.report-h { margin-top: 10px; padding-bottom: 4px; border-bottom: 2px solid var(--orange); }
+.report-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 6px 24px; margin: 0; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+.report-kv div { display: flex; justify-content: space-between; gap: 12px; }
+.report-kv dt { color: var(--muted); font-size: 12.5px; }
+.report-kv dd { margin: 0; font-weight: 600; text-align: right; }
+.report-table h3, .report section h3 { margin: 0 0 6px; font-size: 14px; color: var(--title-blue); }
+.report-note { font-size: 12px; margin: 6px 2px 0; }
+.report ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.head-tools { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.exec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin: 10px 0; }

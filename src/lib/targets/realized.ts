@@ -26,15 +26,22 @@ function followersNow(rows: Row[]): number | null {
   return last.size ? [...last.values()].reduce((s, x) => s + x.n, 0) : null
 }
 
+// Contagens do próprio sistema (calendário) no mês: planejados (sem cancelados) e publicados.
+export async function internalCounts(brandId: string, branchId: string | null, month: string): Promise<{ planned: number; published: number }> {
+  const range = monthRange(month)
+  const r = (await pool.query(
+    `select count(*) filter (where stage <> 'cancelado')::int as planned, count(*) filter (where stage = 'publicado')::int as published
+       from posts where brand_id = $1 and ($2::uuid is null or branch_id = $2 or branch_id is null) and post_date between $3 and $4`, [brandId, branchId, range.from, range.to])).rows[0]
+  return { planned: r.planned, published: r.published }
+}
+
 export async function loadRealized(opts: { brandId: string; branchId: string | null; month: string; today: string }): Promise<RealizedMap> {
   const { brandId, branchId, month, today } = opts
   const range = monthRange(month)
   const out = Object.fromEntries(Object.keys(TARGET_METRICS).map((k) => [k, none])) as RealizedMap
 
   // ---- interno ----
-  const internal = (await pool.query(
-    `select count(*) filter (where stage <> 'cancelado')::int as planned, count(*) filter (where stage = 'publicado')::int as published
-       from posts where brand_id = $1 and ($2::uuid is null or branch_id = $2 or branch_id is null) and post_date between $3 and $4`, [brandId, branchId, range.from, range.to])).rows[0]
+  const internal = await internalCounts(brandId, branchId, month)
   out.posts_planned = { value: internal.planned, source: 'internal', asOf: null }
   out.posts_published = { value: internal.published, source: 'internal', asOf: null }
 
@@ -69,29 +76,35 @@ export async function loadRealized(opts: { brandId: string; branchId: string | n
   }
 
   // ---- histórico: só para o que o Windsor não entregou agora ----
-  if (ig.status !== 'ok' || ads.status !== 'ok') {
-    const snaps = (await pool.query(
-      `select distinct on (kind, external_account_id) kind, account_name, branch_id, followers, views::float8 as views, interactions::float8 as interactions,
-              spend::float8 as spend, conversations, collected_at::text as collected_at
-         from account_metric_snapshots where brand_id = $1 and period_start = $2 order by kind, external_account_id, collected_at desc`, [brandId, range.from])).rows
-    const pick = (kind: AccountKind) => snaps.filter((s) => s.kind === kind && (branchId === null || s.branch_id === branchId))
-    const agg = (rows: Record<string, unknown>[], f: string): number | null => {
-      let seen = false, t = 0
-      for (const r of rows) { const n = num(r[f]); if (n !== null) { seen = true; t += n } }
-      return seen ? t : null
-    }
-    const asOf = (rows: { collected_at: string }[]) => (rows.length ? rows.map((r) => r.collected_at).sort().at(-1)! : null)
-    if (ig.status !== 'ok') {
-      const rows = pick('instagram')
-      const set = (k: MetricKey, v: number | null) => { if (v !== null) out[k] = { value: v, source: 'history', asOf: asOf(rows) } }
-      set('ig_views', agg(rows, 'views')); set('ig_interactions', agg(rows, 'interactions')); set('ig_followers', agg(rows, 'followers'))
-    }
-    if (ads.status !== 'ok') {
-      const rows = pick('ads')
-      const spend = agg(rows, 'spend'), conv = agg(rows, 'conversations')
-      const set = (k: MetricKey, v: number | null) => { if (v !== null) out[k] = { value: v, source: 'history', asOf: asOf(rows) } }
-      set('ads_spend', spend); set('ads_conversations', conv); set('ads_cost_per_conversation', costPerConversation(spend, conv))
-    }
+  if (ig.status !== 'ok' || ads.status !== 'ok') Object.assign(out, await historyRealized(brandId, branchId, month, { ig: ig.status !== 'ok', ads: ads.status !== 'ok' }))
+  return out
+}
+
+// Último retrato guardado de cada conta no mês (coleta manual). Nunca é apresentado como dado de agora: source = 'history'.
+export async function historyRealized(brandId: string, branchId: string | null, month: string, which: { ig: boolean; ads: boolean }): Promise<Partial<RealizedMap>> {
+  const out: Partial<RealizedMap> = {}
+  const range = monthRange(month)
+  const snaps = (await pool.query(
+    `select distinct on (kind, external_account_id) kind, account_name, branch_id, followers, views::float8 as views, interactions::float8 as interactions,
+            spend::float8 as spend, conversations, collected_at::text as collected_at
+       from account_metric_snapshots where brand_id = $1 and period_start = $2 order by kind, external_account_id, collected_at desc`, [brandId, range.from])).rows
+  const pick = (kind: AccountKind) => snaps.filter((s) => s.kind === kind && (branchId === null || s.branch_id === branchId))
+  const agg = (rows: Record<string, unknown>[], f: string): number | null => {
+    let seen = false, t = 0
+    for (const r of rows) { const n = num(r[f]); if (n !== null) { seen = true; t += n } }
+    return seen ? t : null
+  }
+  const asOf = (rows: { collected_at: string }[]) => (rows.length ? rows.map((r) => r.collected_at).sort().at(-1)! : null)
+  if (which.ig) {
+    const rows = pick('instagram')
+    const set = (k: MetricKey, v: number | null) => { if (v !== null) out[k] = { value: v, source: 'history', asOf: asOf(rows) } }
+    set('ig_views', agg(rows, 'views')); set('ig_interactions', agg(rows, 'interactions')); set('ig_followers', agg(rows, 'followers'))
+  }
+  if (which.ads) {
+    const rows = pick('ads')
+    const spend = agg(rows, 'spend'), conv = agg(rows, 'conversations')
+    const set = (k: MetricKey, v: number | null) => { if (v !== null) out[k] = { value: v, source: 'history', asOf: asOf(rows) } }
+    set('ads_spend', spend); set('ads_conversations', conv); set('ads_cost_per_conversation', costPerConversation(spend, conv))
   }
   return out
 }

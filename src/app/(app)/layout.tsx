@@ -1,4 +1,5 @@
 import { AppShell } from '@/components/app-shell'
+import { AlertBell } from '@/components/alert-bell'
 import { ScopeBar } from '@/components/scope-bar'
 import { getSession } from '@/lib/session'
 import { canWrite, roleLabel } from '@/lib/perms'
@@ -18,7 +19,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       readOnly={!canWrite(user.role)}
       topbar={
         user.mustChange ? null : (
-          <ScopeBar brands={scope.brands} branches={scope.branches} brandSlug={scope.brand?.slug ?? ''} branchId={scope.branch?.id ?? ''} restricted={scope.restricted} />
+          <>
+            <ScopeBar brands={scope.brands} branches={scope.branches} brandSlug={scope.brand?.slug ?? ''} branchId={scope.branch?.id ?? ''} restricted={scope.restricted} />
+            <AlertBell user={user} />
+          </>
         )
       }
     >
