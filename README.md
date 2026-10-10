@@ -14,7 +14,7 @@ Autenticação própria (usuário + senha, sessão em cookie HttpOnly). Camadas,
 ```bash
 npm install
 cp .env.example .env        # preencha os valores (veja "Variáveis de ambiente")
-npm run db:migrate          # aplica db/migrations/*.sql (001 a 012)
+npm run db:migrate          # aplica db/migrations/*.sql (001 a 014)
 INITIAL_ADMIN_USER=Gustavo INITIAL_ADMIN_PASSWORD='...' npm run db:seed-admin   # só na 1ª vez
 npm run dev
 ```
@@ -71,7 +71,7 @@ src/app/(app)/
   campanhas/                lista de campanhas · modelos/ (campanhas recorrentes)
   resultados/               page = Insights (Meta via Windsor) · instagram · meta-ads · publicacoes (manual) · vinculos (publicações reais) · metas · relatorios
   alertas/                  central de alertas (sino no cabeçalho)
-  gestao/                   base (base de informações) · unidades (lojas, opcional)
+  gestao/                   base (base de informações) · unidades (lojas, opcional) · links (UTM + QR) · referencias (concorrentes e inspirações)
   configuracoes/            abas escuras: usuarios · fluxo (política de aprovação) · integracoes · auditoria · conta
 ```
 
@@ -87,6 +87,9 @@ src/app/(app)/
 - **Alertas** (`/alertas` e o sino do cabeçalho): calculados sobre registros reais — conteúdo atrasado ou sem responsável, aprovação parada (48 h), campanha recorrente a iniciar sem reconfirmação, arte final ausente com publicação próxima, Windsor sem coleta há 7+ dias, falha de coleta e meta interna fora do ritmo (só com 10+ dias de mês). Reavaliados sozinhos a cada 2 min (quem pega a vez roda). **Deduplicados** por evento + registro e **resolvidos sozinhos** quando a causa some; ler, dispensar e reabrir valem só para cada pessoa; cada alerta leva ao registro; só aparecem alertas de filiais autorizadas.
 - **Relatórios** (`/resultados/relatorios`): operacional, resultados e executivo, por filial/unidade, semana (seg–dom), mês ou período de até 93 dias, com filtros de formato e campanha. Usam só o que está guardado no banco (nunca o Windsor ao vivo), informam a data da última coleta e separam orgânico (Instagram) de pago (Meta Ads). Saem em tela, **PDF A4** (identidade Extra Marketing + filial) e **CSV** (cabeçalho com filial, período, filtros, fonte e legenda); N/D nunca vira zero. Cada relatório guarda o retrato dos números; no mesmo dia o mesmo pedido não duplica, e "gerar de novo" cria retrato novo com a data. PDF/CSV/tela exigem acesso à filial do relatório (404 por URL direta para quem não tem). Agendamento automático fica para depois.
 - **Dashboard**: visão **Operacional** (hoje/semana, atrasos, aprovações, campanhas, pendências, alertas) e **Executiva** (por filial: publicados, publicações reais, engajamento mediano, investimento, metas, alertas críticos). A troca é só de apresentação (preferência salva no navegador) e cada cartão abre a listagem filtrada.
+- **Links e QR Codes** (`/gestao/links`): URL com UTM (origem, meio, campanha, termo, conteúdo) por filial/unidade/campanha. O destino é validado de forma **estática** (https, domínio público, sem usuário/senha, sem IP nem porta; o servidor não abre o endereço, para evitar SSRF); UTM antigo no destino é substituído e avisado; valores viram minúsculas sem acento. **QR Code só depois de aprovado** por outra pessoa (ou administrador), que confirma ter aberto o destino; PNG e SVG (conferidos por leitura do código). O sistema **não mede cliques nem atribui vendas** — use o analytics do site de destino filtrando pelos UTM. CSV no mesmo recorte da tela.
+- **Referências e inspirações** (`/gestao/referencias`): cadastro **manual** de contas públicas de referência (rede, relevância, categoria, região) e biblioteca de ideias, formatos, datas sazonais e exemplos (fonte pública, etiquetas, vínculo opcional a campanha, conteúdo/Reels e arquivo da biblioteca). Sem raspagem, sem credenciais de terceiros, sem métricas privadas.
+- **Publicação**: o sistema **não publica sozinho**. Cada conteúdo tem método *manual* ou *assistido* (o método *API* existe mas fica desabilitado); a data/hora do conteúdo é o agendamento interno; o alerta **"Hora de publicar"** lembra; a pessoa publica na rede e **confirma no cartão com o endereço da publicação** (https de Instagram/Facebook/TikTok/YouTube) — passa pelas regras de aprovação de sempre e, se o endereço bater com uma publicação já coletada, o vínculo com as métricas é feito. Prova de viabilidade e bloqueios em `docs/VIABILIDADE-PUBLICACAO.md`.
 - **Insights** (`/resultados`): visualizações, alcance, interações, cliques no link do perfil, contas engajadas e seguidores (Instagram) + investimento, conversas iniciadas, cliques, impressões, custo por conversa e CPM (Meta Ads). Total, variação contra o período anterior do mesmo tamanho, gráfico diário, 7/28/90 dias e CSV. Só mostra o que o Windsor entrega: sem visitas ao perfil, sem Facebook orgânico; "novos seguidores" cobre no máximo 30 dias (limite da API do Instagram).
 - **Usuários** (só administrador): nome, e-mail, papel editável na linha, filiais com acesso e situação; cria, edita, desativa (encerra as sessões) e redefine senha. Nunca fica sem administrador ativo.
 - **Integrações**: cada conta do Windsor é **identificada pelo nome** usando os apelidos de cada filial (`brands.aliases`, editáveis; ex.: "minas farma", "extra farma", "farma e farma", "drogaria melhor preço"). Associação manual (`integration_accounts`) só para exceções e vence o nome. Nome que casa com as duas filiais não é adivinhado; conta não identificada só aparece em "Todas as filiais", sinalizada.
@@ -104,5 +107,6 @@ src/app/(app)/
 - [x] **Fase 3 — Campanhas recorrentes**: modelos, geração manual idempotente, tarefas e checklist, reconfirmação obrigatória, aviso de dados vencidos.
 - [x] **Fase 4 — Métricas por publicação e metas**: publicações reais, retratos de métricas, vínculo conferido por pessoa, diagnóstico por mediana, metas mensais e histórico quando o Windsor falha.
 - [x] **Fase 5 — Dashboard executivo, alertas e relatórios**: central de alertas, visões do Dashboard e relatórios HTML/PDF/CSV com acesso por filial.
+- [x] **Fase 7 — Links, referências e publicação (fase segura)**: links UTM/QR com aprovação, referências manuais e publicação manual/assistida com lembrete; publicação por API **não** habilitada (sem prova de viabilidade).
 - [x] **Resultados (Windsor)**: Insights no estilo da Meta, Instagram (publicações e público) e Meta Ads, separados por filial.
-- [ ] Próximas (plano `EXTRA_MARKETING_PLANO_COMPLETO_DE_EVOLUCAO.md`): Fase 6 IA · Fase 7 links, concorrentes e publicação.
+- [ ] Fase 6 (assistente de IA): dispensada por decisão do responsável. Fase 7 — publicação por API: só após prova de viabilidade em conta de teste autorizada.

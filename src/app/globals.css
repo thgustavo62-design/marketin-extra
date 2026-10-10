@@ -565,3 +565,7 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .report ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .head-tools { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .exec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin: 10px 0; }
+.preview-url { margin: 6px 0; word-break: break-all; }
+.preview-url code { font-size: 12px; background: var(--box); padding: 2px 6px; border-radius: 6px; }
+.qr-box { display: flex; gap: 14px; align-items: center; margin: 8px 0; }
+.qr-box img { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 4px; }

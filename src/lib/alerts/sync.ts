@@ -41,6 +41,13 @@ export async function syncAlerts(today = todayISO()): Promise<{ active: number; 
     c.push({ type: 'post_no_owner', severity: 'warning', brandId: p.brand_id, branchId: p.branch_id, objectType: 'post', objectId: p.id, key: dedupeKey('post_no_owner', p.id),
       title: `Sem responsável: ${p.title}`, detail: `Publicação em ${formatBR(p.d)} e ninguém está designado para produzir.`, href: `/producao?abrir=${p.id}` })
   }
+  // 2b) lembrete de publicação: aprovado/agendado cuja data (e hora, se houver) chegou — a publicação é humana e precisa ser confirmada com o endereço
+  for (const p of (await pool.query(
+    `select id, brand_id, branch_id, title, publication_method, to_char(post_time, 'HH24:MI') as t from posts
+      where stage in ('aprovado', 'agendado') and post_date = $1::date and (post_time is null or post_time <= (now() at time zone 'America/Sao_Paulo')::time) order by post_time nulls first limit 300`, [today])).rows) {
+    c.push({ type: 'publish_due', severity: 'warning', brandId: p.brand_id, branchId: p.branch_id, objectType: 'post', objectId: p.id, key: dedupeKey('publish_due', p.id),
+      title: `Hora de publicar: ${p.title}`, detail: `Previsto para hoje${p.t ? ' às ' + p.t : ''} (publicação ${p.publication_method === 'assistido' ? 'assistida' : 'manual'}). Publique na rede e confirme o endereço no cartão.`, href: `/producao?abrir=${p.id}` })
+  }
   // 3) aprovação parada
   for (const a of (await pool.query(
     `select a.id, a.post_id, a.brand_id, p.branch_id, p.title, extract(epoch from (now() - a.created_at)) / 3600 as hours

@@ -6,7 +6,7 @@ import { audit, writerOrError } from '@/lib/auth'
 import { decideApproval, getApprovalInfo } from '@/lib/approvals/service'
 import { getTaskDetail, listAssignableUsers, listPostAssets, type PostAsset, type TaskDetail } from '@/lib/data'
 import { pool } from '@/lib/db'
-import { canDecide, isIsoDate, isPriority, isStage, needsPublishConfirmation, stageBlockedReason, todayISO, type Decision, type Pillar, type Stage } from '@/lib/domain'
+import { canDecide, isIsoDate, isPriority, isStage, needsPublishConfirmation, normalizePermalink, stageBlockedReason, todayISO, validatePublishedUrl, type Decision, type Pillar, type Stage } from '@/lib/domain'
 import { changeStage } from '@/lib/production/stage'
 import { isUuid } from '@/lib/form'
 import { NO_BRAND_ACCESS, brandAllowed, canWrite } from '@/lib/perms'
@@ -51,7 +51,8 @@ export async function decideApprovalAction(postId: string, decision: string, rea
 }
 
 // ---------- detalhe (leitura) ----------
-export type FullDetail = TaskDetail & { approval: Awaited<ReturnType<typeof getApprovalInfo>>; assets: PostAsset[]; approvalRequired: boolean; canDecide: boolean }
+export type PublicationInfo = { method: 'manual' | 'assistido' | 'api'; url: string | null; confirmedByName: string | null; confirmedAt: string | null }
+export type FullDetail = TaskDetail & { approval: Awaited<ReturnType<typeof getApprovalInfo>>; assets: PostAsset[]; approvalRequired: boolean; canDecide: boolean; publication: PublicationInfo }
 
 export async function getTaskDetailAction(id: string): Promise<ActionResult<{ detail: FullDetail }>> {
   const user = await getSession()
@@ -60,15 +61,59 @@ export async function getTaskDetailAction(id: string): Promise<ActionResult<{ de
   if (!(await rowAllowed(user, 'posts', id))) return fail(NO_BRAND_ACCESS)
   const detail = await getTaskDetail(id)
   if (!detail) return fail('Este conteúdo não existe mais.', { conflict: true })
-  const [approval, assets, brand] = await Promise.all([
+  const [approval, assets, brand, pub] = await Promise.all([
     getApprovalInfo(id),
     listPostAssets(id),
     pool.query('select approval_required from brands where id = $1', [detail.card.brand_id]),
+    pool.query(`select p.publication_method as method, p.published_url as url, u.display_name as by, p.published_confirmed_at::text as at
+                  from posts p left join users u on u.id = p.published_confirmed_by where p.id = $1`, [id]),
   ])
+  const publication: PublicationInfo = { method: pub.rows[0]?.method ?? 'manual', url: pub.rows[0]?.url ?? null, confirmedByName: pub.rows[0]?.by ?? null, confirmedAt: pub.rows[0]?.at ?? null }
   const pending = approval.latest?.status === 'pending' ? approval.latest : null
   const sub = pending ? (await pool.query('select submitted_by from approvals where id = $1', [pending.id])).rows[0]?.submitted_by ?? null : null
   const canDecideNow = Boolean(pending) && canWrite(user.role) && canDecide({ userId: user.id, role: user.role, reviewerId: pending?.reviewer_id ?? detail.card.reviewer_id, submittedBy: sub }) === null
-  return { ok: true, detail: { ...detail, approval, assets, approvalRequired: brand.rows[0]?.approval_required ?? true, canDecide: canDecideNow } }
+  return { ok: true, detail: { ...detail, approval, assets, approvalRequired: brand.rows[0]?.approval_required ?? true, canDecide: canDecideNow, publication } }
+}
+
+// ---------- publicação (manual / assistida) ----------
+// O sistema NÃO publica sozinho: agenda por dentro, lembra (alerta "Hora de publicar") e registra a confirmação de uma pessoa com o endereço.
+// O método "API" fica reservado até haver prova de viabilidade em conta de teste autorizada (docs/VIABILIDADE-PUBLICACAO.md).
+export async function setPublicationMethodAction(id: string, method: string): Promise<ActionResult> {
+  const g = await writerOrError()
+  if (!g.ok) return fail(g.error)
+  if (!isUuid(id) || !(await rowAllowed(g.user, 'posts', id))) return fail(NO_BRAND_ACCESS)
+  if (method === 'api') return fail('A publicação por API ainda não está habilitada: depende de uma prova de viabilidade com conta de teste autorizada.')
+  if (method !== 'manual' && method !== 'assistido') return fail('Método inválido.')
+  await pool.query(`update posts set publication_method = $2, updated_by = $3, updated_at = now() where id = $1`, [id, method, g.user.id])
+  await audit('publicacao_metodo', { userId: g.user.id, ip: await clientIp(), target: id, meta: { metodo: method } })
+  revalidatePath('/producao')
+  return { ok: true }
+}
+
+export async function confirmPublicationAction(id: string, url: string, revision: number): Promise<ActionResult<{ revision: number; linked: boolean }>> {
+  const g = await writerOrError()
+  if (!g.ok) return fail(g.error)
+  if (!isUuid(id) || !(await rowAllowed(g.user, 'posts', id))) return fail(NO_BRAND_ACCESS)
+  const v = validatePublishedUrl(url)
+  if (!v.ok) return fail(v.error)
+  const p = await post(id)
+  if (!p) return fail('Este conteúdo não existe mais.', { conflict: true })
+  if (p.stage !== 'aprovado' && p.stage !== 'agendado') return fail('Só conteúdo Aprovado ou Agendado pode ter a publicação confirmada.')
+  // Passa pelas mesmas regras de sempre (aprovação válida, revisão farmacêutica, reconfirmação de campanha); só então grava o endereço.
+  const r = await changeStage({ postId: id, to: 'publicado', actorId: g.user.id, revision, confirmPublish: true, note: 'Publicação confirmada com o endereço informado.' })
+  if (!r.ok) return fail(r.error, { conflict: r.conflict })
+  await pool.query(`update posts set published_url = $2, published_confirmed_by = $3, published_confirmed_at = now() where id = $1`, [id, v.url, g.user.id])
+  // Se o endereço é exatamente o de uma publicação já coletada e ainda sem vínculo, o vínculo é feito (a pessoa informou o endereço; fica como "manual").
+  const want = normalizePermalink(v.url)
+  const cands = (await pool.query(`select id, permalink from external_publications where brand_id = $1 and content_id is null and permalink is not null`, [p.brand_id])).rows as { id: string; permalink: string }[]
+  const hit = cands.filter((c) => normalizePermalink(c.permalink) === want)
+  let linked = false
+  if (hit.length === 1) {
+    linked = (await pool.query(`update external_publications set content_id = $2, link_method = 'manual', linked_by = $3, linked_at = now() where id = $1 and content_id is null`, [hit[0].id, id, g.user.id])).rowCount === 1
+  }
+  await audit('publicacao_confirmada', { userId: g.user.id, ip: await clientIp(), target: id, meta: { vinculada: linked } })
+  revalidatePath('/producao'); revalidatePath('/resultados/vinculos')
+  return { ok: true, revision: r.revision, linked }
 }
 
 // ---------- campos de produção ----------

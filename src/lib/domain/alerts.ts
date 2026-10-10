@@ -10,6 +10,7 @@ export const ALERT_TYPES = {
   integration_stale: 'Dados do Windsor desatualizados',
   collect_failed: 'Falha na coleta',
   target_pace: 'Meta fora do ritmo',
+  publish_due: 'Hora de publicar',
 } as const
 export type AlertType = keyof typeof ALERT_TYPES
 export const isAlertType = (v: unknown): v is AlertType => typeof v === 'string' && Object.hasOwn(ALERT_TYPES, v)

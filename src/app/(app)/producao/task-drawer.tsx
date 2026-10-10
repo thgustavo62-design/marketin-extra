@@ -8,7 +8,8 @@ import type { FullDetail } from './actions'
 import { linkAssetAction, listPickerAction, unlinkAssetAction } from './biblioteca/actions'
 import { DECISION_LABELS, formatBytes, type Decision } from '@/lib/domain'
 import {
-  addChecklistAction, addCommentAction, decideApprovalAction, deleteChecklistAction, getTaskDetailAction, moveCardAction, toggleChecklistAction, updateTaskAction,
+  addChecklistAction, addCommentAction, confirmPublicationAction, decideApprovalAction, deleteChecklistAction, getTaskDetailAction, moveCardAction, setPublicationMethodAction,
+  toggleChecklistAction, updateTaskAction,
 } from './actions'
 
 const fmtTime = (iso: string) => new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })
@@ -22,6 +23,7 @@ export function TaskDrawer({ cardId, canEdit, onClose, onChanged }: { cardId: st
   const [item, setItem] = useState('')
   const [comment, setComment] = useState('')
   const [reason, setReason] = useState('')
+  const [pubUrl, setPubUrl] = useState('')
   const [picker, setPicker] = useState<{ open: boolean; q: string; items: { id: string; title: string; kind: 'file' | 'link'; mime_type: string | null; version_number: number }[] }>({ open: false, q: '', items: [] })
   const upRef = useRef<HTMLInputElement>(null)
   const [f, setF] = useState({ assigned_to: '', reviewer_id: '', priority: 'normal', due_at: '', blocked_reason: '', post_date: '' })
@@ -89,6 +91,34 @@ export function TaskDrawer({ cardId, canEdit, onClose, onChanged }: { cardId: st
               }}>
               {STAGE_ORDER.map((s) => <option key={s} value={s}>{STAGES[s]}</option>)}
             </select>
+          </section>
+
+          <section data-section="publicacao">
+            <h4>Publicação <small className="muted">o sistema não publica sozinho</small></h4>
+            <label htmlFor="pub-method">Como será publicado</label>
+            <select id="pub-method" value={detail.publication.method} disabled={!canEdit || busy} onChange={(e) => run(() => setPublicationMethodAction(c.id, e.target.value), 'Método de publicação salvo.')}>
+              <option value="manual">Manual — alguém publica na rede e confirma aqui</option>
+              <option value="assistido">Assistido — agenda e lembrete; alguém publica e confirma</option>
+              <option value="api" disabled>API — indisponível (depende de prova de viabilidade)</option>
+            </select>
+            {c.stage === 'publicado' ? (
+              <p className="form-ok">
+                Publicação confirmada{detail.publication.confirmedByName ? ` por ${detail.publication.confirmedByName}` : ''}{detail.publication.confirmedAt ? ` em ${fmtTime(detail.publication.confirmedAt)}` : ''}.{' '}
+                {detail.publication.url ? <a href={detail.publication.url} target="_blank" rel="noopener noreferrer" className="inline-link">Abrir publicação</a> : 'Sem endereço registrado.'}
+              </p>
+            ) : (c.stage === 'aprovado' || c.stage === 'agendado') && canEdit ? (
+              <>
+                <label htmlFor="pub-url">Endereço da publicação (depois de publicar na rede)</label>
+                <input id="pub-url" type="text" inputMode="url" value={pubUrl} onChange={(e) => setPubUrl(e.target.value)} placeholder="https://www.instagram.com/p/…" />
+                <div className="form-actions">
+                  <button type="button" className="primary" disabled={busy} onClick={async () => {
+                    if (!window.confirm('Confirmar que este conteúdo foi publicado de verdade na rede? Agendar não é publicar.')) return
+                    if (await run(() => confirmPublicationAction(c.id, pubUrl, c.revision), 'Publicação confirmada.')) setPubUrl('')
+                  }}>Confirmar publicação</button>
+                </div>
+                <p className="muted">O endereço permite ligar a publicação às métricas coletadas. Sem aprovação válida (quando a filial exige), a confirmação é recusada.</p>
+              </>
+            ) : <p className="muted">A confirmação fica disponível quando o conteúdo está Aprovado ou Agendado.</p>}
           </section>
 
           <section>

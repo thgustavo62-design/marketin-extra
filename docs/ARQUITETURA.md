@@ -12,6 +12,7 @@ Next.js (App Router) + TypeScript + Supabase (Postgres, só pelo servidor). Regr
 | Campanhas recorrentes | `src/lib/domain/recurrence.ts`, `src/lib/campaigns/generate.ts` | cálculo puro das ocorrências (testado) e motor de geração idempotente | db, domínio |
 | Métricas e metas | `src/lib/domain/publication-metrics.ts`, `targets.ts`, `src/lib/publications/collect.ts`, `src/lib/targets/realized.ts` | cálculos puros (N/D, medianas, maturidade, sugestão de vínculo, progresso de metas) · coleta manual para o banco · realizado das metas (sistema → Windsor → histórico) | db, domínio, windsor |
 | Alertas e relatórios | `src/lib/domain/alerts.ts`, `reports.ts`, `src/lib/alerts/sync.ts`, `src/lib/reports/*` | regras de alerta e períodos (puros) · reavaliação idempotente · montagem do retrato → blocos → HTML/CSV/PDF | db, domínio, targets |
+| Links e referências | `src/lib/domain/links.ts`, `src/app/(app)/gestao/{links,referencias}`, `api/links/[id]/qr` | validação estática de destino, UTM, URL de publicação (puros) · QR com a lib `qrcode` | domínio, db |
 | Regras de acesso | `src/lib/perms.ts`, `src/lib/integrations.ts` | perfis, acesso por filial, identificação das contas do Windsor | domínio |
 | Banco | `src/lib/db.ts` | pool único, com limites de tempo | — |
 | Dados (leitura) | `src/lib/data/*` (importe de `@/lib/data`) | consultas por assunto: `brands`, `posts`, `campaigns`, `knowledge`, `users`, `integrations`, `dashboard` | db, domínio |
@@ -31,7 +32,7 @@ Regra: **telas não escrevem SQL** (usam `@/lib/data`); **cálculo não fica na 
    aprovacoes/ · solicitacoes/ · biblioteca/   (cada uma com page + actions)
 (app)/campanhas/             lista · modelos/ (campanhas recorrentes: page, [id], novo, actions)
 (app)/resultados/            page = Insights (Meta, via Windsor) · instagram · meta-ads · publicacoes (manual) · vinculos · metas
-(app)/gestao/                base · unidades
+(app)/gestao/                base · unidades · links · referencias
 (app)/alertas/               central de alertas (a reavaliação roda no sino do layout)
 (app)/configuracoes/         layout com abas escuras: usuarios · fluxo · integracoes · auditoria · conta
 api/export/                  conteudos.csv · insights.csv
@@ -59,6 +60,8 @@ api/media/                   POST envio de arquivo · [id] GET download autoriza
 **Alertas** — `syncAlerts` é a única que escreve em `notification_events`: faz upsert por `dedupe_key` e marca `resolved_at` no que não foi visto na rodada. `maybeSyncAlerts` usa `alert_sync_state` como trava (2 min). Novo tipo de alerta: acrescente em `ALERT_TYPES`, na CHECK da tabela (migração nova) e uma consulta em `sync.ts`; todo parâmetro de data com soma precisa de cast (`$2::int`).
 
 **Relatórios** — `buildReport` só lê o banco e devolve um retrato JSON (gravado em `reports.snapshot`). `snapshotToBlocks` decide o conteúdo uma vez; HTML (`ReportView`), CSV e PDF (pdf-lib, fontes padrão: texto passa por `pdfSafe`) renderizam os mesmos blocos. Rotas de download usam `rowAllowed(user, 'reports', id)` → 404 sem acesso. Novo tipo de relatório: dados em `build.ts`, blocos em `blocks.ts`, tipo na CHECK de `reports.type`.
+
+**Links** — `validateDestination` nunca abre a URL (sem SSRF); `buildFinalUrl` é a única que monta o link; QR só de link `aprovado` e aprovado por outra pessoa (`canApproveLink`). **Publicação** — `confirmPublicationAction` passa por `changeStage` (mesmas regras de aprovação) antes de gravar `published_url`; método `api` é recusado até existir prova de viabilidade.
 
 **Arquivos** — envio só por `POST /api/media` (limite de 4 MB por causa do corpo de requisição da Vercel; tipo conferido pelos primeiros bytes) e leitura por `/api/media/[id]`, que confere a filial. O armazenamento é `getStorage()` (hoje Postgres, `media_blobs`); para outro serviço, implemente a interface `StorageProvider` em `src/lib/storage`.
 

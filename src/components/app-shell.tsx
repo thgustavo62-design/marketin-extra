@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
   BarChart3, Bell, BookOpen, ClipboardCheck, ClipboardList, Columns3, CalendarDays, Camera, ChevronLeft, ChevronRight, Clapperboard, FileBarChart, FileText, Flag, LayoutDashboard,
-  FolderOpen, Inbox, Link2, LogOut, Megaphone, Menu, Repeat, Settings, Sparkles, Store, Target, X,
+  FolderOpen, Inbox, Lightbulb, Link2, LogOut, Megaphone, Menu, QrCode, Repeat, Settings, Sparkles, Store, Target, X,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -51,6 +51,8 @@ const GROUPS: Group[] = [
     items: [
       { href: '/gestao/base', label: 'Base de informações', icon: BookOpen },
       { href: '/gestao/unidades', label: 'Unidades', icon: Store },
+      { href: '/gestao/links', label: 'Links e QR Codes', icon: QrCode },
+      { href: '/gestao/referencias', label: 'Referências', icon: Lightbulb },
     ],
   },
   { title: 'Sistema', items: [{ href: '/configuracoes', label: 'Configurações', icon: Settings }] },
