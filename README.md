@@ -14,7 +14,7 @@ Autenticação própria (usuário + senha, sessão em cookie HttpOnly). Camadas,
 ```bash
 npm install
 cp .env.example .env        # preencha os valores (veja "Variáveis de ambiente")
-npm run db:migrate          # aplica db/migrations/*.sql (001 a 009)
+npm run db:migrate          # aplica db/migrations/*.sql (001 a 010)
 INITIAL_ADMIN_USER=Gustavo INITIAL_ADMIN_PASSWORD='...' npm run db:seed-admin   # só na 1ª vez
 npm run dev
 ```
@@ -68,7 +68,7 @@ src/app/(app)/
   planejamento/             calendario · conteudos (+novo, [id]) · reels · gerar
   producao/                 quadro Kanban de produção (cartões, detalhe, checklist, comentários, histórico, anexos e aprovação)
     aprovacoes/ · solicitacoes/ · biblioteca/   fila de aprovações · pedidos de peças que viram conteúdo · biblioteca de mídias com versões
-  campanhas/
+  campanhas/                lista de campanhas · modelos/ (campanhas recorrentes)
   resultados/               page = Insights (Meta via Windsor) · instagram · meta-ads · publicacoes (manual)
   gestao/                   base (base de informações) · unidades (lojas, opcional)
   configuracoes/            abas escuras: usuarios · fluxo (política de aprovação) · integracoes · auditoria · conta
@@ -80,6 +80,7 @@ src/app/(app)/
 - **Biblioteca de mídias** (`/producao/biblioteca`): artes e PDFs até 4 MB guardados no banco (privados, por filial) e links para vídeos grandes; várias versões por peça, versão final, etiquetas, "aprovada para reutilização" e onde cada peça está em uso. O armazenamento fica atrás de uma interface (`src/lib/storage`) para trocar por outro serviço sem mexer nas telas.
 - **Aprovações** (`/producao/aprovacoes` e o detalhe do cartão): enviar para aprovação congela a versão; o revisor indicado ou um administrador aprova, pede ajustes ou reprova (com motivo); histórico completo. A política é por filial em Configurações › Fluxo de aprovação.
 - **Solicitações** (`/producao/solicitacoes`): briefing de peça com tipo, prioridade e prazo. Pedido de oferta só vira conteúdo com preço e validade preenchidos, dentro da validade e **confirmados por uma pessoa**; mexer na oferta tira a confirmação. A conversão cria o cartão em Briefing com o briefing nos comentários.
+- **Campanhas recorrentes** (`/campanhas/modelos`): modelo por filial/unidade com recorrência (semanal, a cada 15 dias, mensal ou datas específicas), duração, vigência, antecedência, prazos D-n, entregas (formato × quantidade × dia de publicação), responsável/aprovador padrão e checklist. **Geração manual** (um clique): cria a campanha real, os cartões em Briefing e os marcos de prazo de cada ocorrência da janela. Idempotente — chave `modelo|filial|unidade|início` única no banco, com o modelo travado durante a geração (dois cliques simultâneos não duplicam). Editar o modelo só vale para as próximas; o que já foi gerado não muda. **Nunca copia preço, oferta ou validade**: o cartão gerado só segue para aprovação depois que uma pessoa reconfirma produtos, preços, validade e estoque, e a página do modelo avisa sobre informações da base e ofertas vencidas. Cancelar uma ocorrência cancela os cartões em preparo e a ocorrência não volta. Agendador automático (cron) fica para depois de validar a geração manual em uso real.
 - **Insights** (`/resultados`): visualizações, alcance, interações, cliques no link do perfil, contas engajadas e seguidores (Instagram) + investimento, conversas iniciadas, cliques, impressões, custo por conversa e CPM (Meta Ads). Total, variação contra o período anterior do mesmo tamanho, gráfico diário, 7/28/90 dias e CSV. Só mostra o que o Windsor entrega: sem visitas ao perfil, sem Facebook orgânico; "novos seguidores" cobre no máximo 30 dias (limite da API do Instagram).
 - **Usuários** (só administrador): nome, e-mail, papel editável na linha, filiais com acesso e situação; cria, edita, desativa (encerra as sessões) e redefine senha. Nunca fica sem administrador ativo.
 - **Integrações**: cada conta do Windsor é **identificada pelo nome** usando os apelidos de cada filial (`brands.aliases`, editáveis; ex.: "minas farma", "extra farma", "farma e farma", "drogaria melhor preço"). Associação manual (`integration_accounts`) só para exceções e vence o nome. Nome que casa com as duas filiais não é adivinhado; conta não identificada só aparece em "Todas as filiais", sinalizada.
@@ -94,5 +95,6 @@ src/app/(app)/
 - [x] **Fase 0 — Auditoria** do plano de evolução (`docs/AUDITORIA-INICIAL.md`).
 - [x] **Fase 1 — Central de produção**: quadro Kanban, tarefas, histórico, integração com o calendário.
 - [x] **Fase 2 — Mídias, solicitações e aprovações**: biblioteca com versões, anexos nos cartões, fila e política de aprovação, solicitações com confirmação de oferta.
+- [x] **Fase 3 — Campanhas recorrentes**: modelos, geração manual idempotente, tarefas e checklist, reconfirmação obrigatória, aviso de dados vencidos.
 - [x] **Resultados (Windsor)**: Insights no estilo da Meta, Instagram (publicações e público) e Meta Ads, separados por filial.
-- [ ] Próximas (plano `EXTRA_MARKETING_PLANO_COMPLETO_DE_EVOLUCAO.md`): Fase 3 campanhas recorrentes · Fase 4 métricas por publicação e metas · Fase 5 relatórios e alertas · Fase 6 IA · Fase 7 links, concorrentes e publicação.
+- [ ] Próximas (plano `EXTRA_MARKETING_PLANO_COMPLETO_DE_EVOLUCAO.md`): Fase 4 métricas por publicação e metas · Fase 5 relatórios e alertas · Fase 6 IA · Fase 7 links, concorrentes e publicação.

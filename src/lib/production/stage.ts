@@ -3,6 +3,7 @@
 import { hasValidApproval, submitForApproval, withdrawPending } from '../approvals/service'
 import { withTx } from '../db'
 import { moveBlockedReason, needsPublishConfirmation, stageBlockedReason, type Pillar, type Stage } from '../domain'
+import { reconfirmBlockedReason } from '../domain'
 import { needsValidApproval } from '../domain'
 
 export type StageResult =
@@ -17,15 +18,20 @@ export async function changeStage(opts: {
   const { postId, to, actorId } = opts
   return withTx(async (db): Promise<StageResult> => {
     const p = (await db.query(
-      `select p.stage, p.pillar, p.pharma_review, p.blocked_reason, p.revision, b.approval_required
-         from posts p join brands b on b.id = p.brand_id where p.id = $1 for update of p`, [postId])).rows[0] as
-      { stage: Stage; pillar: Pillar; pharma_review: boolean; blocked_reason: string | null; revision: number; approval_required: boolean } | undefined
+      `select p.stage, p.pillar, p.pharma_review, p.blocked_reason, p.revision, b.approval_required,
+              ci.status as instance_status, ci.reconfirmed_at::text as instance_reconfirmed_at
+         from posts p join brands b on b.id = p.brand_id left join campaign_instances ci on ci.id = p.campaign_instance_id
+        where p.id = $1 for update of p`, [postId])).rows[0] as
+      { stage: Stage; pillar: Pillar; pharma_review: boolean; blocked_reason: string | null; revision: number; approval_required: boolean; instance_status: string | null; instance_reconfirmed_at: string | null } | undefined
     if (!p) return { ok: false, error: 'Este conteúdo não existe mais.', conflict: true }
     if (opts.revision !== undefined && p.revision !== opts.revision) return { ok: false, error: CONFLICT, conflict: true }
     if (p.stage === to) return { ok: true, revision: p.revision }
 
     const why = stageBlockedReason(p.pillar, to, p.pharma_review) ?? moveBlockedReason(p.stage, to, p.blocked_reason)
     if (why) return { ok: false, error: why }
+    // Campanha gerada por modelo recorrente: preços, validade e estoque precisam ser reconfirmados por uma pessoa antes de seguir.
+    const reconf = reconfirmBlockedReason(to, p.instance_status ? { status: p.instance_status, reconfirmed_at: p.instance_reconfirmed_at } : null)
+    if (reconf) return { ok: false, error: reconf }
     if (needsPublishConfirmation(to) && !opts.confirmPublish) return { ok: false, error: 'Confirme que a publicação foi realizada.', needsConfirm: true }
 
     // Aprovado / agendado / publicado só com aprovação registrada e ainda válida (se a filial exige).

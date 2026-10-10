@@ -9,6 +9,7 @@ Next.js (App Router) + TypeScript + Supabase (Postgres, só pelo servidor). Regr
 | Domínio puro | `src/lib/domain/` | regras sem banco nem rede: rótulos, datas, indicadores, CSV, Reels, gerador | só ele mesmo |
 | Insights puros | `src/lib/insights/calc.ts` | períodos, variação, séries diárias, números compactos | domínio |
 | Serviços de fluxo | `src/lib/production/stage.ts`, `src/lib/approvals/*`, `src/lib/storage/` | mudança de etapa (única entrada), aprovações com versão congelada, armazenamento de arquivos | db, domínio |
+| Campanhas recorrentes | `src/lib/domain/recurrence.ts`, `src/lib/campaigns/generate.ts` | cálculo puro das ocorrências (testado) e motor de geração idempotente | db, domínio |
 | Regras de acesso | `src/lib/perms.ts`, `src/lib/integrations.ts` | perfis, acesso por filial, identificação das contas do Windsor | domínio |
 | Banco | `src/lib/db.ts` | pool único, com limites de tempo | — |
 | Dados (leitura) | `src/lib/data/*` (importe de `@/lib/data`) | consultas por assunto: `brands`, `posts`, `campaigns`, `knowledge`, `users`, `integrations`, `dashboard` | db, domínio |
@@ -26,7 +27,7 @@ Regra: **telas não escrevem SQL** (usam `@/lib/data`); **cálculo não fica na 
 (app)/planejamento/          calendario · conteudos (+novo, [id]) · reels · gerar
 (app)/producao/              quadro Kanban (board.tsx, task-drawer.tsx, actions.ts) — lê `posts` via `src/lib/data/production.ts`
    aprovacoes/ · solicitacoes/ · biblioteca/   (cada uma com page + actions)
-(app)/campanhas/
+(app)/campanhas/             lista · modelos/ (campanhas recorrentes: page, [id], novo, actions)
 (app)/resultados/            page = Insights (Meta, via Windsor) · instagram · meta-ads · publicacoes (manual)
 (app)/gestao/                base · unidades
 (app)/configuracoes/         layout com abas escuras: usuarios · fluxo · integracoes · auditoria · conta
@@ -47,6 +48,8 @@ api/media/                   POST envio de arquivo · [id] GET download autoriza
 **Status de conteúdo** — a única fonte é `posts.stage` (9 etapas em `domain/labels.ts`). **Toda mudança de etapa passa por `changeStage` (`src/lib/production/stage.ts`)**: revisão farmacêutica, bloqueio, confirmação de "Publicado", aprovação exigida pela filial, checagem de `revision` e `post_status_events`. Nunca faça `update posts set stage` direto em tela nova.
 
 **Editou conteúdo ou anexo** — chame `invalidateIfChanged(postId, userId, motivo)` (`src/lib/approvals/service.ts`) depois de gravar: se a versão aprovada/pendente não confere mais, a aprovação é invalidada e o cartão volta para revisão.
+
+**Campanhas recorrentes** — as ocorrências saem de `occurrencesBetween` (datas ISO, sem fuso/horário de verão); a geração é `generateInstances` (trava o modelo, `on conflict do nothing` na `generation_key`). Instância é independente do modelo. Cartão gerado só passa de Briefing/Em produção/Em revisão após `reconfirmed_at` (regra `reconfirmBlockedReason`, aplicada em `changeStage`). Para ligar um agendador, chame `generateInstances(id, actor, hoje, 'job')` por modelo ativo — a idempotência já está garantida.
 
 **Arquivos** — envio só por `POST /api/media` (limite de 4 MB por causa do corpo de requisição da Vercel; tipo conferido pelos primeiros bytes) e leitura por `/api/media/[id]`, que confere a filial. O armazenamento é `getStorage()` (hoje Postgres, `media_blobs`); para outro serviço, implemente a interface `StorageProvider` em `src/lib/storage`.
 

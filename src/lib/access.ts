@@ -3,8 +3,8 @@ import { pool } from './db'
 import { brandAllowed } from './perms'
 import type { SessionUser } from './session'
 
-type Table = 'posts' | 'campaigns' | 'knowledge' | 'branches' | 'media_assets' | 'content_requests' | 'approvals'
-const TABLES: Table[] = ['posts', 'campaigns', 'knowledge', 'branches', 'media_assets', 'content_requests', 'approvals'] // lista fechada: o nome vai direto no SQL
+type Table = 'posts' | 'campaigns' | 'knowledge' | 'branches' | 'media_assets' | 'content_requests' | 'approvals' | 'campaign_templates' | 'campaign_instances'
+const TABLES: Table[] = ['posts', 'campaigns', 'knowledge', 'branches', 'media_assets', 'content_requests', 'approvals', 'campaign_templates', 'campaign_instances'] // lista fechada: o nome vai direto no SQL
 
 // Registro inexistente → false (a ação responde "não encontrado" sem revelar nada).
 export async function rowAllowed(user: Pick<SessionUser, 'role' | 'brandIds'>, table: Table, id: string): Promise<boolean> {

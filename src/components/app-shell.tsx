@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
   BarChart3, BookOpen, ClipboardCheck, ClipboardList, Columns3, CalendarDays, Camera, ChevronLeft, ChevronRight, Clapperboard, FileText, LayoutDashboard,
-  FolderOpen, Inbox, LogOut, Megaphone, Menu, Settings, Sparkles, Store, Target, X,
+  FolderOpen, Inbox, LogOut, Megaphone, Menu, Repeat, Settings, Sparkles, Store, Target, X,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -21,7 +21,8 @@ const GROUPS: Group[] = [
       { href: '/planejamento/conteudos', label: 'Conteúdos', icon: FileText },
       { href: '/planejamento/reels', label: 'Estúdio de Reels', icon: Clapperboard },
       { href: '/planejamento/gerar', label: 'Gerar semana', icon: Sparkles, write: true },
-      { href: '/campanhas', label: 'Campanhas', icon: Megaphone },
+      { href: '/campanhas', label: 'Campanhas', icon: Megaphone, exact: true },
+      { href: '/campanhas/modelos', label: 'Campanhas recorrentes', icon: Repeat },
     ],
   },
   {

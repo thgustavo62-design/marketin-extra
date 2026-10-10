@@ -530,3 +530,7 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .offer legend { font-size: 12px; padding: 0 6px; }
 .request[data-status="cancelada"], .request[data-status="concluida"] { opacity: .7; }
 .policy-row { padding: 8px 0; }
+.occurrences { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; font-size: 12.5px; }
+.occurrences li[data-state="ready"] { color: var(--ok, #1a7f37); }
+.check-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 6px; margin: 8px 0; }
+.deliverable-row { margin-bottom: 6px; }
