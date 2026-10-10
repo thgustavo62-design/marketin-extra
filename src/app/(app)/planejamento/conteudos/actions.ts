@@ -128,6 +128,8 @@ export async function deletePostAction(fd: FormData) {
   const id = str(fd, 'id')
   if (!isUuid(id)) redirect('/')
   if (!(await rowAllowed(user, 'posts', id))) redirect('/?sem-permissao=1')
+  // Publicações reais vinculadas ficam guardadas (com as métricas); só perdem o vínculo.
+  await pool.query(`update external_publications set content_id = null, link_method = null, linked_by = null, linked_at = null where content_id = $1`, [id])
   const r = await pool.query(`delete from posts where id = $1 returning to_char(post_date, 'YYYY-MM') as m`, [id])
   await audit('conteudo_excluido', { userId: user.id, ip: await clientIp(), target: id })
   redirect(`/planejamento/calendario?m=${r.rows[0]?.m ?? ''}`)

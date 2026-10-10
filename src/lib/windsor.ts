@@ -35,6 +35,7 @@ export async function windsorQuery<T extends Record<string, unknown>>(
   connector: 'instagram' | 'facebook' | 'all',
   fields: string[],
   period: Period,
+  opts: { timeoutMs?: number; fresh?: boolean } = {},
 ): Promise<WindsorResult<T>> {
   const key = process.env.WINDSOR_API_KEY
   if (!key) return { status: 'not_configured' }
@@ -47,7 +48,7 @@ export async function windsorQuery<T extends Record<string, unknown>>(
   u.searchParams.set('fields', fields.join(','))
   u.searchParams.set('api_key', key)
   try {
-    const res = await fetch(u, { next: { revalidate: 300 }, signal: AbortSignal.timeout(12_000) })
+    const res = await fetch(u, { ...(opts.fresh ? { cache: 'no-store' as const } : { next: { revalidate: 300 } }), signal: AbortSignal.timeout(opts.timeoutMs ?? 12_000) })
     return classifyWindsorPayload<T>(await res.json())
   } catch (e) {
     // Nunca incluir a URL (tem a chave) na mensagem.

@@ -534,3 +534,13 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .occurrences li[data-state="ready"] { color: var(--ok, #1a7f37); }
 .check-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 6px; margin: 8px 0; }
 .deliverable-row { margin-bottom: 6px; }
+.dark-note { color: #8aa3bc; font-size: 12px; margin: 10px 2px 0; line-height: 1.5; }
+.link-cell { min-width: 260px; }
+.link-cell select { max-width: 240px; }
+.suggest { background: rgba(255, 140, 0, .12); border-radius: 8px; padding: 6px 8px; margin-bottom: 6px; }
+.goal-numbers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0; }
+.goal-numbers span { display: grid; }
+.goal-numbers small { color: var(--muted, #667); }
+.goal-numbers b { font-size: 18px; }
+.bar { height: 8px; border-radius: 6px; background: var(--box, #e8edf2); overflow: hidden; margin-bottom: 6px; }
+.bar i { display: block; height: 100%; background: var(--accent, #f28c00); }
