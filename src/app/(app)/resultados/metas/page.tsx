@@ -57,7 +57,7 @@ async function Goals({ targets, month, canEdit }: { targets: Target[]; month: st
               <span><small>Realizado{st.state === 'current' ? ` (dia ${st.elapsed} de ${st.days})` : ''}</small><b>{formatValue(def, cur.value)}</b></span>
               <span><small>{def.direction === 'atMost' ? 'Do teto' : 'Da meta'}</small><b>{p.pct === null ? 'N/D' : `${p.pct.toFixed(0)}%`}</b></span>
             </p>
-            {p.pct !== null && <div className="bar"><i style={{ width: `${Math.min(100, p.pct)}%` }} /></div>}
+            {p.pct !== null && <div className="meter"><i style={{ width: `${Math.min(100, p.pct)}%` }} /></div>}
             <p><SourceTag r={cur} /></p>
             <p className="muted">
               Mês anterior ({monthLabel(prev)}): <b>{formatValue(def, prv.value)}</b>{delta === null ? '' : ` (${delta >= 0 ? '+' : '−'}${Math.abs(delta).toFixed(1).replace('.', ',')}%)`}

@@ -14,7 +14,7 @@ Autenticação própria (usuário + senha, sessão em cookie HttpOnly). Camadas,
 ```bash
 npm install
 cp .env.example .env        # preencha os valores (veja "Variáveis de ambiente")
-npm run db:migrate          # aplica db/migrations/*.sql (001 a 014)
+npm run db:migrate          # aplica db/migrations/*.sql (001 a 015)
 INITIAL_ADMIN_USER=Gustavo INITIAL_ADMIN_PASSWORD='...' npm run db:seed-admin   # só na 1ª vez
 npm run dev
 ```
@@ -71,6 +71,7 @@ src/app/(app)/
   campanhas/                lista de campanhas · modelos/ (campanhas recorrentes)
   resultados/               page = Insights (Meta via Windsor) · instagram · meta-ads · publicacoes (manual) · vinculos (publicações reais) · metas · relatorios
   alertas/                  central de alertas (sino no cabeçalho)
+  inteligencia/             Central de Inteligência: achados · qualidade dos dados · processo · explorar (grafo de objetos)
   gestao/                   base (base de informações) · unidades (lojas, opcional) · links (UTM + QR) · referencias (concorrentes e inspirações)
   configuracoes/            abas escuras: usuarios · fluxo (política de aprovação) · integracoes · auditoria · conta
 ```
@@ -90,6 +91,7 @@ src/app/(app)/
 - **Links e QR Codes** (`/gestao/links`): URL com UTM (origem, meio, campanha, termo, conteúdo) por filial/unidade/campanha. O destino é validado de forma **estática** (https, domínio público, sem usuário/senha, sem IP nem porta; o servidor não abre o endereço, para evitar SSRF); UTM antigo no destino é substituído e avisado; valores viram minúsculas sem acento. **QR Code só depois de aprovado** por outra pessoa (ou administrador), que confirma ter aberto o destino; PNG e SVG (conferidos por leitura do código). O sistema **não mede cliques nem atribui vendas** — use o analytics do site de destino filtrando pelos UTM. CSV no mesmo recorte da tela.
 - **Referências e inspirações** (`/gestao/referencias`): cadastro **manual** de contas públicas de referência (rede, relevância, categoria, região) e biblioteca de ideias, formatos, datas sazonais e exemplos (fonte pública, etiquetas, vínculo opcional a campanha, conteúdo/Reels e arquivo da biblioteca). Sem raspagem, sem credenciais de terceiros, sem métricas privadas.
 - **Publicação**: o sistema **não publica sozinho**. Cada conteúdo tem método *manual* ou *assistido* (o método *API* existe mas fica desabilitado); a data/hora do conteúdo é o agendamento interno; o alerta **"Hora de publicar"** lembra; a pessoa publica na rede e **confirma no cartão com o endereço da publicação** (https de Instagram/Facebook/TikTok/YouTube) — passa pelas regras de aprovação de sempre e, se o endereço bater com uma publicação já coletada, o vínculo com as métricas é feito. Prova de viabilidade e bloqueios em `docs/VIABILIDADE-PUBLICACAO.md`.
+- **Central de Inteligência** (`/inteligencia`) — inspirada na ideia de *ontologia* do Palantir (objetos, vínculos e ações) e em ferramentas como Iconosquare, Metricool e Sprout (ver `docs/IDEIAS-BENCHMARK.md`). **Sem IA generativa**: cálculo transparente, por filial, só com dados guardados. Quatro seções: (1) **Achados** — formato, tema (pilar), campanha, dia da semana e período do dia por engajamento, salvamentos por mil, ritmo de publicação e peças fora da curva; cada um com amostra, período, método, limites e **confiança** (teste de permutação sobre a amplitude das medianas, que corrige a escolha do melhor e do pior; sem amostra ou sem diferença real o resultado é *inconclusivo* e a recomendação é coletar mais); (2) **Qualidade dos dados** — nota 0–100 com os itens que mais prejudicam as análises e como melhorar (coleta em dia, vínculo conteúdo↔publicação, métricas completas, amostra, metas, base de informações, responsáveis, arte final); (3) **Processo** — tempo mediano em cada etapa (onde o conteúdo espera), giro e retrabalho das aprovações, pontualidade; (4) **Explorar** — para cada campanha, conteúdo ou publicação, os objetos ligados a ele e a linha do tempo. **Decisões**: cada achado pode ser marcado como "vou aplicar", "concluída" ou "dispensada" (com explicação), com autor e data; se a análise mudar depois, a tela avisa para rever.
 - **Insights** (`/resultados`): visualizações, alcance, interações, cliques no link do perfil, contas engajadas e seguidores (Instagram) + investimento, conversas iniciadas, cliques, impressões, custo por conversa e CPM (Meta Ads). Total, variação contra o período anterior do mesmo tamanho, gráfico diário, 7/28/90 dias e CSV. Só mostra o que o Windsor entrega: sem visitas ao perfil, sem Facebook orgânico; "novos seguidores" cobre no máximo 30 dias (limite da API do Instagram).
 - **Usuários** (só administrador): nome, e-mail, papel editável na linha, filiais com acesso e situação; cria, edita, desativa (encerra as sessões) e redefine senha. Nunca fica sem administrador ativo.
 - **Integrações**: cada conta do Windsor é **identificada pelo nome** usando os apelidos de cada filial (`brands.aliases`, editáveis; ex.: "minas farma", "extra farma", "farma e farma", "drogaria melhor preço"). Associação manual (`integration_accounts`) só para exceções e vence o nome. Nome que casa com as duas filiais não é adivinhado; conta não identificada só aparece em "Todas as filiais", sinalizada.
@@ -108,5 +110,6 @@ src/app/(app)/
 - [x] **Fase 4 — Métricas por publicação e metas**: publicações reais, retratos de métricas, vínculo conferido por pessoa, diagnóstico por mediana, metas mensais e histórico quando o Windsor falha.
 - [x] **Fase 5 — Dashboard executivo, alertas e relatórios**: central de alertas, visões do Dashboard e relatórios HTML/PDF/CSV com acesso por filial.
 - [x] **Fase 7 — Links, referências e publicação (fase segura)**: links UTM/QR com aprovação, referências manuais e publicação manual/assistida com lembrete; publicação por API **não** habilitada (sem prova de viabilidade).
+- [x] **Central de Inteligência**: achados com confiança estatística, qualidade dos dados, mineração do processo, exploração por objeto e registro de decisões.
 - [x] **Resultados (Windsor)**: Insights no estilo da Meta, Instagram (publicações e público) e Meta Ads, separados por filial.
 - [ ] Fase 6 (assistente de IA): dispensada por decisão do responsável. Fase 7 — publicação por API: só após prova de viabilidade em conta de teste autorizada.

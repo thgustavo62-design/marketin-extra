@@ -542,8 +542,8 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .goal-numbers span { display: grid; }
 .goal-numbers small { color: var(--muted, #667); }
 .goal-numbers b { font-size: 18px; }
-.bar { height: 8px; border-radius: 6px; background: var(--box, #e8edf2); overflow: hidden; margin-bottom: 6px; }
-.bar i { display: block; height: 100%; background: var(--accent, #f28c00); }
+.meter { height: 8px; border-radius: 6px; background: var(--box, #e8edf2); overflow: hidden; margin-bottom: 6px; }
+.meter i { display: block; height: 100%; background: var(--orange, #e39a47); }
 .bell { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 999px; background: #fff; border: 1px solid var(--line); color: var(--ink, #0b2545); }
 .bell-count { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #d92d20; color: #fff; font-size: 10.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
 .alert-list { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 10px; }
@@ -563,9 +563,36 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .report-table h3, .report section h3 { margin: 0 0 6px; font-size: 14px; color: var(--title-blue); }
 .report-note { font-size: 12px; margin: 6px 2px 0; }
 .report ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
-.head-tools { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .exec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin: 10px 0; }
 .preview-url { margin: 6px 0; word-break: break-all; }
 .preview-url code { font-size: 12px; background: var(--box); padding: 2px 6px; border-radius: 6px; }
 .qr-box { display: flex; gap: 14px; align-items: center; margin: 8px 0; }
 .qr-box img { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 4px; }
+.finding-badges { margin-bottom: 4px; }
+.finding-statement { font-size: 14px; line-height: 1.5; margin: 6px 0; }
+.finding details { margin: 8px 0; }
+.finding summary { cursor: pointer; font-size: 12.5px; color: var(--title-blue); }
+.finding-evidence, .finding-limits { margin: 6px 0; padding-left: 18px; font-size: 12.5px; display: grid; gap: 3px; }
+.finding-limits { color: var(--muted); }
+.quality-head { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.quality-score { display: grid; place-items: center; min-width: 120px; padding: 12px 16px; border-radius: 14px; background: #fff; border: 2px solid var(--line); }
+.quality-score strong { font-size: 36px; line-height: 1; }
+.quality-score.tone-ok { border-color: #1a7f37; } .quality-score.tone-warn { border-color: #f28c00; } .quality-score.tone-bad { border-color: #d92d20; }
+.quality-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.quality-list li { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; }
+.quality-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.explore-list, .rel-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.explore-list li { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.timeline { max-width: 900px; }
+.intel-foot { margin-top: 18px; font-size: 12px; }
+.stat-value { word-break: break-all; font-size: 20px; }
+
+.finding .btn { white-space: normal; text-align: left; height: auto; padding-top: 8px; padding-bottom: 8px; line-height: 1.35; }
+.finding .card-actions { align-items: stretch; }
+.exec-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 16px; align-items: start; }
+.exec-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.dark-table.pubs th, .dark-table.pubs td { padding: 9px 7px; }
+.dark-table.pubs { font-size: 12.5px; }
+.link-cell { min-width: 200px; }
+.link-cell select { max-width: 200px; }
+@media (max-width: 700px) { .exec-cards { grid-template-columns: 1fr; } }

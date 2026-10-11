@@ -15,7 +15,7 @@ export async function ExecutiveView({ brands, branchId, today }: { brands: { id:
       <p className="muted">
         Resultados orgânicos e pagos vêm das coletas guardadas (não de leitura ao vivo) e mostram a data. “N/D” significa que o dado não existe — não é zero. Comparações mostram diferença, não causa.
       </p>
-      <div className="cards">
+      <div className="exec-cards">
         {rows.map((r) => {
           const delta = r.pubsPrev > 0 ? ((r.pubsCur - r.pubsPrev) / r.pubsPrev) * 100 : null
           return (

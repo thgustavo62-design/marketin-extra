@@ -5,7 +5,7 @@ import { mediaFormat, type MediaFormat, type PubMetrics } from '../domain'
 export type PublicationRow = {
   id: string; brand_id: string; brand_name: string; branch_id: string | null; account_name: string; external_media_id: string
   permalink: string | null; media_type: string | null; media_product_type: string | null; caption_excerpt: string | null
-  published_at: string | null; published_on: string | null; format: MediaFormat
+  published_at: string | null; published_on: string | null; published_hour: number | null; format: MediaFormat
   content_id: string | null; content_title: string | null; link_method: 'api' | 'manual' | 'verified_match' | null; linked_by_name: string | null
   metrics: PubMetrics | null; collected_at: string | null; collected_on: string | null; data_quality: 'complete' | 'partial' | null
 }
@@ -14,7 +14,7 @@ export type PublicationFilter = { brand?: string; branchId?: string; from?: stri
 
 const SQL = `
   select e.id, e.brand_id, b.name as brand_name, e.branch_id, e.account_name, e.external_media_id, e.permalink, e.media_type, e.media_product_type,
-         e.caption_excerpt, e.published_at::text as published_at, (e.published_at at time zone 'America/Sao_Paulo')::date::text as published_on, e.content_id, p.title as content_title, e.link_method, ul.display_name as linked_by_name,
+         e.caption_excerpt, e.published_at::text as published_at, (e.published_at at time zone 'America/Sao_Paulo')::date::text as published_on, extract(hour from e.published_at at time zone 'America/Sao_Paulo')::int as published_hour, e.content_id, p.title as content_title, e.link_method, ul.display_name as linked_by_name,
          s.collected_at::text as collected_at, s.collected_on::text as collected_on, s.data_quality,
          s.reach, s.views, s.likes, s.comments, s.saves, s.shares, s.reel_interactions
     from external_publications e
@@ -34,7 +34,7 @@ export async function listPublications(f: PublicationFilter, limit = 300): Promi
   return rows.map((r) => ({
     id: r.id, brand_id: r.brand_id, brand_name: r.brand_name, branch_id: r.branch_id, account_name: r.account_name, external_media_id: r.external_media_id,
     permalink: r.permalink, media_type: r.media_type, media_product_type: r.media_product_type, caption_excerpt: r.caption_excerpt,
-    published_at: r.published_at, published_on: r.published_on,
+    published_at: r.published_at, published_on: r.published_on, published_hour: r.published_hour,
     format: mediaFormat(r.media_product_type, r.media_type),
     content_id: r.content_id, content_title: r.content_title, link_method: r.link_method, linked_by_name: r.linked_by_name,
     metrics: r.collected_on ? { reach: r.reach, views: r.views, likes: r.likes, comments: r.comments, saves: r.saves, shares: r.shares, reel_interactions: r.reel_interactions } : null,

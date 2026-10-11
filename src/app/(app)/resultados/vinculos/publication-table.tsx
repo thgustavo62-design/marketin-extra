@@ -42,7 +42,7 @@ export function PublicationTable({ rows, canEdit }: { rows: Row[]; canEdit: bool
   }
 
   return (
-    <div className="dark-table">
+    <div className="dark-table pubs">
       <table>
         <thead>
           <tr>

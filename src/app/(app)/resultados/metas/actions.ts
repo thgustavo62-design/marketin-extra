@@ -1,6 +1,5 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
 import { rowAllowed } from '@/lib/access'
 import { audit, writerOrError } from '@/lib/auth'
 import { pool } from '@/lib/db'
@@ -41,7 +40,6 @@ export async function saveTargetAction(_prev: FormState, fd: FormData): Promise<
     if ((e as { code?: string }).code === '23505') return { error: 'Já existe uma meta deste indicador neste mês e escopo. Exclua a anterior para cadastrar outra.' }
     throw e
   }
-  revalidatePath('/resultados/metas')
   return { ok: 'Meta cadastrada.' }
 }
 
@@ -51,6 +49,5 @@ export async function deleteTargetAction(id: string): Promise<{ ok: true } | { o
   if (!isUuid(id) || !(await rowAllowed(g.user, 'brand_targets', id))) return { ok: false, error: 'Meta não encontrada.' }
   await pool.query(`delete from brand_targets where id = $1`, [id])
   await audit('meta_excluida', { userId: g.user.id, ip: await clientIp(), target: id })
-  revalidatePath('/resultados/metas')
   return { ok: true }
 }
