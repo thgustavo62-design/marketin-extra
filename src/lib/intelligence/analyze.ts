@@ -2,6 +2,7 @@
 // Só usa dados guardados (nada de Windsor ao vivo) e SEMPRE por filial.
 import { lastCollection, listPublications } from '../data'
 import { pool } from '../db'
+import { marketFindings } from './market'
 import {
   FORMATS, PILLARS, STAGES, addDays, bottleneck, compareGroups, coverage, daypartOf, daysBetween, engagementRate, fmtHours, fmtNum, fmtPct, freshnessScore, isMature, median,
   perThousandReach, qualityScore, sampleScore, sortFindings, summarizeDurations, weekdayName, MATURITY_DAYS,
@@ -118,6 +119,9 @@ export async function analyzeBrand(brand: BrandRef, branchId: string | null, tod
       limits: ['São casos individuais: servem de pista, não de regra.'],
     })
   }
+
+  // contexto externo (datas importantes e preços), cruzado com o que já está planejado
+  findings.push(...(await marketFindings(brand, branchId, today)))
 
   // ---------- processo ----------
   const process: Finding[] = []

@@ -62,11 +62,13 @@ export function NewRequest({ brands, branches, defaultBrandId }: { brands: Brand
         </div>
         <fieldset className="offer">
           <legend>Se for oferta (opcional)</legend>
-          <div className="grid-3">
+          <div className="offer-grid">
             <div><label htmlFor="rq-item">Item</label><input id="rq-item" name="offer_item" type="text" maxLength={200} /></div>
             <div><label htmlFor="rq-price">Preço (R$)</label><input id="rq-price" name="offer_price" type="text" inputMode="decimal" /></div>
             <div><label htmlFor="rq-until">Válida até</label><input id="rq-until" name="offer_valid_until" type="date" /></div>
+            <div><label htmlFor="rq-ean">Código de barras (EAN) — opcional</label><input id="rq-ean" name="offer_ean" type="text" inputMode="numeric" /></div>
           </div>
+          <p className="muted">Com o EAN de um medicamento, o sistema confere o preço contra o teto da CMED (PMC) e bloqueia a conversão se estiver acima.</p>
         </fieldset>
       </ActionForm>
     </details>

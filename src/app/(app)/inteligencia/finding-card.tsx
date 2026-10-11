@@ -48,7 +48,7 @@ export function FindingCard({ brandId, finding, decision, canEdit }: { brandId: 
         <p className="muted"><b>Método:</b> {finding.method}</p>
         {finding.limits.length > 0 && <ul className="finding-limits">{finding.limits.map((l, i) => <li key={i}>{l}</li>)}</ul>}
       </details>
-      <div className="card-actions">
+      <div className="finding-actions">
         {finding.action && <Link href={finding.action.href} className="btn">{finding.action.label}</Link>}
       </div>
       {canEdit && (

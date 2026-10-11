@@ -9,6 +9,7 @@ import { isUuid } from '@/lib/form'
 import { brandAllowed, canWrite } from '@/lib/perms'
 import { getScope } from '@/lib/scope'
 import { deletePostAction } from '../actions'
+import { AdCheckPanel } from '@/components/ad-check'
 import { PostForm } from '../post-form'
 
 export default async function EditarConteudo({
@@ -37,6 +38,7 @@ export default async function EditarConteudo({
           <p><FormatBadge format={post.format} /> <StageBadge stage={post.stage} /></p>
           <h3>Legenda</h3><p className="pre">{post.caption || '—'}</p>
           <h3>Roteiro</h3><p className="pre">{post.script || '—'}</p>
+          <AdCheckPanel text={[post.title, post.caption, post.script].join(' · ')} pillar={post.pillar} />
           <p className="muted">Seu perfil é somente leitura.</p>
         </div>
       </>
@@ -53,6 +55,7 @@ export default async function EditarConteudo({
         {sp.salvo && <p className="form-ok" role="status">Salvo.</p>}
         {sp.aviso && <div className="notice" role="alert">{sp.aviso.slice(0, 400)}</div>}
       </header>
+      <AdCheckPanel text={[post.title, post.caption, post.script].join(' · ')} pillar={post.pillar} />
       {/* key = revisão: após salvar, o formulário remonta com os dados novos */}
       <PostForm key={post.revision} brands={brands} branches={branches} campaigns={campaigns} post={post} />
       <form action={deletePostAction} className="danger-zone">

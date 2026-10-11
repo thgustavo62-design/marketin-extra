@@ -35,7 +35,7 @@ Regra: **telas não escrevem SQL** (usam `@/lib/data`); **cálculo não fica na 
 (app)/resultados/            page = Insights (Meta, via Windsor) · instagram · meta-ads · publicacoes (manual) · vinculos · metas
 (app)/gestao/                base · unidades · links · referencias
 (app)/alertas/               central de alertas (a reavaliação roda no sino do layout)
-(app)/inteligencia/          Central de Inteligência (page com abas, finding-card, explorar/[kind]/[id])
+(app)/inteligencia/          Central de Inteligência (page com abas, finding-card, explorar/[kind]/[id], externo/ = mercado e preços CMED)
 (app)/configuracoes/         layout com abas escuras: usuarios · fluxo · integracoes · auditoria · conta
 api/export/                  conteudos.csv · insights.csv
 api/media/                   POST envio de arquivo · [id] GET download autorizado
@@ -66,6 +66,10 @@ api/media/                   POST envio de arquivo · [id] GET download autoriza
 **Links** — `validateDestination` nunca abre a URL (sem SSRF); `buildFinalUrl` é a única que monta o link; QR só de link `aprovado` e aprovado por outra pessoa (`canApproveLink`). **Publicação** — `confirmPublicationAction` passa por `changeStage` (mesmas regras de aprovação) antes de gravar `published_url`; método `api` é recusado até existir prova de viabilidade.
 
 **Inteligência** — a estatística mora em `domain/intelligence.ts` (puro): `compareGroups` devolve um `Finding` com evidência, confiança e ação; nunca devolva conclusão sem n e método. `analyzeBrand` só lê dados guardados, **uma filial por vez**. Novo achado: calcule os grupos em `analyze.ts` e passe a `compareGroups` (ou monte um `Finding` com `confidence` explícito). Decisões usam `insight_decisions` + `fingerprintOf(finding)`. Objetos novos no explorador: acrescente em `objects.ts` e cheque o acesso com `rowAllowed`. **CSS**: antes de criar uma classe genérica (`.bar`, `.card`…) procure em `globals.css` — uma colisão já quebrou o gráfico do Dashboard; o e2e agora tem checagens visuais.
+
+**Dados externos** — fontes abertas em `src/lib/external/`: `fetch.ts` (`safeFetch`: só https, lista de domínios permitidos, sem redirecionar para fora, timeout e limite de tamanho; cabeçalhos HTTP **só ASCII** — um `User-Agent` acentuado já causou 400 no IBGE) e `run.ts` (`runSource(key, actor, {force})`: limite de 10 min por fonte, registra em `external_imports`, grava em lote com `unnest` e só apaga linhas antigas depois de importar com sucesso). A planilha da CMED é lida em streaming (`exceljs`). Regras puras em `domain/` (`calendar`, `cmed`, `external`, `advertising`) com teste; `checkPrice` nunca afirma “acima do teto” sem `brands.icms_pct`. Cruzamentos em `intelligence/market.ts` (achados) e `alerts/sync.ts` (alerta `date_uncovered`). Nova fonte: acrescente à lista de permitidos, crie o importador, registre em `external_sources` e documente licença em `docs/FONTES-EXTERNAS.md`. A importação pesada roda dentro do limite de 60 s da Vercel (`maxDuration` na página de Inteligência).
+
+**Ações com link na tela** — não coloque link de leitura dentro de `.card-actions`: a regra `[data-readonly] .card-actions { display: none }` esconde essa área para quem só lê. Use `.finding-actions` / `.link-actions`.
 
 **Arquivos** — envio só por `POST /api/media` (limite de 4 MB por causa do corpo de requisição da Vercel; tipo conferido pelos primeiros bytes) e leitura por `/api/media/[id]`, que confere a filial. O armazenamento é `getStorage()` (hoje Postgres, `media_blobs`); para outro serviço, implemente a interface `StorageProvider` em `src/lib/storage`.
 

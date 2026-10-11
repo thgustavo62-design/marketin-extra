@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { requireUser } from '@/lib/auth'
-import { listRequests } from '@/lib/data'
-import { REQUEST_STATUS, isRequestStatus } from '@/lib/domain'
+import { brandIcms, cmedByEan, listRequests } from '@/lib/data'
+import { REQUEST_STATUS, VERDICT_LABEL, checkPrice, isRequestStatus, verdictMessage } from '@/lib/domain'
 import { canWrite } from '@/lib/perms'
 import { getScope, scopeLabel } from '@/lib/scope'
 import { NewRequest } from './new-request'
@@ -14,6 +14,15 @@ export default async function Solicitacoes({ searchParams }: { searchParams: Pro
   const status = isRequestStatus(sp.situacao) ? sp.situacao : undefined
   const rows = await listRequests({ brand: scope.brand?.slug, branchId: scope.branch?.id, status, onlyOpen: !status && sp.todas !== '1' })
   const canEdit = canWrite(user.role)
+  // Conferência do preço da oferta contra o teto da CMED (só para pedidos com EAN e preço).
+  const icms = await brandIcms()
+  const verdicts: Record<string, { status: string; label: string; message: string }> = {}
+  for (const r of rows) {
+    if (!r.offer_ean || r.offer_price === null) continue
+    const prod = await cmedByEan(r.offer_ean)
+    const c = checkPrice(r.offer_price, prod ? { pmc: prod.pmc, product: prod.product, presentation: prod.presentation } : null, icms.get(r.brand_id) ?? null)
+    verdicts[r.id] = { status: c.status, label: VERDICT_LABEL[c.status], message: verdictMessage(c) }
+  }
   const chip = (href: string, label: string, active: boolean) => <Link href={href} className={`tab${active ? ' active' : ''}`}>{label}</Link>
 
   return (
@@ -36,7 +45,7 @@ export default async function Solicitacoes({ searchParams }: { searchParams: Pro
           defaultBrandId={scope.brand?.id}
         />
       )}
-      <RequestList rows={rows} canEdit={canEdit} />
+      <RequestList rows={rows} canEdit={canEdit} verdicts={verdicts} />
     </>
   )
 }

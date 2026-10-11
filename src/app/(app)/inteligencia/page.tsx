@@ -7,13 +7,16 @@ import { analyzeBrand, type BrandAnalysis } from '@/lib/intelligence/analyze'
 import { OBJ_LABEL, browseObjects } from '@/lib/intelligence/objects'
 import { getScope, scopeLabel } from '@/lib/scope'
 import { FindingCard, type DecisionView } from './finding-card'
+import { MercadoTab } from './externo/mercado'
+import { PrecosTab } from './externo/precos'
 
+// A importação da lista da CMED (12 MB) roda a partir desta página: damos até 1 minuto.
 export const maxDuration = 60
 
-const TABS = [['achados', 'Achados'], ['dados', 'Qualidade dos dados'], ['processo', 'Processo'], ['explorar', 'Explorar']] as const
+const TABS = [['achados', 'Achados'], ['dados', 'Qualidade dos dados'], ['processo', 'Processo'], ['mercado', 'Mercado e pesquisas'], ['precos', 'Preço máximo (CMED)'], ['explorar', 'Explorar']] as const
 type Tab = (typeof TABS)[number][0]
 
-export default async function Inteligencia({ searchParams }: { searchParams: Promise<{ aba?: string; q?: string }> }) {
+export default async function Inteligencia({ searchParams }: { searchParams: Promise<{ aba?: string; q?: string; preco?: string; tipo?: string }> }) {
   const user = await requireUser()
   const sp = await searchParams
   const scope = await getScope()
@@ -24,7 +27,7 @@ export default async function Inteligencia({ searchParams }: { searchParams: Pro
   const q = sp.q?.trim() || undefined
 
   // Cada filial é analisada separada: nada de misturar números de filiais diferentes.
-  const analyses: BrandAnalysis[] = tab === 'explorar' ? [] : await Promise.all(brands.map((b) => analyzeBrand({ id: b.id, slug: b.slug, name: b.name }, scope.branch?.id ?? null, today)))
+  const analyses: BrandAnalysis[] = ['explorar', 'mercado', 'precos'].includes(tab) ? [] : await Promise.all(brands.map((b) => analyzeBrand({ id: b.id, slug: b.slug, name: b.name }, scope.branch?.id ?? null, today)))
   const decisions = new Map<string, DecisionView>()
   if (tab === 'achados' || tab === 'processo') {
     const rows = (await pool.query(
@@ -116,6 +119,9 @@ export default async function Inteligencia({ searchParams }: { searchParams: Pro
           )}
         </section>
       ))}
+
+      {tab === 'mercado' && <MercadoTab brands={brands.map((b) => ({ id: b.id, name: b.name }))} branchId={scope.branch?.id ?? null} canEdit={canEdit} today={today} kind={['regra', 'preco', 'sazonalidade', 'mercado'].includes(sp.tipo ?? '') ? sp.tipo : undefined} />}
+      {tab === 'precos' && <PrecosTab brands={brands.map((b) => ({ id: b.id, name: b.name }))} canEdit={canEdit} isAdmin={user.role === 'admin'} q={q} preco={sp.preco?.trim() || undefined} />}
 
       {tab === 'explorar' && (
         <section aria-label="Explorar objetos">

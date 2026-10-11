@@ -2,9 +2,10 @@
 // Idempotente: a mesma condição reaproveita o mesmo alerta (dedupe_key); o que deixou de valer é marcado como resolvido.
 import { pool, withTx } from '../db'
 import {
-  THRESHOLDS, TARGET_METRICS, approvalSeverity, daysBetween, dedupeKey, formatBR, monthRange, monthState, overdueSeverity, paceAlert, paceText, todayISO,
+  THRESHOLDS, TARGET_METRICS, describeDate, approvalSeverity, daysBetween, dedupeKey, formatBR, monthRange, monthState, overdueSeverity, paceAlert, paceText, todayISO,
   type AlertType, type MetricKey, type Severity,
 } from '../domain'
+import { calendarCoverage } from '../intelligence/market'
 import { internalCounts } from '../targets/realized'
 
 const MIN_SECONDS_BETWEEN_RUNS = 120
@@ -47,6 +48,15 @@ export async function syncAlerts(today = todayISO()): Promise<{ active: number; 
       where stage in ('aprovado', 'agendado') and post_date = $1::date and (post_time is null or post_time <= (now() at time zone 'America/Sao_Paulo')::time) order by post_time nulls first limit 300`, [today])).rows) {
     c.push({ type: 'publish_due', severity: 'warning', brandId: p.brand_id, branchId: p.branch_id, objectType: 'post', objectId: p.id, key: dedupeKey('publish_due', p.id),
       title: `Hora de publicar: ${p.title}`, detail: `Previsto para hoje${p.t ? ' às ' + p.t : ''} (publicação ${p.publication_method === 'assistido' ? 'assistida' : 'manual'}). Publique na rede e confirme o endereço no cartão.`, href: `/producao?abrir=${p.id}` })
+  }
+  // 2c) data importante chegando sem nenhum conteúdo planejado (calendário externo × planejamento)
+  for (const br of (await pool.query(`select id from brands`)).rows) {
+    for (const cv of await calendarCoverage(br.id, null, today, 21, 2)) {
+      if (cv.covered) continue
+      const urgent = cv.date.relevance === 3 && cv.daysUntil <= 10
+      c.push({ type: 'date_uncovered', severity: urgent ? 'warning' : 'info', brandId: br.id, branchId: null, objectType: 'brand', objectId: br.id, key: dedupeKey('date_uncovered', br.id, cv.date.key),
+        title: `Sem conteúdo para ${cv.date.name}`, detail: `${describeDate(cv.date)} (em ${cv.daysUntil} dia${cv.daysUntil === 1 ? '' : 's'}) e nada planejado na janela. Ideia: ${cv.date.angle}`.slice(0, 400), href: `/planejamento/conteudos/novo?data=${cv.date.date < today ? today : cv.date.date}` })
+    }
   }
   // 3) aprovação parada
   for (const a of (await pool.query(

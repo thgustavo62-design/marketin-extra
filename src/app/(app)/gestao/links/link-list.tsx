@@ -59,7 +59,7 @@ export function LinkList({ rows, canEdit, userId, role }: { rows: CampaignLink[]
             )}
             {l.status === 'rascunho' && canEdit && mine && role !== 'admin' && <p className="muted">Você criou este link, então outra pessoa precisa aprová-lo.</p>}
             {msg?.id === l.id && <p className={msg.kind === 'ok' ? 'form-ok' : 'form-error'} role={msg.kind === 'error' ? 'alert' : 'status'}>{msg.text}</p>}
-            <div className="card-actions">
+            <div className="link-actions">
               <button type="button" className="mini-btn" onClick={() => copy(l.id, l.final_url)}><Copy size={12} /> Copiar link final</button>
               <a className="mini-btn" href={l.destination_url} target="_blank" rel="noopener noreferrer">Abrir destino</a>
               {canEdit && l.status !== 'arquivado' && <button type="button" className="link-danger" disabled={busy === l.id} onClick={() => run(l.id, () => archiveLinkAction(l.id), 'Link arquivado.')}>Arquivar</button>}

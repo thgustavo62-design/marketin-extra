@@ -4,8 +4,9 @@ import { revalidatePath } from 'next/cache'
 import { rowAllowed } from '@/lib/access'
 import { audit, writerOrError } from '@/lib/auth'
 import { pool, withTx } from '@/lib/db'
+import { brandIcms, cmedByEan } from '@/lib/data'
 import {
-  FORMAT_BY_TYPE, canMoveRequest, convertBlockedReason, isIsoDate, isPriority, isRequestStatus, isRequestType, todayISO,
+  FORMAT_BY_TYPE, canMoveRequest, checkPrice, convertBlockedReason, isIsoDate, isPriority, isRequestStatus, isRequestType, normalizeEan, todayISO, verdictMessage,
   type RequestStatus, type RequestType,
 } from '@/lib/domain'
 import { isUuid, str, type FormState } from '@/lib/form'
@@ -37,10 +38,13 @@ export async function createRequestAction(_prev: FormState, fd: FormData): Promi
   }
   if (until && !isIsoDate(until)) return { error: 'Validade da oferta inválida.' }
   if ((price !== null || until) && !item) return { error: 'Informe qual é o item da oferta.' }
+  const eanRaw = str(fd, 'offer_ean')
+  const ean = eanRaw ? normalizeEan(eanRaw) : null
+  if (eanRaw && !ean) return { error: 'Código de barras inválido: use de 8 a 14 dígitos.' }
   const r = await pool.query(
-    `insert into content_requests (brand_id, branch_id, requested_by, title, type, briefing, priority, due_at, offer_item, offer_price, offer_valid_until)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
-    [brandId, branchId || null, g.user.id, title, type, briefing, priority, due || null, item || null, price, until || null])
+    `insert into content_requests (brand_id, branch_id, requested_by, title, type, briefing, priority, due_at, offer_item, offer_price, offer_valid_until, offer_ean)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id`,
+    [brandId, branchId || null, g.user.id, title, type, briefing, priority, due || null, item || null, price, until || null, ean])
   await audit('solicitacao_criada', { userId: g.user.id, ip: await clientIp(), target: r.rows[0].id })
   revalidatePath('/producao/solicitacoes')
   return { ok: 'Solicitação enviada.' }
@@ -68,7 +72,7 @@ export async function moveRequestAction(id: string, to: string): Promise<Result>
 }
 
 // Mexer na oferta tira a confirmação: preço e validade precisam ser conferidos de novo.
-export async function saveOfferAction(id: string, offer: { item: string; price: string; until: string }): Promise<Result> {
+export async function saveOfferAction(id: string, offer: { item: string; price: string; until: string; ean?: string }): Promise<Result> {
   const g = await guard(id)
   if (!g.ok) return fail(g.error)
   const item = offer.item.trim().slice(0, 200)
@@ -76,9 +80,12 @@ export async function saveOfferAction(id: string, offer: { item: string; price: 
   if (price !== null && (!Number.isFinite(price) || price < 0 || price > MAX_PRICE)) return fail('Preço inválido.')
   if (offer.until && !isIsoDate(offer.until)) return fail('Validade inválida.')
   if (!item && (price !== null || offer.until)) return fail('Informe qual é o item da oferta.')
+  const eanRaw = (offer.ean ?? '').trim()
+  const ean = eanRaw ? normalizeEan(eanRaw) : null
+  if (eanRaw && !ean) return fail('Código de barras inválido: use de 8 a 14 dígitos.')
   await pool.query(
-    `update content_requests set offer_item = $2, offer_price = $3, offer_valid_until = $4, info_confirmed_at = null, info_confirmed_by = null, updated_at = now() where id = $1`,
-    [id, item || null, price, offer.until || null])
+    `update content_requests set offer_item = $2, offer_price = $3, offer_valid_until = $4, offer_ean = $5, info_confirmed_at = null, info_confirmed_by = null, updated_at = now() where id = $1`,
+    [id, item || null, price, offer.until || null, ean])
   await audit('solicitacao_oferta', { userId: g.user.id, ip: await clientIp(), target: id })
   revalidatePath('/producao/solicitacoes')
   return { ok: true }
@@ -110,6 +117,12 @@ export async function convertRequestAction(id: string): Promise<Result<{ postId:
       offer_valid_until: r.vu, info_confirmed_at: r.info_confirmed_at,
     }, today)
     if (why) return fail(why)
+    // Preço acima do teto legal (PMC da CMED na alíquota de ICMS da filial) não vira conteúdo. Sem EAN, item fora da lista ou ICMS não cadastrado: só avisa na tela, não bloqueia.
+    if (r.offer_ean && r.offer_price_n !== null) {
+      const prod = await cmedByEan(r.offer_ean)
+      const check = checkPrice(r.offer_price_n, prod ? { pmc: prod.pmc, product: prod.product, presentation: prod.presentation } : null, (await brandIcms()).get(r.brand_id) ?? null)
+      if (check.status === 'acima') return fail(verdictMessage(check))
+    }
     const type = r.type as RequestType
     const date = r.due_txt && r.due_txt >= today ? r.due_txt : today
     const p = await db.query(

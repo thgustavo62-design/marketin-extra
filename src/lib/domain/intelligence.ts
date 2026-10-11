@@ -5,7 +5,7 @@ import { fmtNum, median } from './publication-metrics.ts'
 
 export type Confidence = 'alta' | 'media' | 'baixa' | 'inconclusiva'
 export type Impact = 'alto' | 'medio' | 'baixo'
-export type Area = 'resultados' | 'processo' | 'dados'
+export type Area = 'resultados' | 'processo' | 'dados' | 'mercado'
 
 export const CONFIDENCE_LABEL: Record<Confidence, string> = { alta: 'Confiança alta', media: 'Confiança média', baixa: 'Tendência fraca', inconclusiva: 'Inconclusivo' }
 export const IMPACT_LABEL: Record<Impact, string> = { alto: 'Impacto alto', medio: 'Impacto médio', baixo: 'Impacto baixo' }

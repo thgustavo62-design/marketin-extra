@@ -11,9 +11,10 @@ const MOVE_LABEL: Partial<Record<RequestStatus, string>> = {
   precisa_info: 'Pedir informação', aceita: 'Aceitar', em_producao: 'Iniciar produção', concluida: 'Concluir', cancelada: 'Cancelar', recebida: 'Reabrir',
 }
 
-type Offer = { item: string; price: string; until: string }
+type Offer = { item: string; price: string; until: string; ean: string }
+export type Verdict = { status: string; label: string; message: string }
 
-export function RequestList({ rows, canEdit }: { rows: RequestRow[]; canEdit: boolean }) {
+export function RequestList({ rows, canEdit, verdicts = {} }: { rows: RequestRow[]; canEdit: boolean; verdicts?: Record<string, Verdict> }) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<{ id: string; kind: 'ok' | 'error'; text: string } | null>(null)
@@ -31,9 +32,9 @@ export function RequestList({ rows, canEdit }: { rows: RequestRow[]; canEdit: bo
 
   if (rows.length === 0) return <p className="empty">Nenhuma solicitação neste recorte.</p>
   return (
-    <div className="cards">
+    <div className="cards request-cards">
       {rows.map((r) => {
-        const o: Offer = offer[r.id] ?? { item: r.offer_item ?? '', price: r.offer_price === null ? '' : String(r.offer_price).replace('.', ','), until: r.offer_valid_until ?? '' }
+        const o: Offer = offer[r.id] ?? { item: r.offer_item ?? '', price: r.offer_price === null ? '' : String(r.offer_price).replace('.', ','), until: r.offer_valid_until ?? '', ean: r.offer_ean ?? '' }
         const setO = (patch: Partial<Offer>) => setOffer((s) => ({ ...s, [r.id]: { ...o, ...patch } }))
         const open = r.status !== 'concluida' && r.status !== 'cancelada'
         return (
@@ -52,11 +53,13 @@ export function RequestList({ rows, canEdit }: { rows: RequestRow[]; canEdit: bo
                     ? <span className="pill on">confirmada por {r.info_confirmed_by_name ?? '—'}</span>
                     : r.offer_item ? <span className="pill off">não confirmada</span> : null}
                 </legend>
-                <div className="grid-3">
+                <div className="offer-grid">
                   <input aria-label="Item da oferta" placeholder="Item" value={o.item} disabled={!canEdit} onChange={(e) => setO({ item: e.target.value })} />
                   <input aria-label="Preço da oferta" placeholder="Preço (R$)" inputMode="decimal" value={o.price} disabled={!canEdit} onChange={(e) => setO({ price: e.target.value })} />
                   <input aria-label="Validade da oferta" type="date" value={o.until} disabled={!canEdit} onChange={(e) => setO({ until: e.target.value })} />
+                  <input aria-label="Código de barras (EAN) da oferta" placeholder="EAN (opcional)" inputMode="numeric" value={o.ean} disabled={!canEdit} onChange={(e) => setO({ ean: e.target.value })} />
                 </div>
+                {verdicts[r.id] && <p data-cmed={verdicts[r.id].status}><span className={`pill ${verdicts[r.id].status === 'dentro' ? 'on' : verdicts[r.id].status === 'acima' ? 'off' : 'soft'}`}>CMED: {verdicts[r.id].label}</span> <small className={verdicts[r.id].status === 'acima' ? 'form-error' : 'muted'}>{verdicts[r.id].message}</small></p>}
                 {canEdit && (
                   <div className="form-actions">
                     <button type="button" className="secondary" disabled={busy === r.id} onClick={() => run(r.id, () => saveOfferAction(r.id, o), 'Oferta salva. Confirme de novo.')}>Salvar oferta</button>

@@ -222,6 +222,18 @@ export function TaskDrawer({ cardId, canEdit, onClose, onChanged }: { cardId: st
               if (ap.status === 'invalidated') return <p className="muted">Último envio invalidado: {ap.invalidated_reason ?? '—'}</p>
               return <p className="form-error"><XCircle size={14} style={{ verticalAlign: '-2px' }} /> {DECISION_LABELS[ap.status as Decision]} por {ap.decided_by_name ?? '—'}: {ap.reason}</p>
             })()}
+            {detail.ad.applies && (
+              <div className="ad-summary" data-ad={detail.ad.issues.some((i) => i.level === 'vedado') ? 'vedado' : detail.ad.issues.length ? 'revisar' : 'ok'}>
+                <b>Conferência RDC 96/2008:</b>{' '}
+                {detail.ad.issues.length === 0 ? 'nenhum ponto de atenção no texto.' : (
+                  <>
+                    {detail.ad.issues.filter((i) => i.level === 'vedado').length} vedado(s), {detail.ad.issues.filter((i) => i.level === 'revisar').length} para revisar.
+                    <ul>{detail.ad.issues.filter((i) => i.level !== 'lembrete').slice(0, 4).map((i, k) => <li key={k}><small>{i.article}: {i.message}</small></li>)}</ul>
+                    <Link href={`/planejamento/conteudos/${c.id}`} className="inline-link">Ver todos no editor</Link>
+                  </>
+                )}
+              </div>
+            )}
             {canEdit && !['aprovacao', 'publicado', 'cancelado'].includes(c.stage) && (
               <div className="form-actions"><button type="button" className="secondary" disabled={busy} onClick={() => run(() => moveCardAction(c.id, 'aprovacao', c.revision), 'Enviado para aprovação (versão congelada).')}><Send size={14} /> Enviar para aprovação</button></div>
             )}

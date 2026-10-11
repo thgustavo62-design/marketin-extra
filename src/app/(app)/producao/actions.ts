@@ -6,7 +6,7 @@ import { audit, writerOrError } from '@/lib/auth'
 import { decideApproval, getApprovalInfo } from '@/lib/approvals/service'
 import { getTaskDetail, listAssignableUsers, listPostAssets, type PostAsset, type TaskDetail } from '@/lib/data'
 import { pool } from '@/lib/db'
-import { canDecide, isIsoDate, isPriority, isStage, needsPublishConfirmation, normalizePermalink, stageBlockedReason, todayISO, validatePublishedUrl, type Decision, type Pillar, type Stage } from '@/lib/domain'
+import { checkAdvertising, canDecide, isIsoDate, isPriority, isStage, needsPublishConfirmation, normalizePermalink, stageBlockedReason, todayISO, validatePublishedUrl, type AdIssue, type Decision, type Pillar, type Stage } from '@/lib/domain'
 import { changeStage } from '@/lib/production/stage'
 import { isUuid } from '@/lib/form'
 import { NO_BRAND_ACCESS, brandAllowed, canWrite } from '@/lib/perms'
@@ -52,7 +52,7 @@ export async function decideApprovalAction(postId: string, decision: string, rea
 
 // ---------- detalhe (leitura) ----------
 export type PublicationInfo = { method: 'manual' | 'assistido' | 'api'; url: string | null; confirmedByName: string | null; confirmedAt: string | null }
-export type FullDetail = TaskDetail & { approval: Awaited<ReturnType<typeof getApprovalInfo>>; assets: PostAsset[]; approvalRequired: boolean; canDecide: boolean; publication: PublicationInfo }
+export type FullDetail = TaskDetail & { approval: Awaited<ReturnType<typeof getApprovalInfo>>; assets: PostAsset[]; approvalRequired: boolean; canDecide: boolean; publication: PublicationInfo; ad: { applies: boolean; issues: AdIssue[] } }
 
 export async function getTaskDetailAction(id: string): Promise<ActionResult<{ detail: FullDetail }>> {
   const user = await getSession()
@@ -61,18 +61,21 @@ export async function getTaskDetailAction(id: string): Promise<ActionResult<{ de
   if (!(await rowAllowed(user, 'posts', id))) return fail(NO_BRAND_ACCESS)
   const detail = await getTaskDetail(id)
   if (!detail) return fail('Este conteúdo não existe mais.', { conflict: true })
-  const [approval, assets, brand, pub] = await Promise.all([
+  const [approval, assets, brand, pub, txt] = await Promise.all([
     getApprovalInfo(id),
     listPostAssets(id),
     pool.query('select approval_required from brands where id = $1', [detail.card.brand_id]),
     pool.query(`select p.publication_method as method, p.published_url as url, u.display_name as by, p.published_confirmed_at::text as at
                   from posts p left join users u on u.id = p.published_confirmed_by where p.id = $1`, [id]),
+    pool.query('select title, caption, script, pillar from posts where id = $1', [id]),
   ])
+  const t = txt.rows[0]
+  const adr = checkAdvertising([t?.title, t?.caption, t?.script].filter(Boolean).join(' · '), { pillar: t?.pillar })
   const publication: PublicationInfo = { method: pub.rows[0]?.method ?? 'manual', url: pub.rows[0]?.url ?? null, confirmedByName: pub.rows[0]?.by ?? null, confirmedAt: pub.rows[0]?.at ?? null }
   const pending = approval.latest?.status === 'pending' ? approval.latest : null
   const sub = pending ? (await pool.query('select submitted_by from approvals where id = $1', [pending.id])).rows[0]?.submitted_by ?? null : null
   const canDecideNow = Boolean(pending) && canWrite(user.role) && canDecide({ userId: user.id, role: user.role, reviewerId: pending?.reviewer_id ?? detail.card.reviewer_id, submittedBy: sub }) === null
-  return { ok: true, detail: { ...detail, approval, assets, approvalRequired: brand.rows[0]?.approval_required ?? true, canDecide: canDecideNow, publication } }
+  return { ok: true, detail: { ...detail, approval, assets, approvalRequired: brand.rows[0]?.approval_required ?? true, canDecide: canDecideNow, publication, ad: { applies: adr.appliesToMedicine, issues: adr.issues } } }
 }
 
 // ---------- publicação (manual / assistida) ----------
