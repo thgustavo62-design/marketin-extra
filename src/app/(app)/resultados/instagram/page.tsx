@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { AlertTriangle } from 'lucide-react'
+import { CollectPanel } from '@/components/collect-panel'
 import { WindsorNotice } from '@/components/windsor-notice'
 import { requireUser } from '@/lib/auth'
 import { getIntegrationAccounts } from '@/lib/data'
@@ -9,6 +10,9 @@ import { PERIOD_DAYS, isPeriodDays, periodRange, compact } from '@/lib/insights/
 import { partitionByScope } from '@/lib/integrations'
 import { getScope, scopeLabel, type Scope } from '@/lib/scope'
 import { int, windsorQuery } from '@/lib/windsor'
+
+// A coleta do Windsor roda como ação desta página (anúncios podem demorar): até 1 minuto.
+export const maxDuration = 60
 
 type Media = {
   account_name?: string; media_id?: string; media_type?: string; media_product_type?: string; timestamp?: string
@@ -138,6 +142,8 @@ export default async function InstagramResultados({ searchParams }: { searchPara
           {PERIOD_DAYS.map((x) => <Link key={x} href={`/resultados/instagram?d=${x}`} className={`tab${x === d ? ' active' : ''}`}>{x} dias</Link>)}
         </nav>
       </header>
+
+      <CollectPanel scope={scope} />
 
       <div className="dark-surface">
         <h2 className="dark-h">Publicações</h2>

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { AlertTriangle, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Columns3, Megaphone, Plus, Sparkles, TrendingDown, TrendingUp } from 'lucide-react'
 import { FormatBadge, StageBadge } from '@/components/badges'
+import { CollectPanel } from '@/components/collect-panel'
 import { DashViewTabs } from '@/components/dash-view-tabs'
 import { MonthSelect } from '@/components/month-select'
 import { requireUser } from '@/lib/auth'
@@ -10,6 +11,9 @@ import { FORMATS, MONTH_NAMES, STAGES, STAGE_ORDER, formatBR, parseMonth, todayI
 import { canWrite } from '@/lib/perms'
 import { getScope, scopeLabel } from '@/lib/scope'
 import { ExecutiveView } from './executive-view'
+
+// O botão de coleta do Windsor roda como ação desta página (anúncios podem demorar): até 1 minuto.
+export const maxDuration = 60
 
 export default async function Dashboard({ searchParams }: { searchParams: Promise<{ m?: string; v?: string; 'sem-permissao'?: string }> }) {
   const user = await requireUser()
@@ -30,6 +34,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           </div>
           <DashViewTabs view="exec" month={ym} />
         </header>
+        <CollectPanel scope={scope} />
         <ExecutiveView brands={scope.brand ? [scope.brand] : scope.brands} branchId={scope.branch?.id ?? null} today={today} />
       </>
     )
@@ -64,6 +69,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </div>
         <div className="head-tools"><DashViewTabs view="op" month={ym} /><MonthSelect value={ym} /></div>
       </header>
+
+      <CollectPanel scope={scope} />
 
       {sp['sem-permissao'] && <div className="notice" role="alert"><AlertTriangle size={18} /> Seu perfil não tem permissão para essa área.</div>}
 

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { AlertTriangle, Download } from 'lucide-react'
+import { CollectPanel } from '@/components/collect-panel'
 import { MetricCard } from '@/components/metric-card'
 import { WindsorNotice } from '@/components/windsor-notice'
 import { requireUser } from '@/lib/auth'
@@ -10,6 +11,9 @@ import { MESSAGES_FIELD, currentFollowers, loadAdsInsights, loadInstagramInsight
 import { getScope, scopeLabel, type Scope } from '@/lib/scope'
 
 type SP = { d?: string }
+
+// A coleta do Windsor roda como ação desta página (anúncios podem demorar): até 1 minuto.
+export const maxDuration = 60
 
 const scopeIds = (s: Scope) => ({ brandId: s.brand?.id, branchId: s.branch?.id, brands: s.brands })
 
@@ -101,6 +105,8 @@ export default async function Insights({ searchParams }: { searchParams: Promise
           {PERIOD_DAYS.map((x) => <Link key={x} href={`/resultados?d=${x}`} className={`tab${x === d ? ' active' : ''}`}>Últimos {x} dias</Link>)}
         </nav>
       </header>
+
+      <CollectPanel scope={scope} />
 
       <section aria-labelledby="ig">
         <h2 id="ig" className="eyebrow">Instagram <a className="btn tiny" href={`/api/export/insights?tipo=instagram&d=${d}`}><Download size={13} /> Exportar CSV</a></h2>

@@ -1,14 +1,13 @@
 // Coleta MANUAL de métricas (Instagram + anúncios) para o banco. A tela de resultados continua lendo do Windsor ao vivo;
 // o banco guarda o histórico para (1) ligar publicações a conteúdos, (2) comparar com o tempo e (3) servir de "último dado"
 // quando o Windsor falha. Regras: se a leitura principal falhar NADA é gravado nem apagado; valor ausente nunca vira zero
-// e nunca sobrescreve um valor já coletado no mesmo dia.
-import { getBrands, getIntegrationAccounts, lastCollection } from '../data'
+// e nunca sobrescreve um valor já coletado no mesmo dia. Sem limite de intervalo entre coletas.
+import { getBrands, getIntegrationAccounts } from '../data'
 import { withTx } from '../db'
 import { addDays, monthRange, parseMediaRow, readTo, type ParsedMedia, type WindsorMediaRow } from '../domain'
 import { resolveAccount, type AccountKind, type Mapping } from '../integrations'
 import { windsorQuery, type WindsorResult } from '../windsor'
 
-export const MIN_MINUTES_BETWEEN = 5
 const MEDIA_DAYS = 90
 const MEDIA_FIELDS = [
   'account_name', 'account_id', 'media_id', 'media_type', 'media_product_type', 'timestamp', 'media_permalink', 'media_caption',
@@ -20,9 +19,9 @@ export type CollectResult =
   | {
       ok: true
       publications: number; newPublications: number; snapshots: number; accounts: number
-      unmapped: string[]; notes: string[]; skippedBrands: string[]
+      unmapped: string[]; notes: string[]
     }
-  | { ok: false; error: string; reason: 'rate_limited' | 'windsor' }
+  | { ok: false; error: string; reason: 'windsor' }
 
 type AcctRow = { account_name?: string; account_id?: string | number; date?: string; views?: unknown; total_interactions?: unknown; followers_count?: unknown; spend?: unknown } & Record<string, unknown>
 
@@ -48,17 +47,8 @@ export async function collectMetrics(opts: { brandIds: string[]; actorId: string
   const [allBrands, maps] = await Promise.all([getBrands(), getIntegrationAccounts()])
   const mapList: Mapping[] = maps.map((m) => ({ account_name: m.account_name, kind: m.kind, brand_id: m.brand_id, branch_id: m.branch_id }))
 
-  // Limite de uso da API: no máximo uma coleta por filial a cada poucos minutos.
-  const allowed = new Set<string>(), skippedBrands: string[] = []
-  for (const id of opts.brandIds) {
-    const last = await lastCollection([id])
-    const name = allBrands.find((b) => b.id === id)?.name ?? id
-    if (last && Date.now() - Date.parse(last) < MIN_MINUTES_BETWEEN * 60_000) skippedBrands.push(name)
-    else allowed.add(id)
-  }
-  if (allowed.size === 0) {
-    return { ok: false, error: `Já houve uma coleta há menos de ${MIN_MINUTES_BETWEEN} minutos para ${skippedBrands.join(' e ') || 'este recorte'}. Aguarde um pouco para não gastar a cota do Windsor à toa.`, reason: 'rate_limited' }
-  }
+  // Sem limite de intervalo: a pessoa coleta quando quiser. Repetir é seguro — o retrato do dia é regravado (upsert) e valor ausente nunca sobrescreve valor já coletado.
+  const allowed = new Set<string>(opts.brandIds)
 
   const month = opts.today.slice(0, 7)
   const range = monthRange(month)
@@ -159,7 +149,7 @@ export async function collectMetrics(opts: { brandIds: string[]; actorId: string
     }
   })
 
-  return { ok: true, publications: parsed.size, newPublications, snapshots, accounts, unmapped: [...unmapped], notes, skippedBrands }
+  return { ok: true, publications: parsed.size, newPublications, snapshots, accounts, unmapped: [...unmapped], notes }
 }
 
 function failureText(r: Exclude<WindsorResult<never>, { status: 'ok' }>): string {

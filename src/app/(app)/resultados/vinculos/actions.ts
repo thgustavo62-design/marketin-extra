@@ -7,33 +7,10 @@ import { listCandidatePosts, listPublications } from '@/lib/data'
 import { pool } from '@/lib/db'
 import { addDays, suggestMatches, todayISO } from '@/lib/domain'
 import { isUuid } from '@/lib/form'
-import { collectMetrics } from '@/lib/publications/collect'
-import { getScope } from '@/lib/scope'
 import { clientIp } from '@/lib/session'
 
 type Result<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string }
 const fail = (error: string) => ({ ok: false as const, error })
-
-// ---------- coleta manual ----------
-export async function collectAction(): Promise<Result<{ publications: number; newPublications: number; accounts: number; unmapped: string[]; notes: string[]; skippedBrands: string[] }>> {
-  const g = await writerOrError()
-  if (!g.ok) return fail(g.error)
-  const scope = await getScope()
-  const brandIds = scope.brand ? [scope.brand.id] : scope.brands.map((b) => b.id)
-  if (brandIds.length === 0) return fail('Nenhuma filial disponível para coletar.')
-  const r = await collectMetrics({ brandIds, actorId: g.user.id, today: todayISO() })
-  // Cada tentativa fica registrada (sem dados sensíveis); alimenta o alerta de falha na coleta.
-  for (const id of brandIds) {
-    await pool.query(
-      `insert into integration_sync_runs (provider, job_type, brand_id, status, finished_at, records_processed, error_summary_safe, requested_by)
-       values ('windsor', 'collect_metrics', $1, $2, now(), $3, $4, $5)`,
-      [id, r.ok ? 'ok' : r.reason === 'windsor' ? 'failed' : 'skipped', r.ok ? r.publications : null, r.ok ? null : r.error.slice(0, 280), g.user.id])
-  }
-  if (!r.ok) return fail(r.error)
-  await audit('coleta_metricas', { userId: g.user.id, ip: await clientIp(), meta: { publicacoes: r.publications, novas: r.newPublications, contas: r.accounts, filiais: brandIds.length } })
-  revalidatePath('/resultados/vinculos'); revalidatePath('/resultados/metas')
-  return { ok: true, publications: r.publications, newPublications: r.newPublications, accounts: r.accounts, unmapped: r.unmapped, notes: r.notes, skippedBrands: r.skippedBrands }
-}
 
 // ---------- vínculo ----------
 export async function linkPublicationAction(publicationId: string, postId: string, method: 'manual' | 'verified_match'): Promise<Result> {

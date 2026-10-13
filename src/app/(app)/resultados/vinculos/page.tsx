@@ -6,7 +6,7 @@ import {
 } from '@/lib/domain'
 import { canWrite } from '@/lib/perms'
 import { getScope, scopeLabel } from '@/lib/scope'
-import { CollectButton } from './collect-button'
+import { CollectButton } from '@/components/collect-button'
 import { PublicationTable, type Cand, type Row } from './publication-table'
 
 // A coleta lê o Windsor (anúncios podem demorar): damos até 1 minuto à ação.

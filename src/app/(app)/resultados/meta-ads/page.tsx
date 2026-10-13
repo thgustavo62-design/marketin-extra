@@ -1,12 +1,16 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { AlertTriangle } from 'lucide-react'
+import { CollectPanel } from '@/components/collect-panel'
 import { WindsorNotice } from '@/components/windsor-notice'
 import { requireUser } from '@/lib/auth'
 import { PERIOD_DAYS, compact, isPeriodDays, ratio, sum } from '@/lib/insights/calc'
 import { MESSAGES_FIELD, loadAdsInsights } from '@/lib/insights/server'
 import { getScope, scopeLabel, type Scope } from '@/lib/scope'
 import { brl, int, pct } from '@/lib/windsor'
+
+// A coleta do Windsor roda como ação desta página (anúncios podem demorar): até 1 minuto.
+export const maxDuration = 60
 
 type Row = Record<string, unknown>
 
@@ -88,6 +92,8 @@ export default async function MetaAds({ searchParams }: { searchParams: Promise<
           {PERIOD_DAYS.map((x) => <Link key={x} href={href({ d: x })} className={`tab${x === d ? ' active' : ''}`}>{x} dias</Link>)}
         </nav>
       </header>
+
+      <CollectPanel scope={scope} />
 
       <div className="dark-surface">
         <div className="tabs">
