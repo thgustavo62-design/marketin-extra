@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Plus } from 'lucide-react'
+import { FileUp, Plus } from 'lucide-react'
 import { requireUser } from '@/lib/auth'
 import { listPostsLite } from '@/lib/data'
 import { FORMATS, MONTH_NAMES, STAGES, isStage, WEEKDAYS, monthGrid, parseMonth, shiftMonth, todayISO } from '@/lib/domain'
@@ -45,7 +45,12 @@ export default async function Calendario({ searchParams }: { searchParams: Promi
           <h1>Calendário editorial</h1>
           <p>{scopeLabel(scope)} · datas de planejamento, não agendamento na Meta.</p>
         </div>
-        {writable && <Link href="/planejamento/conteudos/novo" className="btn primary-link"><Plus size={16} /> Novo conteúdo</Link>}
+        {writable && (
+          <div className="head-tools">
+            <Link href="/planejamento/importar-plano" className="btn" data-import-plan><FileUp size={16} /> Importar plano (PDF)</Link>
+            <Link href="/planejamento/conteudos/novo" className="btn primary-link"><Plus size={16} /> Novo conteúdo</Link>
+          </div>
+        )}
       </header>
 
       <form className="filters" method="get">

@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
-  BarChart3, Bell, BookOpen, ClipboardCheck, ClipboardList, Columns3, CalendarDays, Camera, ChevronLeft, ChevronRight, Clapperboard, FileBarChart, FileText, Flag, LayoutDashboard,
+  BarChart3, Bell, BookOpen, ClipboardCheck, ClipboardList, Columns3, CalendarDays, Camera, ChevronLeft, ChevronRight, Clapperboard, FileBarChart, FileText, FileUp, Flag, LayoutDashboard,
   FolderOpen, Inbox, Lightbulb, Link2, LogOut, Megaphone, Menu, QrCode, Radar, Repeat, Settings, Sparkles, Store, Target, X,
   type LucideIcon,
 } from 'lucide-react'
@@ -21,6 +21,7 @@ const GROUPS: Group[] = [
       { href: '/planejamento/conteudos', label: 'Conteúdos', icon: FileText },
       { href: '/planejamento/reels', label: 'Estúdio de Reels', icon: Clapperboard },
       { href: '/planejamento/gerar', label: 'Gerar semana', icon: Sparkles, write: true },
+      { href: '/planejamento/importar-plano', label: 'Importar plano (PDF)', icon: FileUp, write: true },
       { href: '/campanhas', label: 'Campanhas', icon: Megaphone, exact: true },
       { href: '/campanhas/modelos', label: 'Campanhas recorrentes', icon: Repeat },
     ],

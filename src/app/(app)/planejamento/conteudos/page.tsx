@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Plus } from 'lucide-react'
+import { FileUp, Plus } from 'lucide-react'
 import { FormatBadge, StageBadge } from '@/components/badges'
 import { requireUser } from '@/lib/auth'
 import { countPosts, listPostsLite } from '@/lib/data'
@@ -46,7 +46,12 @@ export default async function Conteudos({ searchParams }: { searchParams: Promis
           <h1>Conteúdos</h1>
           <p>{scopeLabel(scope)} · {total} {total === 1 ? 'conteúdo' : 'conteúdos'} com os filtros atuais.</p>
         </div>
-        {canWrite(user.role) && <Link href="/planejamento/conteudos/novo" className="btn primary-link"><Plus size={16} /> Novo conteúdo</Link>}
+        {canWrite(user.role) && (
+          <div className="head-tools">
+            <Link href="/planejamento/importar-plano" className="btn"><FileUp size={16} /> Importar plano (PDF)</Link>
+            <Link href="/planejamento/conteudos/novo" className="btn primary-link"><Plus size={16} /> Novo conteúdo</Link>
+          </div>
+        )}
       </header>
 
       <form className="filters" method="get">

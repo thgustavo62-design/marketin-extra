@@ -621,3 +621,22 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .collect-button p { margin: 0; font-size: 13px; max-width: 520px; }
 .spin { animation: collect-spin 1s linear infinite; }
 @keyframes collect-spin { to { transform: rotate(360deg); } }
+
+/* Importação de plano em PDF */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.pi-hint { margin-top: 10px; font-size: 12.5px; }
+.pi-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.pi-list li { line-height: 1.5; }
+.pi-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 0 0 16px; }
+.pi-summary .card { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; }
+.pi-summary .card b { font-size: 17px; }
+.pi-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
+.pi-options { margin: 0 0 14px; }
+.pi-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 0 8px; }
+.pi-table td, .pi-table th { vertical-align: top; }
+.pi-table select { min-width: 160px; }
+.pi-flags { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 190px; }
+.pi-form > .form-actions { margin-top: 6px; }
+.pi-note { color: var(--muted); max-width: 320px; line-height: 1.4; }
+.pi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-bottom: 8px; }
+.pi-objective { margin: 0 0 16px; }
