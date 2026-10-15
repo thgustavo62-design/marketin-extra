@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { buildIndex, detectErpColumns, isValidGtin, matchName, nameFromFile, nameTokens, normalizeName, parseEan, searchKey, searchTerms } from '../src/lib/domain/catalog.ts'
+import { buildIndex, detectErpColumns, isMedicine, isValidGtin, matchName, nameFromFile, nameTokens, normalizeName, parseEan, searchKey, searchTerms } from '../src/lib/domain/catalog.ts'
 
 test('GTIN: só vale com o dígito verificador certo e tamanho de código de barras', () => {
   assert.equal(isValidGtin('7897473205741'), true)
@@ -83,4 +83,16 @@ test('planilha do ERP: colunas por nome do cabeçalho, nas duas variações de e
 test('busca: sem acento, minúsculas, todos os termos', () => {
   assert.equal(searchKey('Creme Dental ORAÇÃO', '7897473205741', null), 'creme dental oracao 7897473205741')
   assert.deepEqual(searchTerms('  Nivea  Creme 100G '), ['nivea', 'creme', '100g'])
+})
+
+test('medicamento fica fora: CMED, registro MS de medicamento ou grupo de medicamento do ERP', () => {
+  assert.equal(isMedicine({ ean: '7891000100103' }, new Set(['7891000100103'])), true)
+  assert.equal(isMedicine({ registroMs: '1023456780012' }), true)
+  assert.equal(isMedicine({ registroMs: '6777700010016' }), false) // cosmético/alimento
+  assert.equal(isMedicine({ group: 'GENERICOS - GENERICO ONEROSO' }), true)
+  assert.equal(isMedicine({ group: 'ETICO - ETICOS 20% DESC.' }), true)
+  assert.equal(isMedicine({ group: 'OTC - ETICOS/LIBERADOS OTC' }), true)
+  assert.equal(isMedicine({ group: 'PERFUMARIA - PERFUMARIA HIG. PESSOAL' }), false)
+  assert.equal(isMedicine({ group: 'CORRELATOS - HOSPITALARES/ORTOPEDICOS' }), false)
+  assert.equal(isMedicine({ group: 'LEITES - LEITE/FORMULA', ean: '7891' }, new Set()), false)
 })

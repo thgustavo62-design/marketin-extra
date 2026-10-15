@@ -6,7 +6,7 @@ import { Download, Search, Star, Trash2, Undo2, Upload } from 'lucide-react'
 import type { ImageMeta } from '@/lib/catalog/store'
 import { deleteImageAction, openImageAction, setPrimaryAction, unlinkImageAction } from './actions'
 
-const SOURCE: Record<string, string> = { proprio: 'Arquivo próprio', upload: 'Enviada', open_beauty_facts: 'Open Beauty Facts', open_food_facts: 'Open Food Facts' }
+const SOURCE: Record<string, string> = { proprio: 'Arquivo próprio', upload: 'Enviada', open_beauty_facts: 'Open Beauty Facts', open_food_facts: 'Open Food Facts', open_products_facts: 'Open Products Facts', open_pet_food_facts: 'Open Pet Food Facts' }
 
 export function ImageGallery({ productId, hasEan, images, canEdit }: { productId: string; hasEan: boolean; images: ImageMeta[]; canEdit: boolean }) {
   const router = useRouter()

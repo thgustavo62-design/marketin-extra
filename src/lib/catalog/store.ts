@@ -128,7 +128,7 @@ export type IngestResult = {
   suggestions?: Candidate[]
 }
 
-type Source = 'proprio' | 'upload' | 'open_beauty_facts' | 'open_food_facts'
+type Source = 'proprio' | 'upload' | 'open_beauty_facts' | 'open_food_facts' | 'open_products_facts' | 'open_pet_food_facts'
 
 /** Recebe uma imagem: valida, otimiza, tenta ligar a um produto (por EAN no nome do arquivo, descrição exata ou parecida) ou manda para a fila de conferência. */
 export async function ingestImage(o: {

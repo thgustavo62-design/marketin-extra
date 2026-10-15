@@ -144,7 +144,7 @@ export function matchName(idx: NameIndex, name: string, opts: { top?: number } =
 }
 
 // ---------- planilha do ERP ----------
-export type ErpColumns = { ean: number | null; desc: number | null; code: number | null; group: number | null; ingredient: number | null; ms: number | null }
+export type ErpColumns = { ean: number | null; desc: number | null; code: number | null; group: number | null; ingredient: number | null; ms: number | null; stock: number | null }
 const hdr = (s: unknown) => strip(String(s ?? '')).toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
 
 /** Descobre as colunas pelo nome do cabeçalho ("Barras", "Descrição", "Código", "Nome Grupo", "Princípio Ativo", "Registro MS"). */
@@ -157,6 +157,7 @@ export function detectErpColumns(headerRow: unknown[]): ErpColumns {
     group: find(/^(nome grupo|grupo|categoria|departamento)$/),
     ingredient: find(/^(principio ativo|substancia)$/),
     ms: find(/^(registro ms|registro|anvisa)$/),
+    stock: find(/^(estoque|saldo|saldo em estoque|qtd estoque|quantidade em estoque)$/),
   }
 }
 
@@ -168,4 +169,16 @@ export function searchKey(...parts: (string | null | undefined)[]): string {
 /** Termos digitados na busca: sem acento, minúsculos; todos precisam aparecer. */
 export function searchTerms(q: string): string[] {
   return strip(q).toLowerCase().split(/\s+/).filter((t) => t.length > 0).slice(0, 8)
+}
+
+// ---------- medicamento (fica fora do banco de imagens) ----------
+const MED_GROUP = /^(GENERICOS?|SIMILARES?|ETICOS?|OTC|DERMO|MEDICAMENTOS?)\b/
+/**
+ * O banco de imagens não inclui medicamentos. É medicamento quem: consta na lista da CMED (pelo código de barras), tem registro MS de
+ * medicamento (13 dígitos começando em 1) ou está num grupo de medicamento do ERP (genérico, similar, ético, OTC, dermo ético).
+ */
+export function isMedicine(p: { ean?: string | null; registroMs?: string | null; group?: string | null }, cmedEans?: ReadonlySet<string>): boolean {
+  if (p.ean && cmedEans?.has(p.ean)) return true
+  if (p.registroMs && /^1\d{12}$/.test(p.registroMs.replace(/\D/g, ''))) return true
+  return !!p.group && MED_GROUP.test(strip(p.group).toUpperCase().trim())
 }

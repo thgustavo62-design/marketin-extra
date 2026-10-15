@@ -14,7 +14,7 @@ if (GRAVAR && !process.env.DATABASE_URL) { console.error('Sem DATABASE_URL: rode
 
 if (!GRAVAR) process.env.DATABASE_URL ||= 'postgres://simulacao:x@127.0.0.1:1/x' // a simulação não conecta ao banco
 const { parseErpXlsx, mergeErpRows, upsertProducts } = await import('../src/lib/catalog/erp.ts')
-const { buildIndex, matchName, nameFromFile } = await import('../src/lib/domain/catalog.ts')
+const { buildIndex, isMedicine, matchName, nameFromFile } = await import('../src/lib/domain/catalog.ts')
 
 // ---------- 1. produtos do ERP ----------
 const allRows = []
@@ -24,8 +24,13 @@ for (const f of erpFiles) {
   console.log(`ERP ${f.split(/[\\/]/).pop()}: ${p.rows.length} linhas`)
   allRows.push(...p.rows)
 }
-const merged = mergeErpRows(allRows)
-console.log(`→ ${merged.length} produtos únicos (${merged.filter((m) => m.ean).length} com código de barras)`)
+let cmed = new Set()
+if (!process.env.DATABASE_URL.includes('simulacao')) { const { pool } = await import('../src/lib/db.ts'); cmed = new Set((await pool.query(`select unnest(eans) e from cmed_products`)).rows.map((r) => r.e)); if (!GRAVAR) await pool.end() }
+// só o que tem saldo em estoque
+const todos = mergeErpRows(allRows).filter((m) => m.stock == null || m.stock > 0)
+// banco de imagens não inclui medicamentos
+const merged = todos.filter((m) => !isMedicine({ ean: m.ean, registroMs: m.registroMs, group: m.group }, cmed))
+console.log(`→ ${todos.length} produtos únicos com estoque; ${todos.length - merged.length} medicamentos ficam de fora; ${merged.length} no banco de imagens (${merged.filter((m) => m.ean).length} com código de barras)`)
 if (GRAVAR) {
   const r = await upsertProducts(allRows, null)
   console.log(`Gravado: ${r.created} novos, ${r.updated} atualizados, ${r.enriched} enriquecidos com a CMED.`)
@@ -46,13 +51,16 @@ const idx = buildIndex(merged.flatMap((m, i) => [m.description, ...m.aliases].ma
 const res = { ligada: 0, pendente: 0, duplicada: 0, invalida: 0 }
 for (const f of files) {
   const { name } = nameFromFile(f)
+  stat.last = null
   if (!name) stat.semNome++
   else {
     const m = matchName(idx, name)
-    stat[m.decision]++
+    stat[m.decision]++; stat.last = m.decision
     if (m.decision !== 'exata' && exemplos[m.decision] && exemplos[m.decision].length < 8) exemplos[m.decision].push(`${name}  →  ${m.best ? merged[Number(m.best.id)].description + ` (${Math.round(m.best.score * 100)}%)` : '—'}`)
   }
-  if (ingest) {
+  // só grava imagem que tem produto (ou dúvida com sugestões); o que não existe no ERP sem medicamento (inclusive embalagem de remédio) não entra
+  const keep = name && (stat.last !== 'nenhum')
+  if (ingest && keep) {
     const r = await ingest({ buf: await readFile(f), fileName: f.split(/[\\/]/).pop(), userId: null, source: 'proprio' })
     res[r.status === 'ligada' ? 'ligada' : r.status]++
   }

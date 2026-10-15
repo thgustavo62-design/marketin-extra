@@ -44,7 +44,7 @@ create table product_images (
   height integer not null,
   size_bytes integer not null,
   sha256 text not null check (sha256 ~ '^[0-9a-f]{64}$'),
-  source text not null check (source in ('proprio', 'upload', 'open_beauty_facts', 'open_food_facts')),
+  source text not null check (source in ('proprio', 'upload', 'open_beauty_facts', 'open_food_facts', 'open_products_facts', 'open_pet_food_facts')),
   -- imagens abertas exigem atribuição e licença (CC BY-SA); as próprias não
   license text,
   attribution text,

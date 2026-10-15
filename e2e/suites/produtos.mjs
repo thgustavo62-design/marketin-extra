@@ -47,27 +47,30 @@ try {
     [EAN.seda2, 'COND. SEDA 250ML RECONSTRUCAO', '', 4],
     [EAN.acnase, 'ACNASE CLEAN SAB. 80G ESFOLIANTE', '', 2],
     ['', 'PRODUTO MANIPULADO XPTO', '', 1],
+    [gtin('789100010088'), 'PRODUTO SEM ESTOQUE 10ML', '', 0],
     [EAN.acnase, 'ACNASE CLEAN SAB. 80G ESFOLIANTE', '', 2], // repetido na mesma planilha: não duplica
   ])
   await a.setInputFiles('input[aria-label="Planilha do ERP"]', { name: 'minas.xlsx', mimeType: XLSX, buffer: minas })
   await a.getByRole('button', { name: 'Importar produtos' }).click()
   const msg1 = await outcome(a)
-  ck('importação 1: 6 produtos únicos a partir de 7 linhas', /6 produtos únicos/.test(msg1) && /7 linhas/.test(msg1) && /1 sem código de barras/.test(msg1), msg1)
+  ck('importação 1: 6 produtos únicos com estoque a partir de 8 linhas', /6 produtos únicos/.test(msg1) && /8 linhas/.test(msg1) && /1 sem estoque/.test(msg1) && /1 sem código de barras/.test(msg1), msg1)
   const farma = await xlsx([
     ['Código', 'Descrição', 'Barras', 'Nome Grupo', 'Preço de Venda'],
     [101, 'MULTIGRIP 20 CAPSULAS', EAN.multi, 'ANALGESICOS', 12.9],
     [102, 'SH DOVE 400ML', EAN.dove, 'HIGIENE', 19.9],
     [103, 'LIXO SEM BARRAS INVALIDAS', '12345', '', 1],
+    [104, 'DIPIRONA 500MG 10CPR', gtin('789100010099'), 'GENERICOS - GENERICO', 3],
   ])
   await a.reload(); await idle(a)
   await a.setInputFiles('input[aria-label="Planilha do ERP"]', { name: 'farma.xlsx', mimeType: XLSX, buffer: farma })
   await a.getByRole('button', { name: 'Importar produtos' }).click()
   const msg2 = await outcome(a)
-  ck('importação 2: o mesmo EAN das duas lojas vira um produto só (1 atualizado, 2 novos)', /1 atualizados/.test(msg2) && /2 novos/.test(msg2), msg2)
+  ck('importação 2: o mesmo EAN das duas lojas vira um produto só (1 atualizado, 2 novos)', /1 atualizados/.test(msg2) && /2 novos/.test(msg2) && /a partir de 4 linhas/.test(msg2) && /1 medicamentos deixados de fora/.test(msg2), msg2)
   const total = Number((await q(`select count(*)::int n from products`))[0].n)
   ck('catálogo tem 8 produtos (6 + Dove + código inválido sem EAN)', total === 8, total)
   const multi = (await q(`select description, aliases, group_name, erp_code from products where ean = $1`, [EAN.multi]))[0]
   ck('descrição das duas lojas guardada (principal + alternativa), grupo e código aproveitados', multi.description === 'MULTIGRIP 20 CAPSULAS' && multi.aliases.includes('MULTIGRIP 20CAP') && multi.group_name === 'ANALGESICOS' && multi.erp_code === '101', JSON.stringify(multi))
+  ck('medicamento (grupo genérico) não entra no catálogo', (await q(`select count(*)::int n from products where description like 'DIPIRONA%'`))[0].n === 0)
   ck('EAN inválido do ERP não vira código de barras', (await q(`select count(*)::int n from products where ean is null and description = 'LIXO SEM BARRAS INVALIDAS'`))[0].n === 1)
   await a.setInputFiles('input[aria-label="Planilha do ERP"]', { name: 'x.xlsx', mimeType: XLSX, buffer: await xlsx([['Qualquer', 'Coisa'], [1, 2]]) })
   await a.getByRole('button', { name: 'Importar produtos' }).click()

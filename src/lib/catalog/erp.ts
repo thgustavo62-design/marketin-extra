@@ -1,10 +1,10 @@
 // Importação do cadastro de produtos a partir da planilha exportada do ERP (qualquer das duas lojas). Reimportar é seguro: atualiza sem duplicar.
 import ExcelJS from 'exceljs'
 import { pool, withTx } from '../db.ts'
-import { detectErpColumns, normalizeName, parseEan, searchKey } from '../domain/catalog.ts'
+import { detectErpColumns, isMedicine, normalizeName, parseEan, searchKey } from '../domain/catalog.ts'
 import { invalidateCatalogIndex } from './store.ts'
 
-export type ErpRow = { ean: string | null; description: string; code: string | null; group: string | null; ingredient: string | null; registroMs: string | null }
+export type ErpRow = { ean: string | null; description: string; code: string | null; group: string | null; ingredient: string | null; registroMs: string | null; stock: number | null }
 export type ErpParse = { ok: true; rows: ErpRow[]; skipped: number } | { ok: false; error: string }
 
 const text = (v: unknown): string => {
@@ -18,6 +18,8 @@ const text = (v: unknown): string => {
   }
   return String(v).trim()
 }
+
+const stockNum = (v: unknown): number | null => { const n = typeof v === 'number' ? v : Number(String(v ?? '').replace(',', '.')); return Number.isFinite(n) && String(v ?? '').trim() !== '' ? n : null }
 
 /** Lê a primeira aba que tenha as colunas "Descrição" e (Barras ou Código). Cabeçalho pode não estar na primeira linha. */
 export async function parseErpXlsx(file: Buffer): Promise<ErpParse> {
@@ -49,6 +51,7 @@ export async function parseErpXlsx(file: Buffer): Promise<ErpParse> {
           group: cols.group != null ? text(vals[cols.group]) || null : null,
           ingredient: cols.ingredient != null ? text(vals[cols.ingredient]) || null : null,
           registroMs: cols.ms != null ? text(vals[cols.ms]).replace(/D/g, '') || null : null,
+          stock: cols.stock != null ? stockNum(vals[cols.stock]) : null,
         })
       }
       if (found) break
@@ -62,9 +65,9 @@ export async function parseErpXlsx(file: Buffer): Promise<ErpParse> {
   return { ok: true, rows, skipped }
 }
 
-type Merged = { ean: string | null; description: string; aliases: Set<string>; code: string | null; group: string | null; ingredient: string | null; registroMs: string | null; key: string }
+type Merged = { ean: string | null; description: string; aliases: Set<string>; code: string | null; group: string | null; ingredient: string | null; registroMs: string | null; stock: number | null; key: string }
 
-export type UpsertResult = { rows: number; unique: number; created: number; updated: number; withoutEan: number; enriched: number }
+export type UpsertResult = { rows: number; unique: number; created: number; updated: number; withoutEan: number; enriched: number; medicines: number; outOfStock: number }
 
 /** Junta linhas do mesmo produto (mesmo EAN; sem EAN, mesma descrição normalizada). A descrição mais longa vira a principal; as outras viram descrições alternativas. */
 export function mergeErpRows(rows: ErpRow[]): Merged[] {
@@ -73,10 +76,11 @@ export function mergeErpRows(rows: ErpRow[]): Merged[] {
     const key = r.ean ? `e:${r.ean}` : `n:${normalizeName(r.description)}`
     if (key === 'n:') continue
     const m = map.get(key)
-    if (!m) { map.set(key, { ean: r.ean, description: r.description, aliases: new Set(), code: r.code, group: r.group, ingredient: r.ingredient, registroMs: r.registroMs, key }); continue }
+    if (!m) { map.set(key, { ean: r.ean, description: r.description, aliases: new Set(), code: r.code, group: r.group, ingredient: r.ingredient, registroMs: r.registroMs, stock: r.stock, key }); continue }
     if (r.description !== m.description) {
       if (r.description.length > m.description.length) { m.aliases.add(m.description); m.description = r.description } else m.aliases.add(r.description)
     }
+    if (r.stock != null) m.stock = (m.stock ?? 0) + r.stock
     m.code ??= r.code; m.group ??= r.group; m.ingredient ??= r.ingredient; m.registroMs ??= r.registroMs
   }
   return [...map.values()]
@@ -85,17 +89,26 @@ export function mergeErpRows(rows: ErpRow[]): Merged[] {
 const BATCH = 500
 
 export async function upsertProducts(rows: ErpRow[], userId: string | null): Promise<UpsertResult> {
-  const merged = mergeErpRows(rows)
-  const result: UpsertResult = { rows: rows.length, unique: merged.length, created: 0, updated: 0, withoutEan: merged.filter((m) => !m.ean).length, enriched: 0 }
+  // só entra o que tem saldo em estoque (planilha sem a coluna de estoque entra inteira)
+  const everything = mergeErpRows(rows)
+  const merged = everything.filter((m) => m.stock == null || m.stock > 0)
+  const result: UpsertResult = { rows: rows.length, unique: merged.length, created: 0, updated: 0, withoutEan: 0, enriched: 0, medicines: 0, outOfStock: everything.length - merged.length }
   for (let i = 0; i < merged.length; i += BATCH) {
-    const b = merged.slice(i, i + BATCH)
+    const all = merged.slice(i, i + BATCH)
     // laboratório, tarja e princípio ativo vêm da lista oficial da CMED quando o ERP não traz
-    const eans = b.map((m) => m.ean).filter((e): e is string => !!e)
+    const allEans = all.map((m) => m.ean).filter((e): e is string => !!e)
     const cmed = new Map<string, { lab: string | null; tarja: string | null; substance: string | null; registro: string | null }>()
-    if (eans.length) {
-      const r = await pool.query(`select e as ean, c.lab, c.tarja, c.substance, c.registro from cmed_products c, unnest(c.eans) e where c.eans && $1::text[] and e = any($1::text[])`, [eans])
+    if (allEans.length) {
+      const r = await pool.query(`select e as ean, c.lab, c.tarja, c.substance, c.registro from cmed_products c, unnest(c.eans) e where c.eans && $1::text[] and e = any($1::text[])`, [allEans])
       for (const x of r.rows) cmed.set(x.ean, x)
     }
+    // medicamento fica fora do banco de imagens
+    const cmedEans = new Set(cmed.keys())
+    const b = all.filter((m) => !isMedicine({ ean: m.ean, registroMs: m.registroMs, group: m.group }, cmedEans))
+    result.medicines += all.length - b.length
+    result.unique -= all.length - b.length
+    result.withoutEan += b.filter((m) => !m.ean).length
+    const eans = b.map((m) => m.ean).filter((e): e is string => !!e)
     // reimportar não pode apagar o que já se sabe do produto (outra loja pode trazer menos colunas): junta com o que já está no banco
     const known = new Map<string, { aliases: string[]; description: string; group_name: string | null; active_ingredient: string | null; manufacturer: string | null; registro_ms: string | null; tarja: string | null; erp_code: string | null }>()
     const keys = b.filter((m) => !m.ean).map((m) => normalizeName(m.description))

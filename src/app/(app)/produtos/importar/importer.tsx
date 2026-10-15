@@ -30,7 +30,7 @@ export function Importer() {
       const res = await fetch('/api/produtos/importar-erp', { method: 'POST', body: fd })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { setErpMsg({ kind: 'error', text: j.error ?? 'Não foi possível importar.' }); return }
-      setErpMsg({ kind: 'ok', text: `${j.unique.toLocaleString('pt-BR')} produtos únicos (${j.created.toLocaleString('pt-BR')} novos, ${j.updated.toLocaleString('pt-BR')} atualizados) a partir de ${j.rows.toLocaleString('pt-BR')} linhas. ${j.enriched.toLocaleString('pt-BR')} enriquecidos com a lista da CMED; ${j.withoutEan.toLocaleString('pt-BR')} sem código de barras.` })
+      setErpMsg({ kind: 'ok', text: `${j.unique.toLocaleString('pt-BR')} produtos únicos (${j.created.toLocaleString('pt-BR')} novos, ${j.updated.toLocaleString('pt-BR')} atualizados) a partir de ${j.rows.toLocaleString('pt-BR')} linhas. ${j.enriched.toLocaleString('pt-BR')} enriquecidos com a lista da CMED; ${j.withoutEan.toLocaleString('pt-BR')} sem código de barras. ${j.outOfStock.toLocaleString('pt-BR')} sem estoque e ${j.medicines.toLocaleString('pt-BR')} medicamentos deixados de fora (o banco de imagens não inclui medicamentos).` })
       if (erpRef.current) erpRef.current.value = ''
       router.refresh()
     } finally { setErpBusy(false) }
@@ -77,7 +77,7 @@ export function Importer() {
     <>
       <section className="card">
         <h3><FileSpreadsheet size={16} style={{ verticalAlign: -3 }} /> 1. Cadastro de produtos (planilha do ERP)</h3>
-        <p className="muted">Exporte do ERP em Excel (.xlsx) com as colunas <strong>Descrição</strong> e <strong>Barras</strong> (ou Código); Grupo, Princípio Ativo e Registro MS são aproveitados quando existirem. Serve para as duas lojas: o mesmo produto vira um só e as duas descrições são guardadas. Reenviar atualiza sem duplicar. Limite de 4 MB por planilha.</p>
+        <p className="muted">Exporte do ERP em Excel (.xlsx) com as colunas <strong>Descrição</strong> e <strong>Barras</strong> (ou Código); Grupo, Princípio Ativo e Registro MS são aproveitados quando existirem. Entram só produtos com estoque maior que zero. Medicamentos (CMED, registro MS de medicamento ou grupo genérico/similar/ético/OTC) são ignorados. Serve para as duas lojas: o mesmo produto vira um só e as duas descrições são guardadas. Reenviar atualiza sem duplicar. Limite de 4 MB por planilha.</p>
         <div className="form-actions">
           <input ref={erpRef} type="file" accept=".xlsx" aria-label="Planilha do ERP" />
           <button type="button" className="primary" onClick={sendErp} disabled={erpBusy}>{erpBusy ? 'Importando…' : 'Importar produtos'}</button>
