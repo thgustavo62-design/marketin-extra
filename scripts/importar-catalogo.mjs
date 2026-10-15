@@ -14,7 +14,7 @@ if (GRAVAR && !process.env.DATABASE_URL) { console.error('Sem DATABASE_URL: rode
 
 if (!GRAVAR) process.env.DATABASE_URL ||= 'postgres://simulacao:x@127.0.0.1:1/x' // a simulação não conecta ao banco
 const { parseErpXlsx, mergeErpRows, upsertProducts } = await import('../src/lib/catalog/erp.ts')
-const { buildIndex, isMedicine, matchName, nameFromFile } = await import('../src/lib/domain/catalog.ts')
+const { buildIndex, isMedicine, matchName, nameFromFile, parseEan } = await import('../src/lib/domain/catalog.ts')
 
 // ---------- 1. produtos do ERP ----------
 const allRows = []
@@ -59,7 +59,9 @@ for (const f of files) {
     if (m.decision !== 'exata' && exemplos[m.decision] && exemplos[m.decision].length < 8) exemplos[m.decision].push(`${name}  →  ${m.best ? merged[Number(m.best.id)].description + ` (${Math.round(m.best.score * 100)}%)` : '—'}`)
   }
   // só grava imagem que tem produto (ou dúvida com sugestões); o que não existe no ERP sem medicamento (inclusive embalagem de remédio) não entra
-  const keep = name && (stat.last !== 'nenhum')
+  // arquivo nomeado só com o EAN (como os bancos de imagens dos fabricantes enviam) também entra: o site liga pelo código de barras
+  const baseName = f.split(/[\\/]/).pop().replace(/\.[a-z0-9]{2,5}$/i, '').replace(/\s*\(\d+\)\s*$/, '')
+  const keep = (name && stat.last !== 'nenhum') || !!parseEan(baseName)
   if (ingest && keep) {
     const r = await ingest({ buf: await readFile(f), fileName: f.split(/[\\/]/).pop(), userId: null, source: 'proprio' })
     res[r.status === 'ligada' ? 'ligada' : r.status]++
