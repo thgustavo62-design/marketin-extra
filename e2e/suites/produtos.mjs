@@ -203,6 +203,17 @@ try {
   await wait(1200)
   ck('remover o produto do conteúdo', (await q(`select count(*)::int n from post_products where post_id = $1`, [post]))[0].n === 0)
 
+  // ---------- fundo transparente ----------
+  const packshot = await sharp({ create: { width: 400, height: 400, channels: 3, background: '#ffffff' } }).composite([{ input: await sharp({ create: { width: 160, height: 240, channels: 3, background: '#c0392b' } }).png().toBuffer(), left: 120, top: 80 }]).png().toBuffer()
+  const up2 = await ac.request.post(BASE + '/api/produtos/imagens', { headers: { origin: BASE }, multipart: { product_id: doveId, file: { name: 'dove-estudio.png', mimeType: 'image/png', buffer: packshot } } })
+  const cutRow = (await q(`select fundo, original is not null as tem_original, width, height from product_images where original_name = 'dove-estudio.png'`))[0]
+  ck('foto de estúdio (fundo branco liso) vira transparente, guardando a original e recortando as margens', up2.status() === 200 && cutRow?.fundo === 'transparente' && cutRow.tem_original && cutRow.width < 250, JSON.stringify(cutRow))
+  const meta = await sharp((await q(`select data from product_images where original_name = 'dove-estudio.png'`))[0].data).metadata()
+  ck('a imagem guardada tem canal de transparência', meta.hasAlpha === true && meta.format === 'webp')
+  const noisy = await sharp({ create: { width: 300, height: 300, channels: 3, noise: { type: 'gaussian', mean: 128, sigma: 60 } } }).png().toBuffer()
+  const up3 = await ac.request.post(BASE + '/api/produtos/imagens', { headers: { origin: BASE }, multipart: { product_id: doveId, file: { name: 'dove-cenario.png', mimeType: 'image/png', buffer: noisy } } })
+  ck('foto com fundo não liso entra sem mexer (marcada "Fundo original")', up3.status() === 200 && (await q(`select fundo from product_images where original_name = 'dove-cenario.png'`))[0]?.fundo === 'original')
+
   // ---------- perfil leitor e sem login ----------
   const { p: v, c: vc } = await mk()
   await login(v, 'e2e_vw')

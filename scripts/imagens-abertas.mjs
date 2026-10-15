@@ -36,10 +36,10 @@ if (!GRAVAR) {
   const { isMedicine } = await import('../src/lib/domain/catalog.ts')
   const rows = []
   for (const f of erp) { const p = await parseErpXlsx(await readFile(f)); if (!p.ok) { console.error(`${f}: ${p.error}`); process.exit(1) } rows.push(...p.rows) }
-  let cmed = new Set()
+  let cmed = new Map()
   if (!process.env.DATABASE_URL.includes('simulacao')) {
     const { pool } = await import('../src/lib/db.ts')
-    cmed = new Set((await pool.query(`select unnest(eans) e from cmed_products`)).rows.map((r) => r.e))
+    cmed = new Map((await pool.query(`select e, c.tarja from cmed_products c, unnest(c.eans) e`)).rows.map((r) => [r.e, r.tarja]))
     await pool.end()
     console.log(`Lista da CMED: ${cmed.size} códigos de medicamentos`)
   } else console.log('Sem DATABASE_URL: medicamentos excluídos só por registro MS e grupo do ERP (use --env-file=.env para incluir a CMED).')

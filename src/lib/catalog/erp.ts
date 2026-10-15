@@ -42,7 +42,7 @@ export async function parseErpXlsx(file: Buffer): Promise<ErpParse> {
           if (c.desc != null && (c.ean != null || c.code != null)) { cols = c; found = true }
           continue
         }
-        const description = text(vals[cols.desc!]).replace(/s+/g, ' ')
+        const description = text(vals[cols.desc!]).replace(/\s+/g, ' ')
         if (description.length < 2) { skipped++; continue }
         rows.push({
           ean: cols.ean != null ? parseEan(vals[cols.ean]) : null,
@@ -50,7 +50,7 @@ export async function parseErpXlsx(file: Buffer): Promise<ErpParse> {
           code: cols.code != null ? text(vals[cols.code]) || null : null,
           group: cols.group != null ? text(vals[cols.group]) || null : null,
           ingredient: cols.ingredient != null ? text(vals[cols.ingredient]) || null : null,
-          registroMs: cols.ms != null ? text(vals[cols.ms]).replace(/D/g, '') || null : null,
+          registroMs: cols.ms != null ? text(vals[cols.ms]).replace(/\D/g, '') || null : null,
           stock: cols.stock != null ? stockNum(vals[cols.stock]) : null,
         })
       }
@@ -102,8 +102,8 @@ export async function upsertProducts(rows: ErpRow[], userId: string | null): Pro
       const r = await pool.query(`select e as ean, c.lab, c.tarja, c.substance, c.registro from cmed_products c, unnest(c.eans) e where c.eans && $1::text[] and e = any($1::text[])`, [allEans])
       for (const x of r.rows) cmed.set(x.ean, x)
     }
-    // medicamento fica fora do banco de imagens
-    const cmedEans = new Set(cmed.keys())
+    // medicamento de prescrição fica fora do banco de imagens (OTC entra)
+    const cmedEans = new Map([...cmed].map(([e, x]) => [e, x.tarja]))
     const b = all.filter((m) => !isMedicine({ ean: m.ean, registroMs: m.registroMs, group: m.group }, cmedEans))
     result.medicines += all.length - b.length
     result.unique -= all.length - b.length

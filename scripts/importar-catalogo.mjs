@@ -24,16 +24,21 @@ for (const f of erpFiles) {
   console.log(`ERP ${f.split(/[\\/]/).pop()}: ${p.rows.length} linhas`)
   allRows.push(...p.rows)
 }
-let cmed = new Set()
-if (!process.env.DATABASE_URL.includes('simulacao')) { const { pool } = await import('../src/lib/db.ts'); cmed = new Set((await pool.query(`select unnest(eans) e from cmed_products`)).rows.map((r) => r.e)); if (!GRAVAR) await pool.end() }
+let cmed = new Map()
+if (!process.env.DATABASE_URL.includes('simulacao')) { const { pool } = await import('../src/lib/db.ts'); cmed = new Map((await pool.query(`select e, c.tarja from cmed_products c, unnest(c.eans) e`)).rows.map((r) => [r.e, r.tarja])); if (!GRAVAR) await pool.end() }
 // só o que tem saldo em estoque
 const todos = mergeErpRows(allRows).filter((m) => m.stock == null || m.stock > 0)
 // banco de imagens não inclui medicamentos
 const merged = todos.filter((m) => !isMedicine({ ean: m.ean, registroMs: m.registroMs, group: m.group }, cmed))
-console.log(`→ ${todos.length} produtos únicos com estoque; ${todos.length - merged.length} medicamentos ficam de fora; ${merged.length} no banco de imagens (${merged.filter((m) => m.ean).length} com código de barras)`)
+console.log(`→ ${todos.length} produtos únicos com estoque; ${todos.length - merged.length} medicamentos de prescrição ficam de fora (OTC entra); ${merged.length} no banco de imagens (${merged.filter((m) => m.ean).length} com código de barras)`)
 if (GRAVAR) {
   const r = await upsertProducts(allRows, null)
   console.log(`Gravado: ${r.created} novos, ${r.updated} atualizados, ${r.enriched} enriquecidos com a CMED.`)
+  // limpeza: produto do ERP que, pelas regras de hoje, é medicamento de prescrição sai do catálogo (com as imagens dele)
+  const { pool } = await import('../src/lib/db.ts')
+  const have = (await pool.query(`select id, ean, registro_ms, group_name from products where source = 'erp'`)).rows
+  const out = have.filter((p) => isMedicine({ ean: p.ean, registroMs: p.registro_ms, group: p.group_name }, cmed)).map((p) => p.id)
+  if (out.length) { await pool.query(`delete from products where id = any($1::uuid[])`, [out]); console.log(`Removidos do catálogo: ${out.length} medicamentos de prescrição que já estavam gravados.`) }
 }
 
 // ---------- 2. imagens ----------

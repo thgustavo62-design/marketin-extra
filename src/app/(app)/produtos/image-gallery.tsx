@@ -67,6 +67,8 @@ export function ImageGallery({ productId, hasEan, images, canEdit }: { productId
                 {i.is_primary && <span className="pill on"><Star size={11} /> Principal</span>}
                 <span className="badge">{SOURCE[i.source] ?? i.source}</span>
                 {i.match_method === 'similar' && <span className="pill soft">Conferir</span>}
+                {i.fundo === 'transparente' && <span className="badge">Fundo transparente</span>}
+                {i.fundo === 'original' && <span className="pill soft" title="O fundo não é liso, então não foi possível removê-lo automaticamente">Fundo original</span>}
               </div>
               <small className="muted">{i.width}×{i.height} · {Math.round(i.size_bytes / 1024)} KB{i.original_name ? ` · ${i.original_name}` : ''}</small>
               {i.license && <small className="muted">Licença {i.license}. Crédito: {i.attribution}{i.source_url && <> · <a href={i.source_url} target="_blank" rel="noopener noreferrer">fonte</a></>}</small>}

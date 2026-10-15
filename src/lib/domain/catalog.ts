@@ -171,14 +171,19 @@ export function searchTerms(q: string): string[] {
   return strip(q).toLowerCase().split(/\s+/).filter((t) => t.length > 0).slice(0, 8)
 }
 
-// ---------- medicamento (fica fora do banco de imagens) ----------
-const MED_GROUP = /^(GENERICOS?|SIMILARES?|ETICOS?|OTC|DERMO|MEDICAMENTOS?)\b/
+// ---------- medicamento (fica fora do banco de imagens, exceto OTC) ----------
+const MED_GROUP = /^(GENERICOS?|SIMILARES?|ETICOS?|DERMO|MEDICAMENTOS?)\b/
+const OTC_GROUP = /^OTC\b/
 /**
- * O banco de imagens não inclui medicamentos. É medicamento quem: consta na lista da CMED (pelo código de barras), tem registro MS de
- * medicamento (13 dígitos começando em 1) ou está num grupo de medicamento do ERP (genérico, similar, ético, OTC, dermo ético).
+ * O banco de imagens não inclui medicamentos de prescrição, mas inclui os OTC (isentos de prescrição, "sem tarja").
+ * Entra: grupo OTC do ERP, ou medicamento da CMED marcado "Sem Tarja". Fica de fora: o resto da CMED (tarja vermelha, preta ou sem classificação),
+ * registro MS de medicamento (13 dígitos começando em 1) ou grupo de medicamento do ERP (genérico, similar, ético, dermo ético).
+ * `cmed` = código de barras → tarja, como está na lista da CMED.
  */
-export function isMedicine(p: { ean?: string | null; registroMs?: string | null; group?: string | null }, cmedEans?: ReadonlySet<string>): boolean {
-  if (p.ean && cmedEans?.has(p.ean)) return true
+export function isMedicine(p: { ean?: string | null; registroMs?: string | null; group?: string | null }, cmed?: ReadonlyMap<string, string | null>): boolean {
+  const g = p.group ? strip(p.group).toUpperCase().trim() : ''
+  if (OTC_GROUP.test(g)) return false
+  if (p.ean && cmed?.has(p.ean)) return !/SEM TARJA/.test(strip(cmed.get(p.ean) ?? '').toUpperCase())
   if (p.registroMs && /^1\d{12}$/.test(p.registroMs.replace(/\D/g, ''))) return true
-  return !!p.group && MED_GROUP.test(strip(p.group).toUpperCase().trim())
+  return MED_GROUP.test(g)
 }

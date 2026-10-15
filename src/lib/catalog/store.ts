@@ -1,6 +1,7 @@
 // Catálogo de produtos: leitura, busca, imagens e fila de conferência. Importações com .ts para rodar também em scripts do Node.
 import { pool, withTx } from '../db.ts'
 import { buildIndex, matchName, nameFromFile, normalizeName, parseEan, searchKey, searchTerms, type Candidate, type NameIndex } from '../domain/catalog.ts'
+import { makeTransparent } from './background.ts'
 import { processImage } from './images.ts'
 
 // ---------- índice de nomes (descrição + descrições alternativas de cada produto) ----------
@@ -32,7 +33,7 @@ export type ProductDetail = {
 }
 export type ImageMeta = {
   id: string; is_primary: boolean; width: number; height: number; size_bytes: number; source: string; license: string | null; attribution: string | null
-  source_url: string | null; original_name: string | null; match_method: string | null; match_score: number | null; created_at: string
+  source_url: string | null; original_name: string | null; match_method: string | null; match_score: number | null; created_at: string; fundo: string | null
 }
 export type PendingImage = { id: string; original_name: string | null; suggestions: Candidate[]; created_at: string }
 
@@ -93,7 +94,7 @@ export async function getProduct(id: string): Promise<{ product: ProductDetail; 
   if (!p) return null
   const [images, posts] = await Promise.all([
     pool.query(
-      `select id, is_primary, width, height, size_bytes, source, license, attribution, source_url, original_name, match_method, match_score::float8 as match_score, created_at::text as created_at
+      `select id, is_primary, width, height, size_bytes, source, license, attribution, source_url, original_name, match_method, match_score::float8 as match_score, created_at::text as created_at, fundo
          from product_images where product_id = $1 order by is_primary desc, created_at`, [id]),
     pool.query(`select p.id, p.title, p.post_date::text as post_date, p.stage from post_products pp join posts p on p.id = pp.post_id where pp.product_id = $1 order by p.post_date desc limit 30`, [id]),
   ])
@@ -138,7 +139,17 @@ export async function ingestImage(o: {
   const file = o.fileName
   const p = await processImage(o.buf)
   if (!p.ok) return { file, status: 'invalida', error: p.error }
-  const img = p.image
+  // regra do banco: foto de produto com fundo transparente. Só dá para tirar o fundo quando ele é liso (estúdio/recorte); o resultado vem do original
+  let img = p.image
+  let fundo: 'transparente' | 'original' = 'original'
+  let original: Buffer | null = null
+  const cut = await makeTransparent(o.buf)
+  if (cut.ok) {
+    const c = await processImage(cut.png)
+    if (c.ok) { original = p.image.data; img = c.image; fundo = 'transparente' }
+  }
+  // foto de banco aberto sem fundo liso é foto amadora (mão, prateleira, cenário): não serve como foto profissional
+  if (fundo === 'original' && (o.source ?? '').startsWith('open_')) return { file, status: 'invalida', error: 'Foto amadora (sem fundo liso): não usada.' }
 
   let productId: string | null = o.productId ?? null
   let method: IngestResult['method']
@@ -162,11 +173,11 @@ export async function ingestImage(o: {
   }
 
   const insert = async (primary: boolean) => (await pool.query(
-    `insert into product_images (product_id, is_primary, data, thumb, width, height, size_bytes, sha256, source, license, attribution, source_url, original_name, match_method, match_score, suggestions, created_by)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+    `insert into product_images (product_id, is_primary, data, thumb, width, height, size_bytes, sha256, source, license, attribution, source_url, original_name, match_method, match_score, suggestions, created_by, original, fundo)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
      on conflict do nothing returning id`,
     [productId, primary, img.data, img.thumb, img.width, img.height, img.data.length, img.sha256, o.source ?? 'upload', o.license ?? null, o.attribution ?? null, o.sourceUrl ?? null,
-      file.replace(/^.*[\\/]/, '').slice(0, 200), method ?? null, score ?? null, JSON.stringify(productId ? [] : suggestions), o.userId])).rows[0]
+      file.replace(/^.*[\\/]/, '').slice(0, 200), method ?? null, score ?? null, JSON.stringify(productId ? [] : suggestions), o.userId, original, fundo])).rows[0]
   const hasPrimary = productId ? (await pool.query(`select 1 from product_images where product_id = $1 and is_primary`, [productId])).rowCount! > 0 : true
   let row: { id: string } | undefined
   try { row = await insert(productId !== null && !hasPrimary) } catch (e) {

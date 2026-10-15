@@ -85,14 +85,16 @@ test('busca: sem acento, minúsculas, todos os termos', () => {
   assert.deepEqual(searchTerms('  Nivea  Creme 100G '), ['nivea', 'creme', '100g'])
 })
 
-test('medicamento fica fora: CMED, registro MS de medicamento ou grupo de medicamento do ERP', () => {
-  assert.equal(isMedicine({ ean: '7891000100103' }, new Set(['7891000100103'])), true)
+test('medicamento de prescrição fica fora; OTC (sem tarja) entra', () => {
+  const cmed = new Map<string, string | null>([['7891000100103', 'Tarja Vermelha'], ['7891000100110', 'Tarja Sem Tarja'], ['7891000100127', '- (*)']])
+  assert.equal(isMedicine({ ean: '7891000100103' }, cmed), true)
+  assert.equal(isMedicine({ ean: '7891000100110', registroMs: '1023456780012', group: 'GENERICOS - GENERICO' }, cmed), false) // sem tarja = OTC
+  assert.equal(isMedicine({ ean: '7891000100127' }, cmed), true) // CMED sem classificação: fica de fora
   assert.equal(isMedicine({ registroMs: '1023456780012' }), true)
   assert.equal(isMedicine({ registroMs: '6777700010016' }), false) // cosmético/alimento
   assert.equal(isMedicine({ group: 'GENERICOS - GENERICO ONEROSO' }), true)
   assert.equal(isMedicine({ group: 'ETICO - ETICOS 20% DESC.' }), true)
-  assert.equal(isMedicine({ group: 'OTC - ETICOS/LIBERADOS OTC' }), true)
+  assert.equal(isMedicine({ group: 'OTC - ETICOS/LIBERADOS OTC', registroMs: '1023456780012' }), false)
   assert.equal(isMedicine({ group: 'PERFUMARIA - PERFUMARIA HIG. PESSOAL' }), false)
   assert.equal(isMedicine({ group: 'CORRELATOS - HOSPITALARES/ORTOPEDICOS' }), false)
-  assert.equal(isMedicine({ group: 'LEITES - LEITE/FORMULA', ean: '7891' }, new Set()), false)
 })
