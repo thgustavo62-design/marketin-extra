@@ -65,7 +65,10 @@ export async function safeFetch(url: string, opts: Opts = {}): Promise<{ ok: tru
     try { u = new URL(current) } catch { return { ok: false, error: 'Endereço inválido.' } }
     if (u.protocol !== 'https:' || !ALLOWED_HOSTS.has(u.hostname)) return { ok: false, error: 'Fonte não permitida.' }
     const extra = EXTRA_CA[u.hostname]
-    const r = extra ? await getWithCa(u, extra, o) : await getWithFetch(u, o)
+    const get = () => (extra ? getWithCa(u, extra, o) : getWithFetch(u, o))
+    let r = await get()
+    // falha de rede passageira (conexão derrubada, fonte lenta): uma segunda tentativa antes de desistir
+    if (!r.ok && /acessar a fonte|demorou demais/.test(r.error)) { await new Promise((res) => setTimeout(res, 800)); r = await get() }
     if (!r.ok) return r
     if (r.status >= 300 && r.status < 400) {
       if (!r.location) return { ok: false, error: 'Redirecionamento inválido.' }
