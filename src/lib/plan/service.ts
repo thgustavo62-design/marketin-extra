@@ -2,14 +2,15 @@
 // A confirmação NUNCA recebe pautas do navegador: lê o plano guardado na prévia e só aceita dele quais linhas entrar.
 import { pool, withTx } from '../db'
 import { existingPostsBetween } from '../data/plan-imports'
-import { buildDrafts, normalizeTitle, parsePlan, type ParsedPlan, type Pillar } from '../domain'
+import { buildDrafts, normalizeTitle, parsePlan, todayISO, type ParsedPlan, type Pillar } from '../domain'
 
 const PREVIEW_DAYS = 14
 
 export type PreviewResult = { ok: true; id: string; plan: ParsedPlan } | { ok: false; error: string; existingId?: string }
 
 export async function createPreview(o: { userId: string; brandId: string; branchId: string | null; fileName: string; sha: string; pages: string[] }): Promise<PreviewResult> {
-  const plan = parsePlan(o.pages)
+  // datas sem ano ("20/10") vêm do período do PDF; se ele não disser, vale o ano de hoje (e a prévia avisa)
+  const plan = parsePlan(o.pages, { defaultYear: Number(todayISO().slice(0, 4)) })
   if (plan.entries.length === 0) return { ok: false, error: plan.warnings.find((w) => w.level === 'erro')?.message ?? 'Não encontrei conteúdo planejado neste PDF.' }
 
   const dup = (await pool.query(
