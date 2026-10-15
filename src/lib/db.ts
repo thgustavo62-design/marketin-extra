@@ -8,6 +8,8 @@ declare global {
 // Verificação do certificado: se DATABASE_CA (PEM do Supabase) estiver definido, o certificado é validado.
 // Sem ele, a conexão continua criptografada, mas sem checar a identidade do servidor.
 const ca = process.env.DATABASE_CA?.replace(/\\n/g, '\n')
+// Banco na própria máquina (usado só nos testes automatizados) não tem SSL; qualquer outro endereço continua exigindo conexão criptografada.
+const local = /@(127\.0\.0\.1|localhost)[:/]/.test(process.env.DATABASE_URL ?? '')
 
 // Pool único (sobrevive ao hot reload em dev). Só roda no servidor.
 // Os limites de tempo evitam que uma consulta presa trave a página inteira.
@@ -15,7 +17,7 @@ export const pool: pg.Pool =
   globalThis.__pgPool ??
   new pg.Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: ca ? { ca, rejectUnauthorized: true } : { rejectUnauthorized: false },
+    ssl: local ? false : ca ? { ca, rejectUnauthorized: true } : { rejectUnauthorized: false },
     max: 5,
     idleTimeoutMillis: 20_000,
     connectionTimeoutMillis: 10_000,

@@ -6,13 +6,12 @@ Next.js (App Router) + TypeScript + Supabase (Postgres, só pelo servidor). Regr
 
 | Camada | Pasta | O que faz | Pode importar |
 |---|---|---|---|
-| Domínio puro | `src/lib/domain/` | regras sem banco nem rede: rótulos, datas, indicadores, CSV, Reels, gerador | só ele mesmo |
+| Domínio puro | `src/lib/domain/` | regras sem banco nem rede: rótulos, datas, indicadores, CSV, Reels, leitura de plano em PDF | só ele mesmo |
 | Insights puros | `src/lib/insights/calc.ts` | períodos, variação, séries diárias, números compactos | domínio |
 | Serviços de fluxo | `src/lib/production/stage.ts`, `src/lib/approvals/*`, `src/lib/storage/` | mudança de etapa (única entrada), aprovações com versão congelada, armazenamento de arquivos | db, domínio |
-| Campanhas recorrentes | `src/lib/domain/recurrence.ts`, `src/lib/campaigns/generate.ts` | cálculo puro das ocorrências (testado) e motor de geração idempotente | db, domínio |
 | Métricas e metas | `src/lib/domain/publication-metrics.ts`, `targets.ts`, `src/lib/publications/collect.ts`, `src/lib/targets/realized.ts` | cálculos puros (N/D, medianas, maturidade, sugestão de vínculo, progresso de metas) · coleta manual para o banco · realizado das metas (sistema → Windsor → histórico) | db, domínio, windsor |
 | Alertas e relatórios | `src/lib/domain/alerts.ts`, `reports.ts`, `src/lib/alerts/sync.ts`, `src/lib/reports/*` | regras de alerta e períodos (puros) · reavaliação idempotente · montagem do retrato → blocos → HTML/CSV/PDF | db, domínio, targets |
-| Links e referências | `src/lib/domain/links.ts`, `src/app/(app)/gestao/{links,referencias}`, `api/links/[id]/qr` | validação estática de destino, UTM, URL de publicação (puros) · QR com a lib `qrcode` | domínio, db |
+| Endereço de publicação | `src/lib/domain/publish-url.ts` | validação do endereço da publicação (só redes conhecidas, https) e permalink comparável (puros) | — |
 | Inteligência | `src/lib/domain/intelligence.ts`, `src/lib/intelligence/{analyze,objects}.ts` | estatística e regras puras (testadas) · leitura do banco por filial · grafo de objetos | db, domínio |
 | Regras de acesso | `src/lib/perms.ts`, `src/lib/integrations.ts` | perfis, acesso por filial, identificação das contas do Windsor | domínio |
 | Banco | `src/lib/db.ts` | pool único, com limites de tempo | — |
@@ -28,12 +27,12 @@ Regra: **telas não escrevem SQL** (usam `@/lib/data`); **cálculo não fica na 
 
 ```
 (app)/page.tsx               Dashboard (getDashboard: tudo agregado em SQL)
-(app)/planejamento/          calendario · conteudos (+novo, [id]) · reels · gerar · importar-plano (upload, prévia [id], histórico)
+(app)/planejamento/          calendario · conteudos (+novo, [id]) · importar-plano (upload, prévia [id], histórico)
 (app)/producao/              quadro Kanban (board.tsx, task-drawer.tsx, actions.ts) — lê `posts` via `src/lib/data/production.ts`
-   aprovacoes/ · solicitacoes/ · biblioteca/   (cada uma com page + actions)
-(app)/campanhas/             lista · modelos/ (campanhas recorrentes: page, [id], novo, actions)
-(app)/resultados/            page = Insights (Meta, via Windsor) · instagram · meta-ads · publicacoes (manual) · vinculos · metas
-(app)/gestao/                base · unidades · links · referencias
+   aprovacoes/ · biblioteca/   (cada uma com page + actions)
+(app)/campanhas/             lista de campanhas
+(app)/resultados/            page = Insights (Meta, via Windsor) · instagram · meta-ads · vinculos · metas
+(app)/gestao/                base · unidades
 (app)/alertas/               central de alertas (a reavaliação roda no sino do layout)
 (app)/inteligencia/          Central de Inteligência (page com abas, finding-card, explorar/[kind]/[id], externo/ = mercado e preços CMED)
 (app)/configuracoes/         layout com abas escuras: usuarios · fluxo · integracoes · auditoria · conta
@@ -55,7 +54,6 @@ api/media/                   POST envio de arquivo · [id] GET download autoriza
 
 **Editou conteúdo ou anexo** — chame `invalidateIfChanged(postId, userId, motivo)` (`src/lib/approvals/service.ts`) depois de gravar: se a versão aprovada/pendente não confere mais, a aprovação é invalidada e o cartão volta para revisão.
 
-**Campanhas recorrentes** — as ocorrências saem de `occurrencesBetween` (datas ISO, sem fuso/horário de verão); a geração é `generateInstances` (trava o modelo, `on conflict do nothing` na `generation_key`). Instância é independente do modelo. Cartão gerado só passa de Briefing/Em produção/Em revisão após `reconfirmed_at` (regra `reconfirmBlockedReason`, aplicada em `changeStage`). Para ligar um agendador, chame `generateInstances(id, actor, hoje, 'job')` por modelo ativo — a idempotência já está garantida.
 
 **Importação de plano em PDF** — três etapas, nunca direto: (1) `POST /api/plano/analisar` (sessão, origem, perfil, filial, 4 MB, tipo real pelos bytes) extrai o texto com `unpdf` (`lib/plan/pdf.ts`: limite de 150 páginas, tempo e volume; PDF com senha ou sem texto é recusado) e grava uma **prévia** em `plan_imports.parsed`; (2) a tela de prévia (`importar-plano/[id]`) mostra o que foi lido, avisos e o que já existe; (3) `confirmPlanImportAction` → `lib/plan/service.ts#importPlan` **lê o plano guardado** (nunca pautas vindas do navegador), valida pessoas e campos, trava a linha da importação (`for update`) e insere tudo **em lote** (`jsonb_to_recordset` + `unnest`: poucas consultas, 59 pautas em ~4 s; inserir uma a uma estourava 60 s). O leitor é lógica pura em `domain/plan-import.ts` (`parsePlan` → `buildDraft` / `buildPreviewRows`), com teste e **sem IA**: linhas do calendário por data + código + formato + horário, briefings por rótulos, lista numerada só vira item sob rótulo de lista (um título numerado encerra o briefing em texto corrido). Tudo que parece errado vira `PlanWarning`, não é corrigido em silêncio. Convenções: Story entra como Feed (como em `FORMAT_BY_TYPE`); `pharma_review` nunca é marcado; código repetido ganha sufixo (`R01-2`) por causa do índice único `(plan_import_id, plan_code)`; o mesmo arquivo só entra uma vez por filial/unidade (`plan_imports_once_idx`). Desfazer (`undoImport`) só apaga pauta em Ideia/Briefing, `revision = 1`, sem tarefa feita, comentário de pessoa, anexo ou publicação vinculada. Cuidado: texto de PDF do Word traz marcadores invisíveis (área de uso privado) e já trocou o emoji 📲 por 🐀 — o leitor normaliza os dois.
 
@@ -67,7 +65,7 @@ api/media/                   POST envio de arquivo · [id] GET download autoriza
 
 **Relatórios** — `buildReport` só lê o banco e devolve um retrato JSON (gravado em `reports.snapshot`). `snapshotToBlocks` decide o conteúdo uma vez; HTML (`ReportView`), CSV e PDF (pdf-lib, fontes padrão: texto passa por `pdfSafe`) renderizam os mesmos blocos. Rotas de download usam `rowAllowed(user, 'reports', id)` → 404 sem acesso. Novo tipo de relatório: dados em `build.ts`, blocos em `blocks.ts`, tipo na CHECK de `reports.type`.
 
-**Links** — `validateDestination` nunca abre a URL (sem SSRF); `buildFinalUrl` é a única que monta o link; QR só de link `aprovado` e aprovado por outra pessoa (`canApproveLink`). **Publicação** — `confirmPublicationAction` passa por `changeStage` (mesmas regras de aprovação) antes de gravar `published_url`; método `api` é recusado até existir prova de viabilidade.
+**Publicação** — `confirmPublicationAction` passa por `changeStage` (mesmas regras de aprovação) antes de gravar `published_url`; método `api` é recusado até existir prova de viabilidade.
 
 **Inteligência** — a estatística mora em `domain/intelligence.ts` (puro): `compareGroups` devolve um `Finding` com evidência, confiança e ação; nunca devolva conclusão sem n e método. `analyzeBrand` só lê dados guardados, **uma filial por vez**. Novo achado: calcule os grupos em `analyze.ts` e passe a `compareGroups` (ou monte um `Finding` com `confidence` explícito). Decisões usam `insight_decisions` + `fingerprintOf(finding)`. Objetos novos no explorador: acrescente em `objects.ts` e cheque o acesso com `rowAllowed`. **CSS**: antes de criar uma classe genérica (`.bar`, `.card`…) procure em `globals.css` — uma colisão já quebrou o gráfico do Dashboard; o e2e agora tem checagens visuais.
 
@@ -99,4 +97,10 @@ api/media/                   POST envio de arquivo · [id] GET download autoriza
 
 ## Testes
 
-`npm run typecheck` · `npm test` (regras puras em `tests/`). Fluxos de tela são testados em navegador real antes de publicar; ao mudar um fluxo, rode o teste dele.
+`npm run typecheck` · `npm test` (regras puras em `tests/`, ~3 s) · `npm run e2e` (ponta a ponta, ~2 min).
+
+**Testes de ponta a ponta (`e2e/`)** — navegador de verdade (Playwright + Edge), uma suíte por área em `e2e/suites/*.mjs`. O executor (`e2e/run.mjs`) dá a **cada suíte o seu próprio ambiente**: um *schema* novo no Postgres (migrações aplicadas em uma chamada só, usuários de teste criados) e um servidor do app (`next start`) próprio, e roda várias suítes ao mesmo tempo. Por padrão o banco é um **Postgres local embutido** (`embedded-postgres`, sem Docker; consulta em ~0,3 ms contra ~200 ms até o Supabase) e o app só recebe a URL local, então o teste **não consegue tocar nos dados reais**; `--remote` usa o banco do `.env` em schemas isolados. O build é refeito sozinho se o código mudou. Cada linha do log (`e2e/.out/<suíte>.log`) leva o tempo desde o início da suíte.
+
+Opções: `--only a,b` · `--skip net,windsor` (sem internet) · `--jobs N` · `--keep` (mantém o schema para investigar) · `--list`. Metadados no topo de cada suíte: `// @title:` e `// @needs: net windsor`. Para criar uma suíte nova copie uma existente (login, `scope`, `ck`), use `process.env.BASE` e `process.env.DATABASE_URL` e termine imprimindo `N/M verificações passaram`. PDFs de teste são **fictícios e gerados na hora** (`plano-pdf.mjs`); a suíte `plano-pdf-real` usa um PDF de cliente só se existir na máquina (`E2E_PDF_REAL`) e nunca vai para o repositório.
+
+Armadilhas já vividas: (1) não use dados reais nem fuso da máquina nas asserções (o executor força UTC); (2) duas suítes nunca podem compartilhar porta (o executor reserva portas e só aceita o servidor que imprimiu “Ready”); (3) esperas fixas (`wait(3000)`) escondem lentidão: prefira `waitFor`/`networkidle`; (4) o SSL do app só é desligado para `127.0.0.1`/`localhost`.

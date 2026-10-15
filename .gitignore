@@ -11,3 +11,6 @@ next-env.d.ts
 
 .vercel
 .env*
+# resultados dos testes de ponta a ponta
+/e2e/.out/
+/e2e/.pgdata/
