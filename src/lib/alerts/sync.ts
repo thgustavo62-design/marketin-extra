@@ -11,7 +11,7 @@ import { internalCounts } from '../targets/realized'
 const MIN_SECONDS_BETWEEN_RUNS = 120
 
 type Candidate = {
-  type: AlertType; severity: Severity; brandId: string; branchId: string | null; objectType: 'post' | 'approval' | 'campaign_instance' | 'brand' | 'sync_run' | 'target'
+  type: AlertType; severity: Severity; brandId: string; branchId: string | null; objectType: 'post' | 'approval' | 'brand' | 'sync_run' | 'target'
   objectId: string; key: string; title: string; detail: string; href: string
 }
 
@@ -67,16 +67,7 @@ export async function syncAlerts(today = todayISO()): Promise<{ active: number; 
     c.push({ type: 'approval_stale', severity: approvalSeverity(h), brandId: a.brand_id, branchId: a.branch_id, objectType: 'approval', objectId: a.id, key: dedupeKey('approval_stale', a.id),
       title: `Aprovação parada: ${a.title}`, detail: `Aguardando decisão há ${h} horas (limite: ${T.approvalStaleHours} h).`, href: `/producao?abrir=${a.post_id}` })
   }
-  // 4) campanha recorrente a começar sem reconfirmação de preço/validade
-  for (const i of (await pool.query(
-    `select i.id, i.template_id, i.brand_id, i.branch_id, t.name, i.occurrence_start::text as s from campaign_instances i join campaign_templates t on t.id = i.template_id
-      where i.status = 'generated' and i.reconfirmed_at is null and i.occurrence_start <= $1::date + $2::int order by i.occurrence_start limit 200`, [today, T.campaignUnconfirmedDays])).rows) {
-    const started = i.s <= today
-    c.push({ type: 'campaign_unconfirmed', severity: started ? 'critical' : 'warning', brandId: i.brand_id, branchId: i.branch_id, objectType: 'campaign_instance', objectId: i.id,
-      key: dedupeKey('campaign_unconfirmed', i.id), title: `${started ? 'Campanha já começou sem reconfirmação' : 'Campanha a iniciar sem reconfirmação'}: ${i.name}`,
-      detail: `Início em ${formatBR(i.s)}. Produtos, preços, validade e estoque ainda não foram reconfirmados por uma pessoa.`, href: `/campanhas/modelos/${i.template_id}` })
-  }
-  // 5) arte final ausente com publicação próxima
+  // 4) arte final ausente com publicação próxima
   for (const p of (await pool.query(
     `select p.id, p.brand_id, p.branch_id, p.title, p.post_date::text as d from posts p
       where p.stage in ('aprovado', 'agendado') and p.post_date between $1::date and $1::date + $2::int
@@ -84,7 +75,7 @@ export async function syncAlerts(today = todayISO()): Promise<{ active: number; 
     c.push({ type: 'final_missing', severity: 'warning', brandId: p.brand_id, branchId: p.branch_id, objectType: 'post', objectId: p.id, key: dedupeKey('final_missing', p.id),
       title: `Sem arte final: ${p.title}`, detail: `Publicação em ${formatBR(p.d)} e nenhum anexo marcado como "Final".`, href: `/producao?abrir=${p.id}` })
   }
-  // 6) dados do Windsor sem atualização
+  // 5) dados do Windsor sem atualização
   for (const b of (await pool.query(
     `select b.id, b.name, greatest(
         (select max(s.collected_at) from publication_metric_snapshots s join external_publications e on e.id = s.publication_id where e.brand_id = b.id),
@@ -97,7 +88,7 @@ export async function syncAlerts(today = todayISO()): Promise<{ active: number; 
         title: `Dados do Windsor desatualizados: ${b.name}`, detail: `Última coleta há ${age} dias. As telas mostram o dado guardado como histórico.`, href: '/resultados/vinculos' })
     }
   }
-  // 7) falha na coleta (última tentativa da filial falhou nos últimos 3 dias e não houve sucesso depois)
+  // 6) falha na coleta (última tentativa da filial falhou nos últimos 3 dias e não houve sucesso depois)
   for (const r of (await pool.query(
     `select r.id, r.brand_id, r.error_summary_safe, r.started_at::text as at from integration_sync_runs r
       where r.status = 'failed' and r.job_type = 'collect_metrics' and r.started_at > now() - interval '3 days' and r.brand_id is not null
@@ -106,7 +97,7 @@ export async function syncAlerts(today = todayISO()): Promise<{ active: number; 
     c.push({ type: 'collect_failed', severity: 'warning', brandId: r.brand_id, branchId: null, objectType: 'sync_run', objectId: r.id, key: dedupeKey('collect_failed', r.id),
       title: 'Falha na coleta de métricas', detail: r.error_summary_safe ?? 'A última coleta não terminou.', href: '/resultados/vinculos' })
   }
-  // 8) metas internas fora do ritmo (só com dado suficiente)
+  // 7) metas internas fora do ritmo (só com dado suficiente)
   const targets = (await pool.query(
     `select t.id, t.brand_id, t.branch_id, t.metric_key, t.target_value::float8 as target, t.period_start::text as ps from brand_targets t
       where t.expected_source = 'internal' and t.period_end >= $1::date - 7 and t.period_start <= $1::date`, [today])).rows

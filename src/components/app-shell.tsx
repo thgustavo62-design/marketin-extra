@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
-  BarChart3, Bell, BookOpen, ClipboardCheck, ClipboardList, Columns3, CalendarDays, Camera, ChevronLeft, ChevronRight, Clapperboard, FileBarChart, FileText, FileUp, Flag, LayoutDashboard,
-  FolderOpen, Inbox, Lightbulb, Link2, LogOut, Megaphone, Menu, QrCode, Radar, Repeat, Settings, Sparkles, Store, Target, X,
+  BarChart3, Bell, BookOpen, ClipboardCheck, Columns3, CalendarDays, Camera, ChevronLeft, ChevronRight, FileBarChart, FileText, FileUp, Flag, LayoutDashboard,
+  FolderOpen, Link2, LogOut, Megaphone, Menu, Radar, Settings, Store, Target, X,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -19,11 +19,8 @@ const GROUPS: Group[] = [
     items: [
       { href: '/planejamento/calendario', label: 'Calendário', icon: CalendarDays },
       { href: '/planejamento/conteudos', label: 'Conteúdos', icon: FileText },
-      { href: '/planejamento/reels', label: 'Estúdio de Reels', icon: Clapperboard },
-      { href: '/planejamento/gerar', label: 'Gerar semana', icon: Sparkles, write: true },
-      { href: '/planejamento/importar-plano', label: 'Importar plano (PDF)', icon: FileUp, write: true },
       { href: '/campanhas', label: 'Campanhas', icon: Megaphone, exact: true },
-      { href: '/campanhas/modelos', label: 'Campanhas recorrentes', icon: Repeat },
+      { href: '/planejamento/importar-plano', label: 'Importar plano (PDF)', icon: FileUp, write: true },
     ],
   },
   {
@@ -31,7 +28,6 @@ const GROUPS: Group[] = [
     items: [
       { href: '/producao', label: 'Quadro de produção', icon: Columns3, exact: true },
       { href: '/producao/aprovacoes', label: 'Aprovações', icon: ClipboardCheck },
-      { href: '/producao/solicitacoes', label: 'Solicitações', icon: Inbox },
       { href: '/producao/biblioteca', label: 'Biblioteca de mídias', icon: FolderOpen },
     ],
   },
@@ -41,20 +37,17 @@ const GROUPS: Group[] = [
       { href: '/resultados', label: 'Insights', icon: BarChart3, exact: true },
       { href: '/resultados/instagram', label: 'Instagram', icon: Camera },
       { href: '/resultados/meta-ads', label: 'Meta Ads', icon: Target },
-      { href: '/resultados/publicacoes', label: 'Por publicação', icon: ClipboardList },
-      { href: '/resultados/vinculos', label: 'Publicações vinculadas', icon: Link2 },
+      { href: '/resultados/vinculos', label: 'Publicações', icon: Link2 },
       { href: '/resultados/metas', label: 'Metas', icon: Flag },
       { href: '/resultados/relatorios', label: 'Relatórios', icon: FileBarChart },
-      { href: '/inteligencia', label: 'Central de Inteligência', icon: Radar },
+      { href: '/inteligencia', label: 'Inteligência', icon: Radar },
     ],
   },
   {
-    title: 'Gestão',
+    title: 'Cadastros',
     items: [
       { href: '/gestao/base', label: 'Base de informações', icon: BookOpen },
       { href: '/gestao/unidades', label: 'Unidades', icon: Store },
-      { href: '/gestao/links', label: 'Links e QR Codes', icon: QrCode },
-      { href: '/gestao/referencias', label: 'Referências', icon: Lightbulb },
     ],
   },
   { title: 'Sistema', items: [{ href: '/configuracoes', label: 'Configurações', icon: Settings }] },

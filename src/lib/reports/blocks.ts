@@ -47,7 +47,7 @@ function operacional(s: ReportSnapshot): Block[] {
     { kind: 'h2', text: 'Operação do período' },
     { kind: 'kv', rows: [
       ['Conteúdos planejados (sem cancelados)', fmtNum(o.planned)], ['Publicados', fmtNum(o.published)], ['Atrasados', fmtNum(o.overdueCount)],
-      ['Sem responsável (em preparo)', fmtNum(o.noOwner)], ['Aprovações pendentes', fmtNum(o.pendingApprovals)], ['Campanhas recorrentes aguardando reconfirmação', fmtNum(o.pendingReconfirm)],
+      ['Sem responsável (em preparo)', fmtNum(o.noOwner)], ['Aprovações pendentes', fmtNum(o.pendingApprovals)],
     ] },
     { kind: 'table', title: 'Por etapa', columns: [{ title: 'Etapa', width: 3 }, { title: 'Conteúdos', width: 1, align: 'right' }], rows: STAGE_ORDER.map((st) => [STAGES[st], fmtNum(o.byStage[st])]) },
     { kind: 'table', title: 'Atrasados', columns: [{ title: 'Conteúdo', width: 5 }, { title: 'Data prevista', width: 2 }, { title: 'Dias de atraso', width: 2, align: 'right' }, { title: 'Etapa', width: 3 }],

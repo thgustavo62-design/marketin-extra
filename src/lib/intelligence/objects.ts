@@ -49,12 +49,8 @@ async function campaignView(id: string): Promise<ObjectView | null> {
   const posts = (await pool.query(`select id, title, stage, format, post_date::text as d from posts where campaign_id = $1 order by post_date, title`, [id])).rows as { id: string; title: string; stage: Stage; format: string; d: string }[]
   const postIds = posts.map((p) => p.id)
   const q = (sql: string, a: unknown[]) => pool.query(sql, a).then((r) => r.rows)
-  const [pubs, links, insp, inst, reqs, alerts, ev, apr] = await Promise.all([
+  const [pubs, alerts, ev, apr] = await Promise.all([
     postIds.length ? q(`${PUB_SQL} where e.content_id = any($1)`, [postIds]) as Promise<PubRow[]> : Promise.resolve([] as PubRow[]),
-    q(`select id, label, status, final_url from campaign_links where campaign_id = $1 order by created_at desc`, [id]),
-    q(`select id, title, kind from inspirations where campaign_id = $1 order by created_at desc`, [id]),
-    q(`select i.id, i.template_id, t.name, i.occurrence_start::text as s, i.status from campaign_instances i join campaign_templates t on t.id = i.template_id where i.campaign_id = $1`, [id]),
-    postIds.length ? q(`select id, title, status from content_requests where linked_post_id = any($1)`, [postIds]) : Promise.resolve([]),
     postIds.length ? q(`select title, severity, href from notification_events where object_type = 'post' and object_id = any($1) and resolved_at is null`, [postIds]) : Promise.resolve([]),
     postIds.length ? q(`select e.created_at::text as at, e.to_stage, e.from_stage, p.title, p.id from post_status_events e join posts p on p.id = e.post_id where e.post_id = any($1) order by e.created_at desc limit 40`, [postIds]) : Promise.resolve([]),
     postIds.length ? q(`select a.decided_at::text as at, a.status, p.title, p.id from approvals a join posts p on p.id = a.post_id where a.post_id = any($1) and a.decided_at is not null order by a.decided_at desc limit 20`, [postIds]) : Promise.resolve([]),
@@ -71,15 +67,10 @@ async function campaignView(id: string): Promise<ObjectView | null> {
       { label: 'Conteúdos', value: fmtNum(posts.length) }, { label: 'Publicados', value: fmtNum(posts.filter((p) => p.stage === 'publicado').length) },
       { label: 'Publicações reais ligadas', value: fmtNum(pubs.length) },
       { label: 'Engajamento (mediana, 7+ dias)', value: matureEng.length >= 3 ? `${fmtPct(median(matureEng))} (n=${matureEng.length})` : `amostra pequena (n=${matureEng.length})` },
-      { label: 'Links UTM', value: fmtNum(links.length) },
     ],
     relations: [
       rel('Conteúdos', posts.map((p) => ({ title: p.title, meta: `${STAGES[p.stage]} · ${FMT(p.format)} · ${formatBR(p.d)}`, href: explore('conteudo', p.id) }))),
       rel('Publicações reais', pubs.map(pubItem)),
-      rel('Modelo recorrente de origem', inst.map((i: { template_id: string; name: string; s: string; status: string }) => ({ title: i.name, meta: `ocorrência de ${formatBR(i.s)} (${i.status === 'generated' ? 'gerada' : 'cancelada'})`, href: `/campanhas/modelos/${i.template_id}` }))),
-      rel('Links e QR', links.map((l: { label: string; status: string; final_url: string }) => ({ title: l.label, meta: `${l.status} · ${l.final_url}`, href: '/gestao/links' }))),
-      rel('Solicitações que originaram conteúdo', reqs.map((r: { title: string; status: string }) => ({ title: r.title, meta: r.status, href: '/producao/solicitacoes' }))),
-      rel('Inspirações', insp.map((i: { id: string; title: string; kind: string }) => ({ title: i.title, meta: i.kind, href: `/gestao/referencias?insp=${i.id}` }))),
       rel('Alertas ativos', alerts.map((a: { title: string; severity: string; href: string }) => ({ title: a.title, meta: a.severity, href: a.href }))),
     ],
     timeline,
@@ -89,19 +80,16 @@ async function campaignView(id: string): Promise<ObjectView | null> {
 async function postView(id: string): Promise<ObjectView | null> {
   const p = (await pool.query(
     `select p.id, p.brand_id, b.name as brand_name, p.title, p.stage, p.format, p.pillar, p.post_date::text as d, p.campaign_id, coalesce(c.name, p.campaign_name) as campaign, p.publication_method, p.published_url,
-            p.campaign_instance_id, u.display_name as owner
+            u.display_name as owner
        from posts p join brands b on b.id = p.brand_id left join campaigns c on c.id = p.campaign_id left join users u on u.id = p.assigned_to where p.id = $1`, [id])).rows[0]
   if (!p) return null
   const q = (sql: string) => pool.query(sql, [id]).then((r) => r.rows)
-  const [pubs, assets, approvals, req, insp, alerts, ev, inst] = await Promise.all([
+  const [pubs, assets, approvals, alerts, ev] = await Promise.all([
     q(`${PUB_SQL} where e.content_id = $1`) as Promise<PubRow[]>,
     q(`select a.id, a.title, k.role, a.kind from content_asset_links k join media_assets a on a.id = k.asset_id where k.post_id = $1 order by k.sort_order`),
     q(`select a.status, a.created_at::text as at, a.decided_at::text as dat from approvals a where a.post_id = $1 order by a.created_at desc`),
-    q(`select id, title, status from content_requests where linked_post_id = $1`),
-    q(`select id, title, kind from inspirations where post_id = $1`),
     q(`select title, severity, href from notification_events where object_type = 'post' and object_id = $1 and resolved_at is null`),
     q(`select e.created_at::text as at, e.to_stage, e.from_stage, e.note, u.display_name as who from post_status_events e left join users u on u.id = e.actor_id where e.post_id = $1 order by e.created_at desc limit 40`),
-    p.campaign_instance_id ? pool.query(`select i.template_id, t.name, i.occurrence_start::text as s from campaign_instances i join campaign_templates t on t.id = i.template_id where i.id = $1`, [p.campaign_instance_id]).then((r) => r.rows) : Promise.resolve([]),
   ])
   const timeline: TimelineItem[] = ev.map((e: { at: string; to_stage: Stage; from_stage: Stage | null; note: string | null; who: string | null }) => ({
     at: e.at, text: `${e.from_stage ? STAGES[e.from_stage] + ' → ' : 'Criado em '}${STAGES[e.to_stage]}${e.who ? ` (${e.who})` : ''}${e.note ? ` — ${e.note}` : ''}`,
@@ -116,12 +104,9 @@ async function postView(id: string): Promise<ObjectView | null> {
     ],
     relations: [
       rel('Campanha', p.campaign_id ? [{ title: p.campaign ?? 'Campanha', meta: 'campanha deste conteúdo', href: explore('campanha', p.campaign_id) }] : []),
-      rel('Modelo recorrente de origem', inst.map((i: { template_id: string; name: string; s: string }) => ({ title: i.name, meta: `ocorrência de ${formatBR(i.s)}`, href: `/campanhas/modelos/${i.template_id}` }))),
-      rel('Solicitação de origem', req.map((r: { title: string; status: string }) => ({ title: r.title, meta: r.status, href: '/producao/solicitacoes' }))),
       rel('Publicações reais', pubs.map(pubItem)),
       rel('Arquivos', assets.map((a: { id: string; title: string; role: string; kind: string }) => ({ title: a.title, meta: `${a.role} · ${a.kind === 'link' ? 'link' : 'arquivo'}`, href: a.kind === 'link' ? '/producao/biblioteca' : `/api/media/${a.id}` }))),
       rel('Aprovações', approvals.map((a: { status: string; at: string; dat: string | null }) => ({ title: stLabel(a.status), meta: `enviado em ${when(a.at)}${a.dat ? ` · decidido em ${when(a.dat)}` : ''}`, href: `/producao?abrir=${id}` }))),
-      rel('Inspirações', insp.map((i: { id: string; title: string; kind: string }) => ({ title: i.title, meta: i.kind, href: `/gestao/referencias?insp=${i.id}` }))),
       rel('Alertas ativos', alerts.map((a: { title: string; severity: string; href: string }) => ({ title: a.title, meta: a.severity, href: a.href }))),
     ],
     timeline,

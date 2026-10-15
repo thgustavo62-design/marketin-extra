@@ -53,14 +53,14 @@ test('comparar grupos: vencedor claro com evidência, amostra e ação', () => {
   const f = compareGroups({
     key: 'formato', title: 'Formato', dimension: 'formato', metric: 'engajamento', period: 'últimos 90 dias', format: (n) => n.toFixed(1).replace('.', ',') + '%',
     groups: [{ key: 'Reels', values: rep(10, 12, 0.5) }, { key: 'Feed', values: rep(5, 12, 0.5) }, { key: 'Carrossel', values: [4, 5] }],
-    actionFor: (best) => ({ label: `Priorizar ${best}`, href: '/planejamento/gerar' }),
+    actionFor: (best) => ({ label: `Priorizar ${best}`, href: '/planejamento/conteudos/novo' }),
   })!
   assert.equal(f.confidence, 'alta')
   assert.equal(f.impact, 'alto')
   assert.match(f.statement, /Reels teve a maior mediana de engajamento \(9,8%, n=12\) e Feed a menor \(4,8%, n=12\)/)
   assert.ok(f.evidence.some((e) => /Carrossel: amostra pequena \(n=2\)/.test(e)))
   assert.ok(f.evidence.some((e) => /p = 0,/.test(e)))
-  assert.deepEqual(f.action, { label: 'Priorizar Reels', href: '/planejamento/gerar' })
+  assert.deepEqual(f.action, { label: 'Priorizar Reels', href: '/planejamento/conteudos/novo' })
 })
 
 test('comparar grupos: sem diferença real = inconclusivo, sem recomendar escolha', () => {

@@ -60,7 +60,7 @@ test('PDF A4 válido, com várias páginas quando a tabela é grande', async () 
 
 test('PDF tolera emoji, aspas curvas e símbolos fora do Latin-1 sem quebrar', async () => {
   const s = base({ type: 'operacional', resultados: null, operacional: {
-    planned: 3, published: 2, overdueCount: 0, noOwner: 0, pendingApprovals: 0, pendingReconfirm: 0, byStage: stages as never, overdue: [],
+    planned: 3, published: 2, overdueCount: 0, noOwner: 0, pendingApprovals: 0, byStage: stages as never, overdue: [],
     items: [{ title: '🔥 Oferta “especial” — R$ 4,90 ≥ meta', date: '2026-10-02', format: 'Feed', stage: 'Publicado', owner: null, campaign: null }], itemsTruncated: false,
   } })
   const pdf = await PDFDocument.load(await reportToPdf(s))
@@ -93,7 +93,7 @@ test('relatório executivo: monta os blocos só com o próprio retrato (sem depe
 
 test('relatório operacional e de resultados também montam CSV e PDF', async () => {
   const op = base({ type: 'operacional', resultados: null, operacional: {
-    planned: 2, published: 1, overdueCount: 1, noOwner: 0, pendingApprovals: 0, pendingReconfirm: 0, byStage: stages as never,
+    planned: 2, published: 1, overdueCount: 1, noOwner: 0, pendingApprovals: 0, byStage: stages as never,
     overdue: [{ title: 'Atrasado', date: '2026-10-01', daysLate: 8, stage: 'Em produção' }], items: [], itemsTruncated: false,
   } })
   assert.match(reportToCsv(op), /Atrasados/)

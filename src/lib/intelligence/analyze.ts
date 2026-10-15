@@ -56,12 +56,12 @@ export async function analyzeBrand(brand: BrandRef, branchId: string | null, tod
   add(compareGroups({
     key: 'formato_engajamento', title: 'Formato que mais engaja', dimension: 'formato', metric: 'engajamento (interações ÷ alcance)', period: periodLabel, format: pct1, limits: limitsBase,
     groups: groupBy(mature, (p) => FORMAT_LABEL[p.format] ?? p.format, eng),
-    actionFor: (best) => ({ label: `Planejar mais conteúdo em ${best} nas próximas semanas e acompanhar`, href: '/planejamento/gerar' }),
+    actionFor: (best) => ({ label: `Planejar mais conteúdo em ${best} nas próximas semanas e acompanhar`, href: '/planejamento/conteudos/novo' }),
   }))
   add(compareGroups({
     key: 'formato_salvamentos', title: 'Formato que mais gera salvamentos', dimension: 'formato', metric: 'salvamentos por mil contas alcançadas', period: periodLabel, format: (n) => fmtNum(n, 1), limits: limitsBase,
     groups: groupBy(mature, (p) => FORMAT_LABEL[p.format] ?? p.format, sav),
-    actionFor: (best) => ({ label: `Usar ${best} para conteúdo de consulta (dicas, listas, serviços)`, href: '/planejamento/gerar' }),
+    actionFor: (best) => ({ label: `Usar ${best} para conteúdo de consulta (dicas, listas, serviços)`, href: '/planejamento/conteudos/novo' }),
   }))
   add(compareGroups({
     key: 'dia_semana_engajamento', title: 'Melhor dia da semana', dimension: 'dia da semana', metric: 'engajamento', period: periodLabel, format: pct1, limits: [...limitsBase, 'Dia da semana em horário de Brasília.'],
@@ -78,7 +78,7 @@ export async function analyzeBrand(brand: BrandRef, branchId: string | null, tod
     key: 'tema_engajamento', title: 'Tema (pilar) que mais engaja', dimension: 'tema (pilar de conteúdo)', metric: 'engajamento', period: periodLabel, format: pct1,
     limits: [...limitsBase, `Só entram publicações vinculadas a um conteúdo planejado: ${linkedMature.length} de ${mature.length}. As sem vínculo ficam de fora.`],
     groups: groupBy(linkedMature, (p) => PILLARS[content.get(p.content_id!)!.pillar], eng),
-    actionFor: (best) => ({ label: `Reforçar o tema "${best}" no planejamento`, href: '/planejamento/gerar' }),
+    actionFor: (best) => ({ label: `Reforçar o tema "${best}" no planejamento`, href: '/planejamento/conteudos/novo' }),
     collectHref: '/resultados/vinculos?ver=pendentes',
   })
   add(pillarF)

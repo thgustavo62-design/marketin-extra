@@ -34,15 +34,14 @@ export default async function Integracoes() {
   const unidentified = resolved.filter((a) => !a.r)
 
   const rows: Row[] = [
-    { name: 'Banco de dados (Supabase)', state: 'on', label: 'Ativo', note: 'Conteúdos, campanhas, unidades, usuários e base de informações são salvos aqui.' },
+    { name: 'Banco de dados (Supabase)', state: 'on', label: 'Ativo', note: 'Conteúdos, campanhas, tarefas, unidades, usuários e base de informações são salvos aqui.' },
     {
       name: 'Windsor.ai — métricas do Instagram e do Meta Ads',
       state: !windsorKey ? 'off' : problems.length ? 'partial' : 'on',
       label: !windsorKey ? 'Não conectado' : problems.length ? 'Com aviso' : 'Ativo (leitura)',
       note: `${ig.names.length} conta(s) de Instagram e ${ads.names.length} de anúncios visíveis. Os Resultados leem direto do Windsor, sem guardar cópia no banco.`,
     },
-    { name: 'Geração com modelo de IA', state: 'off', label: 'Não conectado', note: 'O gerador atual usa modelos editoriais fixos (Gerar semana).' },
-    { name: 'Pesquisa recorrente na internet', state: 'off', label: 'Não ativada', note: 'Depende de fontes aprovadas e de uma rotina agendada.' },
+    { name: 'Fontes abertas de mercado (feriados, IPCA, CMED/Anvisa)', state: 'on', label: 'Manual', note: 'Atualizadas por botão em Inteligência › Mercado e Preço máximo; ficam guardadas no banco.' },
     { name: 'Publicação automática no Instagram', state: 'off', label: 'Não conectada', note: 'As datas do calendário são planejamento, não agendamento na Meta.' },
   ]
 

@@ -71,7 +71,7 @@ export default async function Producao({ searchParams }: { searchParams: Promise
       </form>
 
       {cards.length === 0 && !filtered && (
-        <p className="empty">Nenhum cartão ainda. Crie um em qualquer coluna (“Adicionar cartão”), use “Gerar semana” ou cadastre um conteúdo no calendário.</p>
+        <p className="empty">Nenhum cartão ainda. Crie um em qualquer coluna (“Adicionar cartão”), importe um plano em PDF ou cadastre um conteúdo no calendário.</p>
       )}
       <Board
         cards={cards}

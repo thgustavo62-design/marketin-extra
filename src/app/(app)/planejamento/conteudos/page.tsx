@@ -69,7 +69,7 @@ export default async function Conteudos({ searchParams }: { searchParams: Promis
       </form>
 
       {posts.length === 0 ? (
-        <p className="empty">Nenhum conteúdo encontrado. Crie um em “Novo conteúdo” ou use “Gerar semana”.</p>
+        <p className="empty">Nenhum conteúdo encontrado. Crie um em “Novo conteúdo” ou importe um plano em PDF.</p>
       ) : (
         <div className="table-wrap">
           <table>

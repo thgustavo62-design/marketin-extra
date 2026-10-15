@@ -20,7 +20,7 @@ export type AcctRow = {
 }
 
 export type OperacionalData = {
-  planned: number; published: number; overdueCount: number; noOwner: number; pendingApprovals: number; pendingReconfirm: number
+  planned: number; published: number; overdueCount: number; noOwner: number; pendingApprovals: number
   byStage: Record<Stage, number>
   overdue: { title: string; date: string; daysLate: number; stage: string }[]
   items: { title: string; date: string; format: string; stage: string; owner: string | null; campaign: string | null }[]
@@ -110,13 +110,10 @@ async function buildOperacional(i: Input): Promise<OperacionalData> {
   const open = rows.filter((r) => OPEN.includes(r.stage))
   const overdue = open.filter((r) => r.d < i.today).map((r) => ({ title: r.title, date: r.d, daysLate: daysBetween(r.d, i.today), stage: STAGES[r.stage as Stage] }))
   const pending = (await pool.query(`select count(*)::int n from approvals a join posts p on p.id = a.post_id where a.status = 'pending' and ${where}`, f)).rows[0].n
-  const reconfirm = (await pool.query(
-    `select count(*)::int n from campaign_instances ci where ci.brand_id = $1 and ($2::uuid is null or ci.branch_id = $2 or ci.branch_id is null)
-        and ci.status = 'generated' and ci.reconfirmed_at is null and ci.occurrence_start between $3 and $4`, f.slice(0, 4))).rows[0].n
   return {
     planned: rows.filter((r) => r.stage !== 'cancelado').length, published: byStage.publicado, overdueCount: overdue.length,
     noOwner: open.filter((r) => ['ideia', 'briefing', 'producao', 'revisao'].includes(r.stage) && !r.assigned_to).length,
-    pendingApprovals: pending, pendingReconfirm: reconfirm, byStage, overdue: overdue.slice(0, 60),
+    pendingApprovals: pending, byStage, overdue: overdue.slice(0, 60),
     items: rows.slice(0, 300).map((r) => ({ title: r.title, date: r.d, format: FORMATS[r.format as Format] ?? r.format, stage: STAGES[r.stage as Stage], owner: r.owner, campaign: r.campaign })),
     itemsTruncated: rows.length > 300,
   }
@@ -181,7 +178,6 @@ async function buildExecutivo(i: Input, op: OperacionalData, res: ResultadosData
   const nextSteps = [
     { label: 'Conteúdos atrasados', count: op.overdueCount, href: '/producao?atrasados=1' },
     { label: 'Aprovações pendentes', count: op.pendingApprovals, href: '/producao/aprovacoes' },
-    { label: 'Campanhas recorrentes aguardando reconfirmação', count: op.pendingReconfirm, href: '/campanhas/modelos' },
     { label: 'Publicações reais sem vínculo com conteúdo', count: unlinked, href: '/resultados/vinculos?ver=pendentes' },
     { label: 'Conteúdos sem responsável', count: op.noOwner, href: '/producao' },
   ].filter((s) => s.count > 0)

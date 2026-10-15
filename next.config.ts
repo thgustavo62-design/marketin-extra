@@ -5,13 +5,25 @@ const MOVED: [string, string][] = [
   ['/calendario', '/planejamento/calendario'],
   ['/conteudos', '/planejamento/conteudos'],
   ['/conteudos/:path*', '/planejamento/conteudos/:path*'],
-  ['/reels', '/planejamento/reels'],
-  ['/gerar', '/planejamento/gerar'],
   ['/base', '/gestao/base'],
   ['/unidades', '/gestao/unidades'],
   ['/gestao/filiais', '/gestao/unidades'],
   ['/conta', '/configuracoes/conta'],
   ['/fontes', '/configuracoes/integracoes'],
+]
+
+// Telas que saíram do sistema: quem tinha o endereço salvo cai na tela que cumpre o papel hoje (redirecionamento temporário, não permanente).
+const REMOVED: [string, string][] = [
+  ['/planejamento/gerar', '/planejamento/importar-plano'],
+  ['/gerar', '/planejamento/importar-plano'],
+  ['/planejamento/reels', '/planejamento/conteudos?formato=reels'],
+  ['/reels', '/planejamento/conteudos?formato=reels'],
+  ['/campanhas/modelos', '/campanhas'],
+  ['/campanhas/modelos/:path*', '/campanhas'],
+  ['/producao/solicitacoes', '/producao'],
+  ['/resultados/publicacoes', '/resultados/vinculos'],
+  ['/gestao/links', '/'],
+  ['/gestao/referencias', '/'],
 ]
 
 // Sem 'unsafe-eval'. 'unsafe-inline' em script é exigido pelo Next para hidratar sem nonce.
@@ -40,7 +52,10 @@ const security = [
 const config: NextConfig = {
   poweredByHeader: false,
   async redirects() {
-    return MOVED.map(([source, destination]) => ({ source, destination, permanent: true }))
+    return [
+      ...MOVED.map(([source, destination]) => ({ source, destination, permanent: true })),
+      ...REMOVED.map(([source, destination]) => ({ source, destination, permanent: false })),
+    ]
   },
   async headers() {
     return [

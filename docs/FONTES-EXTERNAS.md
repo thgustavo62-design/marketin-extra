@@ -13,13 +13,13 @@ Cada importação fica registrada em `external_imports` (quando, quem, quantas l
 ## Fontes avaliadas e **não** usadas
 
 - **Open-Meteo (clima)**: o plano gratuito é só para uso não comercial. Não usamos clima até haver fonte com termos compatíveis.
-- **Raspagem de preços de concorrentes, redes sociais de terceiros, marketplaces**: fora de escopo (termos de uso e LGPD). Referências de concorrentes continuam **manuais** (`/gestao/referencias`).
+- **Raspagem de preços de concorrentes, redes sociais de terceiros, marketplaces**: fora de escopo (termos de uso e LGPD).
 
 ## Como os dados são usados
 
 - **Datas importantes × planejamento**: feriados e datas sazonais da base são cruzados com os conteúdos planejados. Data próxima sem conteúdo vira **achado** na Inteligência e **alerta** (`date_uncovered`), que se resolve sozinho quando um conteúdo é planejado.
 - **Contexto de preços**: o IPCA importado entra como contexto (o texto avisa que é inflação geral, não o preço da sua loja).
-- **Preço máximo (CMED)**: confere o preço de uma oferta contra o PMC da alíquota de ICMS **da filial**. Sem ICMS cadastrado (`brands.icms_pct`, só administrador) o sistema **não afirma** que está acima do teto. Na Solicitação de oferta, informe o EAN: se o preço passa do PMC, a conversão em conteúdo é **bloqueada**.
+- **Preço máximo (CMED)**: confere o preço de uma oferta contra o PMC da alíquota de ICMS **da filial**. Sem ICMS cadastrado (`brands.icms_pct`, só administrador) o sistema **não afirma** que está acima do teto. Em Inteligência › Preço máximo, busque o produto (nome, substância ou EAN) e informe o preço da oferta: o sistema diz se está dentro do teto, acima dele ou se falta dado.
 - **Regras de propaganda (RDC 96/2008, Anvisa)**: verificador por regras sobre título, legenda e roteiro (no editor do conteúdo e no cartão da produção). Aponta termos de risco (ex.: promessa de cura, “o melhor”, estímulo ao uso de medicamento). É uma **referência** de apoio, não parecer jurídico.
 - **Notas de pesquisa** (`research_notes`): conclusões da pesquisa, cada uma com a fonte.
 

@@ -5,7 +5,6 @@ export const ALERT_TYPES = {
   post_overdue: 'Conteúdo atrasado',
   post_no_owner: 'Conteúdo sem responsável',
   approval_stale: 'Aprovação parada',
-  campaign_unconfirmed: 'Campanha sem reconfirmação',
   final_missing: 'Arte final ausente',
   integration_stale: 'Dados do Windsor desatualizados',
   collect_failed: 'Falha na coleta',
@@ -24,7 +23,6 @@ export const isSeverity = (v: unknown): v is Severity => typeof v === 'string' &
 export const THRESHOLDS = {
   approvalStaleHours: 48,
   approvalCriticalHours: 96,
-  campaignUnconfirmedDays: 3,
   finalMissingDays: 2,
   noOwnerDays: 7,
   integrationStaleDays: 7,

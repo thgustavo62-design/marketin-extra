@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { AlertTriangle, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Columns3, Megaphone, Plus, Sparkles, TrendingDown, TrendingUp } from 'lucide-react'
+import { AlertTriangle, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Columns3, FileUp, Megaphone, Plus, TrendingDown, TrendingUp } from 'lucide-react'
 import { FormatBadge, StageBadge } from '@/components/badges'
 import { CollectPanel } from '@/components/collect-panel'
 import { DashViewTabs } from '@/components/dash-view-tabs'
@@ -57,7 +57,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     ...overdue.items.map((p) => ({ key: p.id, href: `/planejamento/conteudos/${p.id}`, text: `Atrasado desde ${formatBR(p.post_date)}: ${p.title} (${p.brand_name})` })),
     ...campaigns.endingSoon.map((c) => ({ key: c.id, href: `/campanhas?editar=${c.id}`, text: `Campanha termina em ${formatBR(c.ends_on)}: ${c.name} (${c.brand_name})` })),
     ...knowledge.items.map((k) => ({ key: k.id, href: `/gestao/base?editar=${k.id}`, text: `${k.expired ? 'Informação vencida' : 'Informação não confirmada'}: ${k.title} (${k.brand_name})` })),
-    ...gaps.map((g) => ({ key: g, href: '/planejamento/gerar', text: g })),
+    ...gaps.map((g) => ({ key: g, href: '/planejamento/conteudos/novo', text: g })),
   ]
 
   return (
@@ -162,14 +162,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <section className="head-tools" aria-label="Atalhos" style={{ marginBottom: 26 }}>
           <Link href="/planejamento/conteudos/novo" className="btn primary-link"><Plus size={16} /> Novo conteúdo</Link>
           <Link href="/campanhas#form" className="btn"><Megaphone size={16} /> Nova campanha</Link>
-          <Link href="/planejamento/gerar" className="btn"><Sparkles size={16} /> Gerar semana</Link>
+          <Link href="/planejamento/importar-plano" className="btn"><FileUp size={16} /> Importar plano (PDF)</Link>
         </section>
       )}
 
       <section aria-labelledby="prox">
         <h2 id="prox" className="eyebrow">Próximos conteúdos</h2>
         {upcoming.length === 0 ? (
-          <p className="empty">Nada planejado daqui para frente. Crie um conteúdo ou use “Gerar semana”.</p>
+          <p className="empty">Nada planejado daqui para frente. Crie um conteúdo ou importe um plano em PDF.</p>
         ) : (
           <div className="table-wrap">
             <table>
