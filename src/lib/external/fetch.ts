@@ -27,7 +27,7 @@ function getWithCa(u: URL, ca: string[], o: Required<Opts>): Promise<Raw> {
       res.on('error', () => resolve({ ok: false, error: 'Não foi possível acessar a fonte.' }))
     })
     req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'A fonte demorou demais para responder.' }) })
-    req.on('error', () => resolve({ ok: false, error: 'Não foi possível acessar a fonte.' }))
+    req.on('error', (e: NodeJS.ErrnoException) => resolve({ ok: false, error: `Não foi possível acessar a fonte (${e.code ?? e.message.slice(0, 60)}).` }))
   })
 }
 
@@ -36,7 +36,9 @@ async function getWithFetch(u: URL, o: Required<Opts>): Promise<Raw> {
   try {
     res = await fetch(u, { redirect: 'manual', cache: 'no-store', headers: { 'User-Agent': USER_AGENT, Accept: o.accept }, signal: AbortSignal.timeout(o.timeoutMs) })
   } catch (e) {
-    return { ok: false, error: e instanceof Error && e.name === 'TimeoutError' ? 'A fonte demorou demais para responder.' : 'Não foi possível acessar a fonte.' }
+    if (e instanceof Error && e.name === 'TimeoutError') return { ok: false, error: 'A fonte demorou demais para responder.' }
+    const code = (e as { cause?: { code?: string } }).cause?.code // ex.: ENOTFOUND, ECONNRESET, UNABLE_TO_VERIFY_LEAF_SIGNATURE
+    return { ok: false, error: `Não foi possível acessar a fonte${code ? ` (${code})` : ''}.` }
   }
   if (res.status >= 300 && res.status < 400) return { ok: true, status: res.status, location: res.headers.get('location'), body: Buffer.alloc(0) }
   if (!res.ok) return { ok: true, status: res.status, location: null, body: Buffer.alloc(0) }
