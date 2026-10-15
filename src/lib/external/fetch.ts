@@ -1,42 +1,77 @@
 // Busca em fontes abertas, com trava de segurança: só https, só estes domínios, sem seguir redirecionamento para outro domínio,
 // com tempo e tamanho máximos. Nenhum endereço vem do usuário (evita SSRF) e nenhuma chave é enviada.
+import https from 'node:https'
+import tls from 'node:tls'
+import { EXTRA_CA } from './ca.ts'
+
 const ALLOWED_HOSTS = new Set(['brasilapi.com.br', 'servicodados.ibge.gov.br', 'www.gov.br'])
 export const USER_AGENT = 'ExtraMarketing/1.0 (uso interno; dados abertos)' // cabecalho HTTP: somente ASCII (o IBGE devolve 400 com acento)
 
-export async function safeFetch(url: string, opts: { timeoutMs?: number; maxBytes?: number; accept?: string } = {}): Promise<{ ok: true; body: Buffer } | { ok: false; error: string }> {
-  const maxBytes = opts.maxBytes ?? 5 * 1024 * 1024
+type Opts = { timeoutMs?: number; maxBytes?: number; accept?: string }
+type Raw = { ok: true; status: number; location: string | null; body: Buffer } | { ok: false; error: string }
+
+const TOO_BIG = 'O arquivo da fonte é maior que o limite aceito.'
+
+// Domínios que não enviam a cadeia completa de certificados (ver ca.ts): usa o https do Node com o intermediário público acrescentado.
+function getWithCa(u: URL, ca: string[], o: Required<Opts>): Promise<Raw> {
+  return new Promise((resolve) => {
+    const req = https.get(u, { ca: [...tls.rootCertificates, ...ca], headers: { 'User-Agent': USER_AGENT, Accept: o.accept }, timeout: o.timeoutMs }, (res) => {
+      const status = res.statusCode ?? 0
+      const location = typeof res.headers.location === 'string' ? res.headers.location : null
+      if (status >= 300 && status < 400) { res.resume(); resolve({ ok: true, status, location, body: Buffer.alloc(0) }); return }
+      if (Number(res.headers['content-length'] ?? '0') > o.maxBytes) { res.destroy(); resolve({ ok: false, error: TOO_BIG }); return }
+      const chunks: Buffer[] = []
+      let total = 0
+      res.on('data', (c: Buffer) => { total += c.length; if (total > o.maxBytes) { res.destroy(); resolve({ ok: false, error: TOO_BIG }); return } chunks.push(c) })
+      res.on('end', () => resolve({ ok: true, status, location: null, body: Buffer.concat(chunks) }))
+      res.on('error', () => resolve({ ok: false, error: 'Não foi possível acessar a fonte.' }))
+    })
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'A fonte demorou demais para responder.' }) })
+    req.on('error', () => resolve({ ok: false, error: 'Não foi possível acessar a fonte.' }))
+  })
+}
+
+async function getWithFetch(u: URL, o: Required<Opts>): Promise<Raw> {
+  let res: Response
+  try {
+    res = await fetch(u, { redirect: 'manual', cache: 'no-store', headers: { 'User-Agent': USER_AGENT, Accept: o.accept }, signal: AbortSignal.timeout(o.timeoutMs) })
+  } catch (e) {
+    return { ok: false, error: e instanceof Error && e.name === 'TimeoutError' ? 'A fonte demorou demais para responder.' : 'Não foi possível acessar a fonte.' }
+  }
+  if (res.status >= 300 && res.status < 400) return { ok: true, status: res.status, location: res.headers.get('location'), body: Buffer.alloc(0) }
+  if (!res.ok) return { ok: true, status: res.status, location: null, body: Buffer.alloc(0) }
+  if (Number(res.headers.get('content-length') ?? '0') > o.maxBytes) return { ok: false, error: TOO_BIG }
+  const chunks: Buffer[] = []
+  let total = 0
+  const reader = res.body?.getReader()
+  if (!reader) return { ok: false, error: 'Resposta vazia da fonte.' }
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > o.maxBytes) { await reader.cancel(); return { ok: false, error: TOO_BIG } }
+    chunks.push(Buffer.from(value))
+  }
+  return { ok: true, status: res.status, location: null, body: Buffer.concat(chunks) }
+}
+
+export async function safeFetch(url: string, opts: Opts = {}): Promise<{ ok: true; body: Buffer } | { ok: false; error: string }> {
+  const o: Required<Opts> = { timeoutMs: opts.timeoutMs ?? 20_000, maxBytes: opts.maxBytes ?? 5 * 1024 * 1024, accept: opts.accept ?? '*/*' }
   let current = url
   for (let hop = 0; hop < 3; hop++) {
     let u: URL
     try { u = new URL(current) } catch { return { ok: false, error: 'Endereço inválido.' } }
     if (u.protocol !== 'https:' || !ALLOWED_HOSTS.has(u.hostname)) return { ok: false, error: 'Fonte não permitida.' }
-    let res: Response
-    try {
-      res = await fetch(u, { redirect: 'manual', cache: 'no-store', headers: { 'User-Agent': USER_AGENT, Accept: opts.accept ?? '*/*' }, signal: AbortSignal.timeout(opts.timeoutMs ?? 20_000) })
-    } catch (e) {
-      return { ok: false, error: e instanceof Error && e.name === 'TimeoutError' ? 'A fonte demorou demais para responder.' : 'Não foi possível acessar a fonte.' }
-    }
-    if (res.status >= 300 && res.status < 400) {
-      const loc = res.headers.get('location')
-      if (!loc) return { ok: false, error: 'Redirecionamento inválido.' }
-      current = new URL(loc, u).toString()
+    const extra = EXTRA_CA[u.hostname]
+    const r = extra ? await getWithCa(u, extra, o) : await getWithFetch(u, o)
+    if (!r.ok) return r
+    if (r.status >= 300 && r.status < 400) {
+      if (!r.location) return { ok: false, error: 'Redirecionamento inválido.' }
+      current = new URL(r.location, u).toString()
       continue
     }
-    if (!res.ok) return { ok: false, error: `A fonte respondeu com erro ${res.status}.` }
-    const declared = Number(res.headers.get('content-length') ?? '0')
-    if (declared > maxBytes) return { ok: false, error: 'O arquivo da fonte é maior que o limite aceito.' }
-    const chunks: Buffer[] = []
-    let total = 0
-    const reader = res.body?.getReader()
-    if (!reader) return { ok: false, error: 'Resposta vazia da fonte.' }
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      total += value.byteLength
-      if (total > maxBytes) { await reader.cancel(); return { ok: false, error: 'O arquivo da fonte é maior que o limite aceito.' } }
-      chunks.push(Buffer.from(value))
-    }
-    return { ok: true, body: Buffer.concat(chunks) }
+    if (r.status < 200 || r.status >= 300) return { ok: false, error: `A fonte respondeu com erro ${r.status}.` }
+    return { ok: true, body: r.body }
   }
   return { ok: false, error: 'Redirecionamentos demais.' }
 }

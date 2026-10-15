@@ -28,3 +28,14 @@ test('User-Agent da busca é só ASCII (o IBGE recusa cabeçalho com acento)', a
   const { USER_AGENT } = await import('../src/lib/external/fetch.ts')
   assert.match(USER_AGENT, /^[\x20-\x7e]+$/)
 })
+
+test('certificado intermediário embutido para o IBGE: é o Sectigo DV R36 de verdade e vale só para o domínio do IBGE', async () => {
+  const { X509Certificate } = await import('node:crypto')
+  const { EXTRA_CA } = await import('../src/lib/external/ca.ts')
+  assert.deepEqual(Object.keys(EXTRA_CA), ['servicodados.ibge.gov.br'])
+  const c = new X509Certificate(EXTRA_CA['servicodados.ibge.gov.br'][0])
+  assert.match(c.subject, /CN=Sectigo Public Server Authentication CA DV R36/)
+  assert.match(c.issuer, /CN=Sectigo Public Server Authentication Root R46/)
+  assert.equal(c.fingerprint256, '8C:54:C3:34:B6:6B:A4:E4:26:77:2A:F4:A3:F9:13:6C:19:A1:AE:C7:29:FD:B2:8C:53:5C:07:A5:A4:EF:22:E0')
+  assert.ok(new Date(c.validTo).getTime() > Date.now() + 365 * 864e5, 'não vence em menos de um ano')
+})
