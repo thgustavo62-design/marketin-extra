@@ -133,7 +133,7 @@ type Source = 'proprio' | 'upload' | 'open_beauty_facts' | 'open_food_facts' | '
 
 /** Recebe uma imagem: valida, otimiza, tenta ligar a um produto (por EAN no nome do arquivo, descrição exata ou parecida) ou manda para a fila de conferência. */
 export async function ingestImage(o: {
-  buf: Buffer; fileName: string; userId: string | null; source?: Source; productId?: string | null; method?: 'ean' | 'manual'
+  buf: Buffer; fileName: string; userId: string | null; source?: Source; productId?: string | null; method?: 'ean' | 'manual'; requireTransparent?: boolean
   license?: string | null; attribution?: string | null; sourceUrl?: string | null
 }): Promise<IngestResult> {
   const file = o.fileName
@@ -149,7 +149,7 @@ export async function ingestImage(o: {
     if (c.ok) { original = p.image.data; img = c.image; fundo = 'transparente' }
   }
   // foto de banco aberto sem fundo liso é foto amadora (mão, prateleira, cenário): não serve como foto profissional
-  if (fundo === 'original' && (o.source ?? '').startsWith('open_')) return { file, status: 'invalida', error: 'Foto amadora (sem fundo liso): não usada.' }
+  if (fundo === 'original' && (o.requireTransparent || (o.source ?? '').startsWith('open_'))) return { file, status: 'invalida', error: 'Sem fundo liso (não dá para deixar transparente): não usada.' }
 
   let productId: string | null = o.productId ?? null
   let method: IngestResult['method']
