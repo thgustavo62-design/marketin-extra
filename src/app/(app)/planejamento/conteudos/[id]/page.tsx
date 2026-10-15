@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { FormatBadge, StageBadge } from '@/components/badges'
 import { ConfirmButton } from '@/components/confirm-button'
 import { requireUser } from '@/lib/auth'
+import { getPostProducts } from '@/lib/catalog/store'
 import { getBranches, getCampaigns, getPost } from '@/lib/data'
 import { PILLARS, formatBR } from '@/lib/domain'
 import { isUuid } from '@/lib/form'
@@ -11,6 +12,7 @@ import { getScope } from '@/lib/scope'
 import { deletePostAction } from '../actions'
 import { AdCheckPanel } from '@/components/ad-check'
 import { PostForm } from '../post-form'
+import { PostProducts } from './post-products'
 
 export default async function EditarConteudo({
   params, searchParams,
@@ -21,6 +23,7 @@ export default async function EditarConteudo({
   const post = await getPost(id)
   if (!post || !brandAllowed(user, post.brand_id)) notFound()
   const sp = await searchParams
+  const products = await getPostProducts(id)
   const back = (
     <Link href={`/planejamento/calendario?m=${post.post_date.slice(0, 7)}`} className="back">← Calendário</Link>
   )
@@ -41,6 +44,7 @@ export default async function EditarConteudo({
           <AdCheckPanel text={[post.title, post.caption, post.script].join(' · ')} pillar={post.pillar} />
           <p className="muted">Seu perfil é somente leitura.</p>
         </div>
+        {products.length > 0 && <PostProducts postId={post.id} initial={products} canEdit={false} />}
       </>
     )
   }
@@ -58,6 +62,7 @@ export default async function EditarConteudo({
       <AdCheckPanel text={[post.title, post.caption, post.script].join(' · ')} pillar={post.pillar} />
       {/* key = revisão: após salvar, o formulário remonta com os dados novos */}
       <PostForm key={post.revision} brands={brands} branches={branches} campaigns={campaigns} post={post} />
+      <PostProducts postId={post.id} initial={products} canEdit />
       <form action={deletePostAction} className="danger-zone">
         <input type="hidden" name="id" value={post.id} />
         <ConfirmButton message="Excluir este conteúdo? Essa ação não pode ser desfeita.">Excluir conteúdo</ConfirmButton>

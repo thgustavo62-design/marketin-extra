@@ -4,7 +4,11 @@ import https from 'node:https'
 import tls from 'node:tls'
 import { EXTRA_CA } from './ca.ts'
 
-const ALLOWED_HOSTS = new Set(['brasilapi.com.br', 'servicodados.ibge.gov.br', 'www.gov.br'])
+const ALLOWED_HOSTS = new Set([
+  'brasilapi.com.br', 'servicodados.ibge.gov.br', 'www.gov.br',
+  // bancos abertos de produtos por código de barras (imagens CC BY-SA)
+  'world.openbeautyfacts.org', 'images.openbeautyfacts.org', 'world.openfoodfacts.org', 'images.openfoodfacts.org',
+])
 export const USER_AGENT = 'ExtraMarketing/1.0 (uso interno; dados abertos)' // cabecalho HTTP: somente ASCII (o IBGE devolve 400 com acento)
 
 type Opts = { timeoutMs?: number; maxBytes?: number; accept?: string }

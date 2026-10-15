@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
   BarChart3, Bell, BookOpen, ClipboardCheck, Columns3, CalendarDays, Camera, ChevronLeft, ChevronRight, FileBarChart, FileText, FileUp, Flag, LayoutDashboard,
-  FolderOpen, Link2, LogOut, Megaphone, Menu, Radar, Settings, Store, Target, X,
+  FolderOpen, Link2, PackageSearch, LogOut, Megaphone, Menu, Radar, Settings, Store, Target, X,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -29,6 +29,7 @@ const GROUPS: Group[] = [
       { href: '/producao', label: 'Quadro de produção', icon: Columns3, exact: true },
       { href: '/producao/aprovacoes', label: 'Aprovações', icon: ClipboardCheck },
       { href: '/producao/biblioteca', label: 'Biblioteca de mídias', icon: FolderOpen },
+      { href: '/produtos', label: 'Produtos', icon: PackageSearch },
     ],
   },
   {
