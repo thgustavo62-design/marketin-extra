@@ -100,12 +100,12 @@ export async function saveOverridesAction(campaignId: string, o: PromoOverrides)
   return r
 }
 
-export async function saveLayersAction(campaignId: string, layers: unknown): Promise<Out> {
+export async function saveLayersAction(campaignId: string, layers: unknown, expectedRev?: number): Promise<Out & { conflict?: boolean; rev?: number }> {
   const g = await writerOrError()
   if (!g.ok || !isUuid(campaignId)) return g.ok ? NO : { ok: false, error: g.error }
-  const r = await saveLayers(campaignId, layers)
+  const r = await saveLayers(campaignId, layers, expectedRev)
   if (r.ok) refresh(campaignId)
-  return { ok: r.ok, error: r.error }
+  return { ok: r.ok, error: r.error, conflict: r.conflict, rev: r.rev }
 }
 
 export async function removeItemAction(campaignId: string, itemId: string): Promise<Out> {

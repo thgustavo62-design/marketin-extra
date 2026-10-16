@@ -847,3 +847,18 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .lib-pick { position: relative; }
 .lib-pick .bg-option img { object-fit: contain; background: repeating-conic-gradient(#eef2f6 0% 25%, #fff 0% 50%) 50% / 12px 12px; }
 .lib-bg { position: absolute; top: 6px; right: 6px; font-size: 10.5px; padding: 1px 7px; background: rgba(255, 255, 255, 0.92); }
+
+/* verificar arte e conflito de edição */
+.canva-check-btn.warn { border-color: #e0a100; background: #fff7e0; }
+.canva-check-btn.bad { border-color: #d12a1f; background: #fde8e6; color: #9a1b12; }
+.canva-check { display: grid; gap: 8px; }
+.canva-check-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.canva-check-head h3 { margin: 0; }
+.canva-check-head .mini-btn { margin-left: auto; }
+.canva-check-group h4 { display: flex; align-items: center; gap: 6px; margin: 6px 0 4px; font-size: 12.5px; }
+.canva-check-group.bloqueio h4 { color: #b3261e; } .canva-check-group.revisao h4 { color: #9a6b00; } .canva-check-group.info h4 { color: var(--muted); }
+.canva-check-group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.canva-check-group li { display: flex; align-items: center; gap: 10px; justify-content: space-between; background: var(--box); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; }
+.canva-conflict { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+.canva-stage.panning, .canva-stage.panning * { cursor: grab !important; }

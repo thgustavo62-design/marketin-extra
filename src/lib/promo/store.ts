@@ -2,9 +2,10 @@
 import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import { pool, withTx } from '../db.ts'
-import { displayName, normalizeItemStyle, normalizeOverrides, normalizeTheme, PROMO_FORMAT_KEYS, type ItemStyle, type PromoFormat, type PromoOverrides, type PromoRow, type ThemeConfig } from '../domain/promo.ts'
+import { displayName, applyOverrides, normalizeItemStyle, normalizeOverrides, normalizeTheme, PROMO_FORMAT_KEYS, type ItemStyle, type PromoFormat, type PromoOverrides, type PromoRow, type ThemeConfig } from '../domain/promo.ts'
 import { groupItems, groupSummary, type GroupInput, type Variants } from '../domain/promo-group.ts'
 import { normalizeLayers, type Layers } from '../domain/promo-layers.ts'
+import { checkPromotion, pageCountsFor, summarizeCheck } from '../domain/promo-check.ts'
 import { listLibrary, type LibraryItem } from './library.ts'
 import { sniffImage } from '../catalog/images.ts'
 import { ingestImage, saveProduct } from '../catalog/store.ts'
@@ -127,6 +128,7 @@ export type Campaign = {
   status: CampaignStatus; approved_by_name: string | null; approved_at: string | null; import_report: ImportReport | null; group_variants: boolean
   overrides: PromoOverrides
   /** elementos livres (texto, imagem, formas) por formato */ layers: Layers
+  /** revisão dos elementos livres (controle de edição simultânea) */ layers_rev: number
   /** imagens enviadas para esta promoção (elementos e fundos) */ assets: CampaignAsset[]
   /** imagens da biblioteca (ícones, logos, selos…) para colocar na peça */ library: LibraryItem[]
   /** temas que têm imagem de fundo, para escolher o fundo de outro tema */ themeBackgrounds: { id: string; name: string; formats: PromoFormat[] }[]
@@ -197,7 +199,7 @@ export async function createCampaignFromRows(o: {
 
 export async function getCampaign(id: string): Promise<{ campaign: Campaign; theme: Theme | null; items: PromoItem[] } | null> {
   const c = (await pool.query(
-    `select c.id, c.name, c.theme_id, c.title, c.validity, c.status, u.display_name as approved_by_name, c.approved_at::text as approved_at, c.import_report, c.group_variants, c.overrides, c.layers
+    `select c.id, c.name, c.theme_id, c.title, c.validity, c.status, u.display_name as approved_by_name, c.approved_at::text as approved_at, c.import_report, c.group_variants, c.overrides, c.layers, c.layers_rev
        from promo_campaigns c left join users u on u.id = c.approved_by where c.id = $1`, [id])).rows[0]
   if (!c) return null
   const rows = (await pool.query(
@@ -228,6 +230,13 @@ export async function deleteCampaign(id: string): Promise<void> {
 
 /** Aprova os encartes: guarda quem aprovou e quando. Qualquer edição depois disso volta para rascunho. */
 export async function approveCampaign(id: string, userId: string): Promise<{ ok: boolean; error?: string }> {
+  // "Verificar arte": erro de dado (preço ou nome inválido) impede aprovar
+  const data = await getCampaign(id)
+  if (data) {
+    const issues = checkPromotion({ items: data.items, layers: data.campaign.layers, validity: data.campaign.validity, pageCount: pageCountsFor(data.items, data.theme ? applyOverrides(data.theme.config, data.campaign.overrides) : null) })
+    const bl = issues.filter((i) => i.severity === 'bloqueio')
+    if (bl.length) return { ok: false, error: `Corrija antes de aprovar (${summarizeCheck(issues).bloqueio}): ${bl.slice(0, 3).map((i) => i.message).join(' ')}${bl.length > 3 ? ' …' : ''}` }
+  }
   const r = await pool.query(`update promo_campaigns set status = 'aprovada', approved_by = $2, approved_at = now(), updated_at = now() where id = $1 and exists (select 1 from promo_items where campaign_id = $1)`, [id, userId])
   return r.rowCount ? { ok: true } : { ok: false, error: 'Promoção não encontrada ou sem encartes.' }
 }
@@ -290,17 +299,20 @@ export async function saveOverrides(campaignId: string, o: PromoOverrides): Prom
 }
 
 /** Guarda os elementos livres da promoção. Imagem que não pertence à promoção é descartada; qualquer mudança tira a aprovação. */
-export async function saveLayers(campaignId: string, raw: unknown): Promise<{ ok: boolean; error?: string; layers?: Layers }> {
+export async function saveLayers(campaignId: string, raw: unknown, expectedRev?: number): Promise<{ ok: boolean; error?: string; layers?: Layers; rev?: number; conflict?: boolean }> {
   const layers = normalizeLayers(raw)
   const used = [...new Set(PROMO_FORMAT_KEYS.flatMap((f) => layers[f].map((l) => l.asset).filter((x): x is string => !!x)))]
   if (used.length) {
     const ok = new Set((await pool.query(`select id from promo_assets where campaign_id = $1 and id = any($2::uuid[])`, [campaignId, used])).rows.map((r) => r.id as string))
     for (const f of PROMO_FORMAT_KEYS) layers[f] = layers[f].filter((l) => l.type !== 'image' || (l.asset && ok.has(l.asset)))
   }
-  const r = await pool.query(`update promo_campaigns set layers = $2::jsonb where id = $1`, [campaignId, JSON.stringify(layers)])
-  if (!r.rowCount) return { ok: false, error: 'Promoção não encontrada.' }
+  const r = await pool.query(`update promo_campaigns set layers = $2::jsonb, layers_rev = layers_rev + 1 where id = $1 and ($3::int is null or layers_rev = $3) returning layers_rev`, [campaignId, JSON.stringify(layers), expectedRev ?? null])
+  if (!r.rowCount) {
+    if (!(await pool.query(`select 1 from promo_campaigns where id = $1`, [campaignId])).rowCount) return { ok: false, error: 'Promoção não encontrada.' }
+    return { ok: false, conflict: true, error: 'Os elementos desta promoção foram alterados em outra aba ou por outra pessoa. Suas mudanças não foram salvas.' }
+  }
   await touch(pool, campaignId)
-  return { ok: true, layers }
+  return { ok: true, layers, rev: r.rows[0].layers_rev }
 }
 
 /** Imagem enviada para usar como elemento (logo, selo, adesivo): vira WEBP de até 2000 px, mantendo a transparência. A mesma imagem não entra duas vezes. */

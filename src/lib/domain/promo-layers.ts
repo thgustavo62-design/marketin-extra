@@ -228,3 +228,25 @@ export function duplicateLayers(list: Layer[], ids: string[], offset = 24): { ad
   })
   return { added, ids: added.map((l) => l.id) }
 }
+
+/**
+ * Cópias para colar: na mesma peça ficam deslocadas; em outro formato mudam de proporção (posição e tamanho acompanham a largura e a altura da peça; a letra, a largura).
+ * Cada grupo copiado vira um grupo novo; o elemento que valia para todas as peças continua valendo, os demais vão para a peça atual.
+ */
+export function pasteLayers(clip: { fmt: PromoFormat; layers: Layer[] }, to: PromoFormat, page: number, offset = 24): { added: Layer[]; ids: string[] } {
+  const A = PROMO_FORMATS[clip.fmt], B = PROMO_FORMATS[to]
+  const same = clip.fmt === to
+  const kx = B.w / A.w, ky = B.h / A.h
+  const groups = new Map<string, string>()
+  const added = clip.layers.map((l) => {
+    const c: Layer = same
+      ? { ...l, x: l.x + offset, y: l.y + offset }
+      : { ...l, x: Math.round(l.x * kx), y: Math.round(l.y * ky), w: Math.round(l.w * kx), h: Math.round(l.h * kx) }
+    if (!same && l.type === 'text') c.size = Math.max(8, Math.min(600, Math.round((l.size ?? 64) * kx)))
+    c.id = newLayerId(); c.locked = false
+    c.page = l.page === null ? null : page
+    if (l.group) { if (!groups.has(l.group)) groups.set(l.group, newLayerId()); c.group = groups.get(l.group) } else delete c.group
+    return c
+  })
+  return { added, ids: added.map((l) => l.id) }
+}

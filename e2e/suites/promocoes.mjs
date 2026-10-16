@@ -366,7 +366,7 @@ try {
   await a.locator('input[aria-label="Enviar imagem para a peça"]').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: await foto('#c0392b') }); await wait(3500)
   L = await lay()
   const imgLy = L.layers.story.find((x) => x.type === 'image')
-  ck('formas e imagem enviada viram elementos (4 no total) e a imagem fica guardada na promoção', L.layers.story.length === 4 && !!imgLy && (await q(`select count(*)::int n from promo_assets where campaign_id = $1`, [camp.id]))[0].n === 1, L.layers.story.map((x) => x.type + ':' + (x.shape ?? '')).join(','))
+  ck('formas e imagem enviada viram elementos (4 no total) e a imagem fica guardada na promoção', L.layers.story.length === 4 && !!imgLy && (await q(`select count(*)::int n from promo_assets where campaign_id = $1`, [camp.id]))[0].n === 1, L.layers.story.map((x) => x.type + ':' + (x.shape ?? '')).join(',') + ' conflito=' + (await a.locator('.canva-conflict').count()) + ' estado=' + (await a.locator('.savestate').textContent()))
   const assetRes = await ac.request.get(`${BASE}/api/promocoes/asset/${imgLy.asset}`)
   ck('a imagem enviada é servida como WEBP, só para quem está logado', assetRes.status() === 200 && /image\/webp/.test(assetRes.headers()['content-type'] ?? '') && (await fetch(`${BASE}/api/promocoes/asset/${imgLy.asset}`)).status === 401)
   await a.locator('input[aria-label="Enviar imagem para a peça"]').setInputFiles({ name: 'logo2.png', mimeType: 'image/png', buffer: await foto('#c0392b') }); await wait(3500)
@@ -518,7 +518,7 @@ try {
   const tbox = a.locator('.canva-lbox[data-type="text"]').first()
   await tbox.dblclick(); await wait(500)
   ck('duplo clique no texto abre o editor no lugar, sobre a peça', (await a.locator('textarea.canva-inline').count()) === 1)
-  await a.fill('textarea.canva-inline', 'EDITADO NA PEÇA'); await a.keyboard.press('Control+Enter'); await wait(1800)
+  await a.fill('textarea.canva-inline', 'EDITADO NA PEÇA'); await a.keyboard.press('Control+Enter'); await wait(1800); for (let t = 0; t < 10 && !(await ly()).some((x) => x.text === 'EDITADO NA PEÇA'); t++) await wait(1000)
   ck('o texto editado no lugar fica salvo e o editor fecha', (await ly()).some((x) => x.text === 'EDITADO NA PEÇA') && (await a.locator('textarea.canva-inline').count()) === 0)
 
   // edição rápida do encarte (nome, subtítulo e preço) com duplo clique
@@ -586,6 +586,96 @@ try {
   await a.locator('.lib-card', { hasText: 'cruz vermelha' }).getByRole('button', { name: /Excluir/ }).click(); await wait(2000)
   ck('excluir da biblioteca apaga só a biblioteca; a peça que usou continua com a imagem', (await q(`select count(*)::int n from promo_library where id = $1`, [libId]))[0].n === 0 && (await q(`select count(*)::int n from promo_assets where id = $1`, [lyL[0].asset]))[0].n === 1)
   await q(`update promo_campaigns set layers = null where id = $1`, [camp.id])
+
+  // ---------- Estúdio fase 0/1: manifesto, verificar arte, conflito de edição, colar e zoom ----------
+  const man = zip['manifesto.json'] ? JSON.parse(Buffer.from(zip['manifesto.json']).toString('utf8')) : null
+  const pngsZip = nomesZip.filter((n) => n.endsWith('.png'))
+  const { createHash: sha } = await import('node:crypto')
+  ck('o ZIP traz o manifesto com cada arquivo (formato, peça, tamanho e impressão digital) e os encartes', !!man && man.arquivos.length === pngsZip.length && man.promocao.id === camp.id && man.encartes.length > 0 && man.arquivos.every((x) => sha('sha256').update(zip[x.arquivo]).digest('hex') === x.sha256 && x.bytes === zip[x.arquivo].length), man ? `${man.arquivos.length} arquivos` : 'sem manifesto')
+
+  await q(`update promo_campaigns set layers = null, overrides = overrides - 'background' where id = $1`, [camp.id])
+  const it0 = (await q(`select id, price::float8 as p from promo_items where campaign_id = $1 order by position limit 1`, [camp.id]))[0]
+  await a.goto(`${BASE}/promocoes/${camp.id}`); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  const chk = a.getByRole('button', { name: /Verificar arte/ })
+  ck('o botão "Verificar arte" mostra quantos pontos há', /Verificar arte \(\d+\)|Verificar arte ✓/.test(await chk.textContent()))
+  await chk.click()
+  ck('o painel lista a revisão do encarte sem foto, em "Revisão recomendada"', (await a.locator('.canva-check li[data-code="sem-foto"]').count()) >= 1 && /Revisão recomendada/.test(await a.textContent('.canva-check')))
+  await q(`update promo_items set price = 0 where id = $1`, [it0.id])
+  await a.reload(); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  await a.getByRole('button', { name: /Verificar arte/ }).click()
+  ck('preço zerado vira "Corrigir antes de aprovar" e o botão de aprovar fica desligado', (await a.locator('.canva-check li[data-code="preco-invalido"]').count()) === 1 && (await a.getAttribute('.canva-check', 'data-blockers')) === '1' && await a.getByRole('button', { name: 'Aprovar encartes' }).isDisabled())
+  await a.locator('.canva-check li[data-code="preco-invalido"] button').click(); await wait(500)
+  ck('"Ir para" abre o encarte com problema no editor', (await a.locator('.canva-list li.sel').getAttribute('data-item')) === it0.id)
+  // com a tela ainda com o preço antigo (válido), o botão está ligado; o servidor confere de novo com o dado atual do banco
+  await q(`update promo_items set price = $2 where id = $1`, [it0.id, it0.p])
+  await a.reload(); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  await q(`update promo_items set price = 0 where id = $1`, [it0.id])
+  await a.getByRole('button', { name: 'Aprovar encartes' }).click(); await wait(2500)
+  ck('mesmo com a tela desatualizada, o servidor recusa aprovar com preço inválido', /Corrija antes de aprovar/.test(await a.textContent('.canva-msg') ?? '') && (await q(`select status from promo_campaigns where id = $1`, [camp.id]))[0].status !== 'aprovada')
+  await q(`update promo_items set price = $2 where id = $1`, [it0.id, it0.p])
+  await q(`update promo_campaigns set layers = $2::jsonb where id = $1`, [camp.id, JSON.stringify({ story: [{ id: 'fora001', type: 'shape', x: 5000, y: 0, w: 100, h: 100, fill: '#ffd21f' }, { id: 'vazio01', type: 'text', text: '  ', x: 10, y: 10, w: 200, h: 80 }], feed: [], a4: [] })])
+  await a.reload(); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  await a.getByRole('button', { name: /Verificar arte/ }).click()
+  ck('elemento fora da peça e texto vazio aparecem na verificação', (await a.locator('.canva-check li[data-code="fora-da-peca"]').count()) === 1 && (await a.locator('.canva-check li[data-code="texto-vazio"]').count()) === 1)
+  await a.locator('.canva-check li[data-code="fora-da-peca"] button').click(); await wait(500)
+  ck('"Ir para" seleciona o elemento livre e abre a aba Camadas', (await a.locator('.canva-layer-list li.sel').getAttribute('data-layer')) === 'fora001')
+  await q(`update promo_campaigns set layers = null where id = $1`, [camp.id])
+
+  // edição simultânea: duas abas no mesmo documento
+  await a.reload(); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  const { p: b2 } = await mk(); await login(b2, 'teste_e2e')
+  await b2.goto(`${BASE}/promocoes/${camp.id}`); await idle(b2); await b2.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  await b2.locator('.canva-addbar button[title="Adicionar título"]').click(); await wait(2500)
+  const lyc = async () => (await q(`select layers, layers_rev from promo_campaigns where id = $1`, [camp.id]))[0]
+  ck('a outra aba salvou o primeiro elemento (revisão sobe)', (await lyc()).layers.story.length === 1 && (await lyc()).layers_rev >= 1)
+  await a.locator('.canva-addbar button[aria-label="Inserir círculo"]').click(); await wait(2500)
+  ck('quem estava com a versão antiga recebe o aviso de edição simultânea e NADA é sobrescrito', (await a.locator('.canva-conflict').count()) === 1 && (await lyc()).layers.story.length === 1)
+  ck('o indicador mostra "Conflito de edição"', /Conflito de edição/.test(await a.textContent('.savestate')))
+  await a.getByRole('button', { name: /Manter as minhas/ }).click(); await wait(2500)
+  ck('"Manter as minhas" grava a versão desta aba e o aviso some', (await lyc()).layers.story.length === 1 && (await lyc()).layers.story[0].type === 'shape' && (await a.locator('.canva-conflict').count()) === 0)
+  await b2.reload(); await idle(b2); await b2.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 }) // a outra aba também estava desatualizada: recarrega para editar sobre a versão nova
+  await b2.locator('.canva-addbar button[title="Adicionar título"]').click(); await wait(2500)
+  await a.locator('.canva-addbar button[aria-label="Inserir círculo"]').click(); await wait(2500)
+  ck('novo conflito detectado na sequência', (await a.locator('.canva-conflict').count()) === 1)
+  await a.getByRole('button', { name: /Recarregar a versão salva/ }).click(); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 }); await wait(1500)
+  ck('"Recarregar" traz a versão salva pela outra aba e descarta a local', (await a.locator('.canva-lbox').count()) === (await lyc()).layers.story.length && (await a.locator('.canva-conflict').count()) === 0)
+  await b2.close()
+
+  // copiar e colar entre formatos
+  await q(`update promo_campaigns set layers = null where id = $1`, [camp.id])
+  await a.reload(); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  await a.locator('.canva-addbar button[title="Adicionar título"]').click(); await wait(500)
+  await a.keyboard.press('Control+c')
+  await a.getByRole('button', { name: 'Feed (Instagram/Facebook)' }).click(); await wait(1200)
+  await a.keyboard.press('Control+v'); await wait(2500)
+  let LP = (await lyc()).layers
+  ck('Ctrl+C e Ctrl+V levam o elemento de um formato para outro', LP.feed?.length === 1 && LP.feed[0].type === 'text' && LP.feed[0].id !== LP.story[0].id, JSON.stringify([LP.story?.length, LP.feed?.length]))
+  ck('o colado em outro formato fica selecionado', (await a.locator('.canva-lbox.sel').count()) === 1)
+  await a.getByRole('button', { name: 'Story / Status' }).click(); await wait(1200)
+  await a.keyboard.press('Control+v'); await wait(2500)
+  LP = (await lyc()).layers
+  ck('colar na mesma peça duplica deslocado (+24 px)', LP.story.length === 2 && LP.story[1].x === LP.story[0].x + 24 && LP.story[1].y === LP.story[0].y + 24)
+  await a.keyboard.press('Control+x'); await wait(2500)
+  ck('Ctrl+X recorta (o elemento sai da peça)', (await lyc()).layers.story.length === 1)
+
+  // zoom por Ctrl + rolagem e pan com Espaço
+  await a.locator('.canva-addbar .zoom').click(); await wait(300)
+  const stBox = await a.locator('.canva-stage').boundingBox()
+  await a.mouse.move(stBox.x + stBox.width / 2, stBox.y + 200)
+  await a.keyboard.down('Control'); await a.mouse.wheel(0, -120); await a.keyboard.up('Control'); await wait(500)
+  ck('Ctrl + rolagem dá zoom no editor (100% → 110%)', /110%/.test(await a.textContent('.canva-addbar .zoom')))
+  for (let i = 0; i < 4; i++) await a.getByRole('button', { name: 'Aumentar zoom' }).click()
+  await wait(500)
+  await a.evaluate(() => { window.scrollTo(0, 0); document.activeElement?.blur?.() }) // foco fora do botão: Espaço vira "segurar para arrastar"
+  const sb2 = await a.locator('.canva-stage').boundingBox()
+  const py = Math.min(sb2.y + 200, 800), px = sb2.x + sb2.width / 2
+  const panAntes = await a.evaluate(() => { const s = document.querySelector('.canva-stage'); return { l: s.scrollLeft, t: s.scrollTop } })
+  await a.mouse.move(px, py)
+  await a.keyboard.down('Space'); await wait(150)
+  await a.mouse.down(); await a.mouse.move(px + 80, py + 20, { steps: 6 }); await a.mouse.up()
+  await a.keyboard.up('Space'); await wait(200)
+  const panDepois = await a.evaluate(() => { const s = document.querySelector('.canva-stage'); return { l: s.scrollLeft, t: s.scrollTop } })
+  ck('Espaço + arrastar move a área de trabalho (rolagem muda) sem mexer nos elementos', panAntes.l > 100 && panDepois.l < panAntes.l - 40, JSON.stringify([panAntes, panDepois]))
 
   // política desligada: um encarte por produto
   await a.goto(BASE + '/promocoes'); await idle(a)

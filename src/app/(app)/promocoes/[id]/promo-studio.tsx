@@ -8,10 +8,12 @@ import { PDFDocument } from 'pdf-lib'
 import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Download, ExternalLink, GripVertical, ImagePlus, Image as ImageIcon, Images, Layers, Palette, Shapes, Settings2, Trash2, Type } from 'lucide-react'
 import { PROMO_FORMATS, PROMO_FORMAT_KEYS, TAG_PRESETS, applyOverrides, paginateSections, type BackgroundChoice, type ItemStyle, type PromoFormat, type PromoOverrides, type Rect, type ThemeConfig } from '@/lib/domain/promo'
 import { expandSelection, layersForPage } from '@/lib/domain/promo-layers'
+import { checkPromotion, pageCountsFor, summarizeCheck, type CheckIssue } from '@/lib/domain/promo-check'
 import type { Campaign, PromoItem, SizeEdit, ThemeAsset } from '@/lib/promo/store'
 import { canvasToBlob, drawPage, loadImage, loadPromoFonts, pageGeometry, type RenderAssets, type RenderBackground, type RenderItem } from '@/lib/promo/render'
 import { ProductPicker } from '../../produtos/product-picker'
 import { BackgroundGallery } from './background-gallery'
+import { CheckPanel } from './check-panel'
 import { LibraryPicker } from './library-picker'
 import { AddBar, LayerBoxes, addImageLayer, LayerInspector, LayersCanvas, LayersPanel, MultiInspector, duplicateSelection, useLayerKeys, useLayers } from './layers-ui'
 import { QuickEdit } from './quick-edit'
@@ -29,6 +31,7 @@ type Props = {
 }
 type Geo = { W: number; H: number; cells: Rect[]; ids: string[] }
 
+async function sha256Hex(b: Uint8Array): Promise<string> { const h = await crypto.subtle.digest('SHA-256', b as BufferSource); return [...new Uint8Array(h)].map((x) => x.toString(16).padStart(2, '0')).join('') }
 const slug = (s: string) => s.normalize('NFD').replace(/\p{M}+/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'promocao'
 const brl = (n: number) => n.toFixed(2).replace('.', ',')
 
@@ -56,6 +59,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   const [selIds, setSelIds] = useState<string[]>([])
   const [editingLayer, setEditingLayer] = useState<string | null>(null)
   const [quickId, setQuickId] = useState<string | null>(null)
+  const [checkOpen, setCheckOpen] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, start] = useTransition()
@@ -68,6 +72,10 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   const [uploadingBg, setUploadingBg] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const paperRef = useRef<HTMLDivElement>(null)
+  const stageRef = useRef<HTMLElement>(null)
+  const spaceRef = useRef(false)
+  const [panning, setPanning] = useState(false)
+  const panRef = useRef<{ x: number; y: number; sl: number; st: number } | null>(null)
   const fotoRef = useRef<HTMLInputElement>(null)
   const imgCache = useRef(new Map<string, HTMLImageElement | null>())
 
@@ -89,14 +97,21 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
     return imgCache.current.get(url) ?? null
   }, [])
 
-  const layersApi = useLayers(campaign.id, campaign.layers, canEdit, () => router.refresh())
+  const layersApi = useLayers(campaign.id, campaign.layers, canEdit, () => router.refresh(), campaign.layers_rev)
   const curLayers = layersApi.layers[format]
   const selL = selIds.length === 1 ? (curLayers.find((l) => l.id === selIds[0]) ?? null) : null
   const pageLayers = useMemo(() => layersForPage(curLayers, pageIdx), [curLayers, pageIdx])
   // sem peça aberta com este elemento, a seleção some
   useEffect(() => { if (selIds.some((id) => !curLayers.some((l) => l.id === id))) setSelIds((ids) => ids.filter((id) => curLayers.some((l) => l.id === id))) }, [selIds, curLayers])
   useEffect(() => { if (editingLayer && selIds[0] !== editingLayer) setEditingLayer(null) }, [editingLayer, selIds])
-  useLayerKeys({ api: layersApi, format, selIds, select: (ids) => { setSelIds(ids); if (ids.length) { setSelected(null); setQuickId(null) } }, canEdit, pageIds: () => pageLayers.filter((l) => !l.locked).map((l) => l.id) })
+  useLayerKeys({ api: layersApi, format, page: pageIdx, selIds, select: (ids) => { setSelIds(ids); if (ids.length) { setSelected(null); setQuickId(null) } }, canEdit, pageIds: () => pageLayers.filter((l) => !l.locked).map((l) => l.id) })
+
+  const issues = useMemo(() => checkPromotion({ items, layers: layersApi.layers, validity: campaign.validity, pageCount: pageCountsFor(items, cfg ?? null) }), [items, layersApi.layers, campaign.validity, cfg])
+  const checkSum = summarizeCheck(issues)
+  const gotoIssue = (i: CheckIssue) => {
+    if (i.itemId) { setTab('produtos'); select(i.itemId); return }
+    if (i.layerId && i.format) { setFormat(i.format); setPage(0); setTab('camadas'); selectLayers([i.layerId]) }
+  }
 
   // o que cada encarte leva para o desenho: tabela de tamanhos e fragrâncias só quando ligadas
   const toRender = useCallback(async (it: PromoItem): Promise<RenderItem> => {
@@ -275,7 +290,20 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   async function downloadZip(formats: PromoFormat[]) {
     setMsg({ kind: 'ok', text: 'Gerando as peças…' })
     const files: Record<string, Uint8Array> = {}
-    for (const f of formats) for (let i = 0; i < pagesOf(f).length; i++) files[`${f}/${fileName(f, i)}`] = new Uint8Array(await (await pageBlob(f, i)).arrayBuffer())
+    const arquivos: { arquivo: string; formato: string; peca: number; secao: string | null; largura: number; altura: number; bytes: number; sha256: string }[] = []
+    for (const f of formats) for (let i = 0; i < pagesOf(f).length; i++) {
+      const bytes = new Uint8Array(await (await pageBlob(f, i)).arrayBuffer())
+      const nome = `${f}/${fileName(f, i)}`
+      files[nome] = bytes
+      arquivos.push({ arquivo: nome, formato: f, peca: i + 1, secao: pagesOf(f)[i]?.[0]?.section ?? null, largura: PROMO_FORMATS[f].w, altura: PROMO_FORMATS[f].h, bytes: bytes.length, sha256: await sha256Hex(bytes) })
+    }
+    // manifesto: de onde veio cada arquivo (promoção, versão, aprovação e produtos), para rastrear depois
+    files['manifesto.json'] = new TextEncoder().encode(JSON.stringify({
+      promocao: { id: campaign.id, nome: campaign.name, titulo: campaign.title, validade: campaign.validity, status: campaign.status, aprovada_por: campaign.approved_by_name, aprovada_em: campaign.approved_at, revisao_elementos: layersApi.latest.current ? campaign.layers_rev : null },
+      gerado_em: new Date().toISOString(),
+      arquivos,
+      encartes: items.map((i) => ({ ean: i.ean, nome: i.name, preco: i.price })),
+    }, null, 2))
     save(new Blob([zipSync(files, { level: 0 }) as BlobPart], { type: 'application/zip' }), `${base}${formats.length === 1 ? `-${formats[0]}` : ''}.zip`)
     setMsg({ kind: 'ok', text: 'Pronto: arquivo baixado.' })
   }
@@ -301,6 +329,39 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   const tagNow = sel ? (sel.style.tag !== undefined ? sel.style.tag : '__tema') : '__tema'
   const editorHref = `/editor/${campaign.id}`
 
+  // Ctrl/Cmd + rolagem dá zoom (25% a 400%); Espaço + arrastar move a área de trabalho
+  useEffect(() => {
+    const st = stageRef.current
+    if (!st) return
+    const wheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      setZoom((z) => Math.max(0.25, Math.min(4, +(z * (e.deltaY < 0 ? 1.1 : 1 / 1.1)).toFixed(2))))
+    }
+    st.addEventListener('wheel', wheel, { passive: false })
+    return () => st.removeEventListener('wheel', wheel)
+  }, [theme])
+  useEffect(() => {
+    const typing = (t: EventTarget | null) => !!(t as HTMLElement | null)?.closest('input, textarea, select, [contenteditable="true"]')
+    // Espaço em botão focado pelo teclado continua ativando o botão; depois de um clique do mouse, vira "segurar para arrastar"
+    const keyboardOnControl = (t: EventTarget | null) => { const el = (t as HTMLElement | null)?.closest('button, a, summary, [role="tab"]'); return !!el && el.matches(':focus-visible') }
+    const down = (e: KeyboardEvent) => { if (e.code === 'Space' && !typing(e.target) && !keyboardOnControl(e.target)) { e.preventDefault(); if (!spaceRef.current) { spaceRef.current = true; setPanning(true) } } }
+    const up = (e: KeyboardEvent) => { if (e.code === 'Space' && spaceRef.current) { e.preventDefault(); spaceRef.current = false; setPanning(false); panRef.current = null } }
+    window.addEventListener('keydown', down); window.addEventListener('keyup', up)
+    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up) }
+  }, [])
+  const panDown = (e: React.PointerEvent) => {
+    if (!spaceRef.current || !stageRef.current) return
+    e.preventDefault(); e.stopPropagation()
+    panRef.current = { x: e.clientX, y: e.clientY, sl: stageRef.current.scrollLeft, st: stageRef.current.scrollTop }
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }
+  const panMove = (e: React.PointerEvent) => {
+    const p = panRef.current, st = stageRef.current
+    if (!p || !st) return
+    st.scrollLeft = p.sl - (e.clientX - p.x); st.scrollTop = p.st - (e.clientY - p.y)
+  }
+
   return (
     <div className={`canva${mode === 'tab' ? ' canva-tab' : ''}`}>
       {msg && <p className={`canva-msg ${msg.kind === 'ok' ? 'form-ok' : 'form-error'}`} role={msg.kind === 'error' ? 'alert' : 'status'}>{msg.text}</p>}
@@ -314,7 +375,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
             ? `Aprovada por ${campaign.approved_by_name ?? '—'}${campaign.approved_at ? ` em ${new Date(campaign.approved_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : ''}. Qualquer alteração volta para edição.`
             : 'Confira os encartes, ajuste o que precisar e aprove. Qualquer alteração depois de aprovar exige aprovar de novo.'}
         </span>
-        {canEdit && campaign.status !== 'aprovada' && <button type="button" className="primary" style={{ width: 'auto', margin: 0, minHeight: 34 }} disabled={busy || !items.length} onClick={() => act(() => approveCampaignAction(campaign.id), 'Encartes aprovados.')}>Aprovar encartes</button>}
+        {canEdit && campaign.status !== 'aprovada' && <button type="button" className="primary" style={{ width: 'auto', margin: 0, minHeight: 34 }} disabled={busy || !items.length || checkSum.bloqueio > 0} title={checkSum.bloqueio ? 'Corrija os pontos marcados em "Verificar arte" antes de aprovar' : undefined} onClick={() => act(() => approveCampaignAction(campaign.id), 'Encartes aprovados.')}>Aprovar encartes</button>}
         {mode === 'embedded' && <a className="btn" href={editorHref} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 'auto' }}><ExternalLink size={14} /> Abrir console em outra aba</a>}
         {mode === 'tab' && <Link className="btn" href={`/promocoes/${campaign.id}`} style={{ marginLeft: 'auto' }}>Abrir dentro do sistema</Link>}
       </div>
@@ -335,12 +396,22 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
         </details>
       )}
 
+      {checkOpen && <CheckPanel issues={issues} onGoto={gotoIssue} onClose={() => setCheckOpen(false)} />}
+      {layersApi.state === 'conflict' && (
+        <div className="notice canva-conflict" role="alert">
+          <strong>Edição simultânea.</strong> Os elementos desta promoção foram alterados em outra aba ou por outra pessoa; suas mudanças ainda não foram salvas.
+          <button type="button" className="mini-btn" onClick={() => layersApi.resolveConflict('theirs')}>Recarregar a versão salva (descarta as minhas)</button>
+          <button type="button" className="mini-btn primary" onClick={() => layersApi.resolveConflict('mine')}>Manter as minhas (substitui a outra)</button>
+        </div>
+      )}
+
       {/* barra superior */}
       <div className="canva-top">
         <div className="tabs">
           {PROMO_FORMAT_KEYS.map((f) => <button key={f} type="button" className={`tab${format === f ? ' active' : ''}`} onClick={() => { setFormat(f); setPage(0) }}>{PROMO_FORMATS[f].label}</button>)}
         </div>
         <div className="canva-actions">
+          <button type="button" className={`secondary canva-check-btn${checkSum.bloqueio ? ' bad' : checkSum.revisao ? ' warn' : ''}`} onClick={() => setCheckOpen((v) => !v)} aria-expanded={checkOpen} disabled={!theme}>Verificar arte{issues.length ? ` (${issues.length})` : ' ✓'}</button>
           <button type="button" className="primary" onClick={downloadPage} disabled={!items.length || !theme}><Download size={14} /> Baixar esta peça (PNG)</button>
           <button type="button" className="secondary" onClick={() => downloadZip([format])} disabled={!items.length || !theme}>Todas do formato (ZIP)</button>
           <button type="button" className="secondary" onClick={() => downloadZip(PROMO_FORMAT_KEYS)} disabled={!items.length || !theme}>Todos os formatos (ZIP)</button>
@@ -445,7 +516,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
         </aside>
 
         {/* peça */}
-        <main className="canva-stage" aria-label="Prévia">
+        <main ref={stageRef} className={`canva-stage${panning ? ' panning' : ''}`} aria-label="Prévia" onPointerDownCapture={panDown} onPointerMove={panMove} onPointerUp={() => { panRef.current = null }}>
           <AddBar api={layersApi} campaignId={campaign.id} format={format} page={pageIdx} canEdit={canEdit} onAdded={(id) => { selectLayer(id); setTab('camadas') }} onMsg={setMsg} zoom={zoom} setZoom={setZoom} />
           {!theme ? <p className="empty">Escolha um tema na aba &quot;Tema&quot; para ver a peça.</p> : (
             <div ref={paperRef} className="canva-paper" style={{ aspectRatio: `${PROMO_FORMATS[format].w} / ${PROMO_FORMATS[format].h}`, ['--ar' as string]: PROMO_FORMATS[format].w / PROMO_FORMATS[format].h, ['--zoom' as string]: zoom }}>

@@ -4,18 +4,18 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
 import { AlignCenter, AlignHorizontalJustifyCenter, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, AlignVerticalJustifyCenter, ArrowDown, ArrowUp, Bold, ChevronsDown, ChevronsUp, Circle, Copy, Eye, EyeOff, Group, ImagePlus, Italic, Lock, Minus, Redo2, Square, SquareRoundCorner, Star, Trash2, Type, Undo2, Ungroup, Unlock, ZoomIn, ZoomOut } from 'lucide-react'
 import { PROMO_FORMATS, PROMO_FORMAT_KEYS, type PromoFormat } from '@/lib/domain/promo'
-import { MAX_LAYERS, alignSelection, alignToPage, boundsOf, distribute, duplicateLayers, expandSelection, groupLayers, makeLayer, moveSelection, newLayerId, reorderLayer, scaleSelection, snap, ungroupLayers, type Align, type Bounds, type Layer, type LayerFont, type LayerShape, type Layers } from '@/lib/domain/promo-layers'
+import { MAX_LAYERS, alignSelection, alignToPage, boundsOf, distribute, duplicateLayers, expandSelection, groupLayers, makeLayer, moveSelection, newLayerId, pasteLayers, reorderLayer, scaleSelection, snap, ungroupLayers, type Align, type Bounds, type Layer, type LayerFont, type LayerShape, type Layers } from '@/lib/domain/promo-layers'
 import { drawLayers, loadPromoFonts, measureLayerHeight } from '@/lib/promo/render'
 import { saveLayersAction } from '../actions'
 
 // ---------- estado: histórico (desfazer/refazer) e salvamento automático ----------
-export type SaveState = 'saved' | 'dirty' | 'saving' | 'error'
+export type SaveState = 'saved' | 'dirty' | 'saving' | 'error' | 'conflict'
 
 const FIT_KEYS: (keyof Layer)[] = ['text', 'size', 'font', 'bold', 'italic', 'w', 'bg']
 /** Texto sempre com a caixa na altura certa para o que está escrito. */
 export function fitLayer(l: Layer): Layer { return l.type === 'text' ? { ...l, h: measureLayerHeight(l) } : l }
 
-export function useLayers(campaignId: string, initial: Layers, canEdit: boolean, onSaved: () => void) {
+export function useLayers(campaignId: string, initial: Layers, canEdit: boolean, onSaved: () => void, initialRev = 0) {
   const [layers, setLayers] = useState<Layers>(initial)
   const [committed, setCommitted] = useState<Layers>(initial)
   const [state, setState] = useState<SaveState>('saved')
@@ -28,6 +28,8 @@ export function useLayers(campaignId: string, initial: Layers, canEdit: boolean,
   const chain = useRef<Promise<void>>(Promise.resolve())
   const lastKey = useRef<{ key: string; at: number } | null>(null)
   const dirty = useRef(false)
+  const rev = useRef(initialRev)
+  const conflict = useRef(false)
   const savedCb = useRef(onSaved)
   savedCb.current = onSaved
 
@@ -35,13 +37,16 @@ export function useLayers(campaignId: string, initial: Layers, canEdit: boolean,
 
   const flush = useCallback(() => {
     if (timer.current) { clearTimeout(timer.current); timer.current = null }
-    if (!dirty.current) return
+    if (!dirty.current || conflict.current) return
     dirty.current = false
     const snapshot = latest.current
     setCommitted(snapshot); setState('saving')
     chain.current = chain.current.then(async () => {
-      const r = await saveLayersAction(campaignId, snapshot).catch(() => ({ ok: false, error: 'Sem conexão: não foi possível salvar os elementos.' }))
-      if (!r.ok) { setError(r.error ?? 'Não foi possível salvar os elementos.'); setState('error') } else { setError(null); setState(dirty.current ? 'dirty' : 'saved'); savedCb.current() }
+      if (conflict.current) { dirty.current = true; return }
+      const r = await saveLayersAction(campaignId, snapshot, rev.current).catch(() => ({ ok: false, error: 'Sem conexão: não foi possível salvar os elementos.', conflict: false, rev: undefined as number | undefined }))
+      if (r.conflict) { conflict.current = true; dirty.current = true; setError(r.error ?? null); setState('conflict') }
+      else if (!r.ok) { dirty.current = true; setError(r.error ?? 'Não foi possível salvar os elementos.'); setState('error') }
+      else { if (typeof r.rev === 'number') rev.current = r.rev; setError(null); setState(dirty.current ? 'dirty' : 'saved'); savedCb.current() }
     })
   }, [campaignId])
 
@@ -79,6 +84,12 @@ export function useLayers(campaignId: string, initial: Layers, canEdit: boolean,
     /** muda campos de um elemento (texto ajusta a altura sozinho) */
     patch: (fmt: PromoFormat, id: string, p: Partial<Layer>, key?: string) =>
       apply(mapOne(fmt, id, (l) => { const m = { ...l, ...p }; return m.type === 'text' && !('h' in p) && FIT_KEYS.some((k) => k in p) ? fitLayer(m) : m }), { key }),
+    /** edição simultânea: "mine" grava por cima do que a outra aba salvou; "theirs" recarrega a página com a versão salva */
+    resolveConflict: (choice: 'mine' | 'theirs') => {
+      if (choice === 'theirs') { dirty.current = false; window.location.reload(); return }
+      conflict.current = false; dirty.current = true
+      void saveLayersAction(campaignId, latest.current).then((r) => { if (r.ok) { if (typeof r.rev === 'number') rev.current = r.rev; dirty.current = false; setState('saved'); setError(null); savedCb.current() } else { conflict.current = r.conflict === true; setError(r.error ?? 'Não foi possível salvar.'); setState('error') } })
+    },
     /** aplica uma mudança na lista inteira do formato (várias de uma vez: agrupar, alinhar, excluir…) */
     mutate: (fmt: PromoFormat, fn: (list: Layer[]) => Layer[], key?: string) => apply({ ...latest.current, [fmt]: fn(latest.current[fmt]) }, { key }),
     /** durante o arrasto de vários: troca a lista sem registrar no histórico nem salvar */
@@ -128,22 +139,39 @@ export function addImageLayer(api: LayersApi, fmt: PromoFormat, page: number, im
   return api.add(fmt, l) ? l.id : null
 }
 
-/** Atalhos como no Canva: Delete, setas (Shift = 10 px), Ctrl+A (tudo da peça), Ctrl+D (duplicar), Ctrl+G (agrupar) e Ctrl+Shift+G (desagrupar), Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z, Esc. Não atrapalha quem está digitando. */
-export function useLayerKeys(o: { api: LayersApi; format: PromoFormat; selIds: string[]; select: (ids: string[]) => void; canEdit: boolean; pageIds: () => string[] }) {
+/** Atalhos como no Canva: Delete, setas (Shift = 10 px), Ctrl+A (tudo da peça), Ctrl+C / Ctrl+X / Ctrl+V (copiar, recortar e colar, inclusive em outra peça ou formato), Ctrl+D (duplicar), Ctrl+G (agrupar) e Ctrl+Shift+G (desagrupar), Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z, Esc. Não atrapalha quem está digitando. */
+// área de transferência dos elementos: vale entre peças e formatos da mesma sessão do navegador
+let layerClipboard: { fmt: PromoFormat; layers: Layer[] } | null = null
+
+export function useLayerKeys(o: { api: LayersApi; format: PromoFormat; page: number; selIds: string[]; select: (ids: string[]) => void; canEdit: boolean; pageIds: () => string[] }) {
   const ref = useRef(o)
   ref.current = o
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
       if (t?.closest('input, textarea, select, [contenteditable="true"]')) return
-      const { api, format, selIds, select, canEdit, pageIds } = ref.current
+      const { api, format, page, selIds, select, canEdit, pageIds } = ref.current
       if (!canEdit) return
       const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase()
       if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) api.redo(); else api.undo(); return }
       if (mod && k === 'y') { e.preventDefault(); api.redo(); return }
+      if (mod && k === 'v') {
+        if (!layerClipboard) return
+        e.preventDefault()
+        const r = pasteLayers(layerClipboard, format, page)
+        const added = layerClipboard.fmt === format ? r.added : r.added.map(fitLayer)
+        if (added.length && api.add(format, ...added)) select(r.ids)
+        return
+      }
       if (mod && k === 'a') { const ids = pageIds(); if (ids.length) { e.preventDefault(); select(ids) } return }
       const ids = selIds.filter((id) => api.latest.current[format].some((l) => l.id === id))
       if (!ids.length) return
+      if (mod && (k === 'c' || k === 'x')) {
+        e.preventDefault()
+        layerClipboard = { fmt: format, layers: api.latest.current[format].filter((l) => ids.includes(l.id)) }
+        if (k === 'x') { api.mutate(format, (l) => l.filter((x) => !ids.includes(x.id))); select([]) }
+        return
+      }
       if (e.key === 'Escape') { select([]); return }
       if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); api.mutate(format, (l) => l.filter((x) => !ids.includes(x.id))); select([]); return }
       if (mod && k === 'd') { e.preventDefault(); const c = duplicateSelection(api, format, ids); if (c.length) select(c); return }
@@ -425,7 +453,7 @@ export function AddBar({ api, campaignId, format, page, canEdit, onAdded, onMsg,
     } finally { setUp(false); if (fileRef.current) fileRef.current.value = '' }
   }
 
-  const stateText = api.state === 'saving' ? 'Salvando…' : api.state === 'dirty' ? 'Alterações pendentes…' : api.state === 'error' ? 'Erro ao salvar' : 'Salvo'
+  const stateText = api.state === 'conflict' ? 'Conflito de edição' : api.state === 'saving' ? 'Salvando…' : api.state === 'dirty' ? 'Alterações pendentes…' : api.state === 'error' ? 'Erro ao salvar' : 'Salvo'
   return (
     <div className="canva-addbar" role="toolbar" aria-label="Adicionar elementos">
       {canEdit && (
@@ -447,9 +475,9 @@ export function AddBar({ api, campaignId, format, page, canEdit, onAdded, onMsg,
           <span className="sep" />
         </>
       )}
-      <button type="button" onClick={() => setZoom(Math.max(0.5, +(zoom - 0.25).toFixed(2)))} aria-label="Diminuir zoom" title="Diminuir zoom"><ZoomOut size={14} /></button>
+      <button type="button" onClick={() => setZoom(Math.max(0.25, +(zoom - 0.25).toFixed(2)))} aria-label="Diminuir zoom" title="Diminuir zoom"><ZoomOut size={14} /></button>
       <button type="button" className="zoom" onClick={() => setZoom(1)} title="Ajustar à tela" aria-label="Zoom">{Math.round(zoom * 100)}%</button>
-      <button type="button" onClick={() => setZoom(Math.min(2.5, +(zoom + 0.25).toFixed(2)))} aria-label="Aumentar zoom" title="Aumentar zoom"><ZoomIn size={14} /></button>
+      <button type="button" onClick={() => setZoom(Math.min(4, +(zoom + 0.25).toFixed(2)))} aria-label="Aumentar zoom" title="Aumentar zoom"><ZoomIn size={14} /></button>
       {canEdit && <span className={`savestate ${api.state}`} role="status" title={api.error ?? undefined}>{stateText}</span>}
     </div>
   )

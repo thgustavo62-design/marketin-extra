@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { duplicateLayers, alignSelection, boundsOf, distribute, expandSelection, groupLayers, moveSelection, scaleSelection, ungroupLayers, alignToPage, layersForPage, makeLayer, normalizeLayers, reorderLayer, snap, MAX_LAYERS, type Layer } from '../src/lib/domain/promo-layers.ts'
+import { pasteLayers, duplicateLayers, alignSelection, boundsOf, distribute, expandSelection, groupLayers, moveSelection, scaleSelection, ungroupLayers, alignToPage, layersForPage, makeLayer, normalizeLayers, reorderLayer, snap, MAX_LAYERS, type Layer } from '../src/lib/domain/promo-layers.ts'
 
 const ASSET = '3f2b6c1e-8a4d-4c7e-9f10-2b5d6e7a8c90'
 
@@ -109,4 +109,17 @@ test('duplicar a seleção: copias novas deslocadas; cada grupo copiado vira um 
   assert.notEqual(r.added[0].group, g[0].group)
   assert.equal(r.added[2].locked, false)
   assert.deepEqual(duplicateLayers(g, ['nao-existe']).ids, [])
+})
+
+test('colar: mesma peça desloca; outro formato muda de proporção; grupos viram grupos novos; "todas as peças" continua valendo', () => {
+  const g = groupLayers([L('a1111', 100, 200, 300, 100, { page: 0 }), L('b2222', 500, 600, 100, 100, { page: null })], ['a1111', 'b2222'])
+  const mesma = pasteLayers({ fmt: 'story', layers: g }, 'story', 3)
+  assert.deepEqual(mesma.added.map((l) => [l.x, l.y, l.w]), [[124, 224, 300], [524, 624, 100]])
+  assert.deepEqual(mesma.added.map((l) => l.page), [3, null])
+  assert.ok(mesma.added[0].group && mesma.added[0].group === mesma.added[1].group && mesma.added[0].group !== g[0].group)
+  const feed = pasteLayers({ fmt: 'story', layers: [{ ...L('t0000', 540, 960, 540, 100), type: 'text', size: 80 }] }, 'feed', 0)
+  assert.deepEqual([feed.added[0].x, feed.added[0].y, feed.added[0].w, feed.added[0].size], [540, 675, 540, 80]) // story e feed têm a mesma largura (1080)
+  const a4 = pasteLayers({ fmt: 'story', layers: [{ ...L('t0000', 540, 960, 540, 100), type: 'text', size: 80 }] }, 'a4', 0)
+  assert.equal(a4.added[0].w, Math.round(540 * (1414 / 1080))); assert.equal(a4.added[0].size, Math.round(80 * (1414 / 1080)))
+  assert.ok(a4.added[0].id !== 't0000')
 })
