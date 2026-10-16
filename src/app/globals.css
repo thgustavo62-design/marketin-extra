@@ -768,3 +768,40 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .canva-toolrow { display: flex; gap: 4px; margin: 4px 0 6px; }
 .canva-toolrow button { border: 1px solid var(--line); background: #fff; min-width: 32px; min-height: 32px; }
 @media (max-width: 1180px) { .canva-tabs { grid-template-columns: repeat(4, 1fr); } }
+
+/* apresentações */
+.pres-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.pres-card { display: flex; gap: 14px; align-items: flex-start; }
+.pres-card-icon { flex: none; width: 44px; height: 44px; border-radius: 12px; background: #e4edff; color: #1c4cc4; display: grid; place-items: center; }
+.pres-card-body { min-width: 0; }
+.pres-card-body h3 { margin: 0; overflow-wrap: anywhere; }
+.pres-card-body h3 a { color: inherit; text-decoration: none; }
+.pres-card-body h3 a:hover { text-decoration: underline; }
+.pres-card .row-actions { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pres { display: grid; gap: 10px; }
+.pres-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; }
+.pres-title { flex: 1; min-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pres-count { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--muted); min-width: 56px; text-align: center; }
+.pres-actions { display: inline-flex; gap: 6px; align-items: center; }
+.pres-actions button { min-height: 34px; padding: 0 10px; border: 1px solid var(--line); background: #fff; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.pres-actions button.primary { background: var(--blue); border-color: var(--blue); color: #fff; width: auto; margin: 0; }
+.pres-actions button:disabled { opacity: 0.45; cursor: default; }
+.pres-stage-wrap { position: relative; background: #0f1830; border-radius: var(--radius); overflow: hidden; }
+.pres-stage { height: min(68vh, 760px); display: grid; place-items: center; cursor: pointer; user-select: none; }
+.pres-host { display: grid; place-items: center; max-width: 100%; max-height: 100%; }
+.pres-host canvas { display: block; background: #fff; }
+.pres-msg { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-weight: 600; text-align: center; padding: 20px; background: rgba(15, 24, 48, 0.55); }
+.pres-start { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); width: auto; margin: 0; padding: 0 22px; min-height: 46px; border-radius: 999px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45); }
+.pres-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255, 255, 255, 0.15); }
+.pres-progress i { display: block; height: 100%; background: #e3171d; transition: width 0.25s; }
+.pres-rail { display: flex; gap: 6px; flex-wrap: wrap; }
+.pres-rail button { min-width: 34px; min-height: 34px; border: 1px solid var(--line); background: #fff; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.pres-rail button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+.pres-help { font-size: 12px; }
+.pres.full { background: #000; gap: 0; height: 100vh; grid-template-rows: auto 1fr; }
+.pres.full .pres-stage-wrap { border-radius: 0; height: 100%; }
+.pres.full .pres-stage { height: 100vh; }
+.pres.full .pres-bar { position: absolute; z-index: 3; left: 0; right: 0; top: 0; border-radius: 0; background: rgba(15, 24, 48, 0.82); border: 0; color: #fff; transition: opacity 0.25s; }
+.pres.full.nohud .pres-bar { opacity: 0; pointer-events: none; }
+.pres.full.nohud { cursor: none; }
+.pres.full .pres-count { color: #cfd8ee; }
