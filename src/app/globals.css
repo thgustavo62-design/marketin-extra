@@ -640,3 +640,22 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .pi-note { color: var(--muted); max-width: 320px; line-height: 1.4; }
 .pi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-bottom: 8px; }
 .pi-objective { margin: 0 0 16px; }
+
+/* ===== Promoções (estúdio de peças) ===== */
+.studio-grid { display: grid; grid-template-columns: minmax(280px, 460px) 1fr; gap: 14px; align-items: start; }
+@media (max-width: 960px) { .studio-grid { grid-template-columns: 1fr; } }
+.studio-canvas { background: #e9eef5; border-radius: 12px; padding: 10px; display: grid; place-items: center; }
+.studio-canvas canvas { width: 100%; height: auto; max-height: 76vh; object-fit: contain; border-radius: 6px; box-shadow: 0 2px 14px rgba(0, 0, 0, 0.18); }
+.promo-items { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; max-height: 70vh; overflow: auto; }
+.promo-items li { display: flex; align-items: center; gap: 8px; background: var(--box); border-radius: 10px; padding: 6px 8px; }
+.promo-items li input[type=text] { min-height: 32px; font-size: 12.5px; }
+.promo-items li input:not([inputmode]) { flex: 1; min-width: 120px; }
+.promo-pos { width: 22px; text-align: center; font-weight: 700; color: var(--muted); font-size: 12px; }
+.promo-nophoto { width: 44px; height: 44px; display: grid; place-items: center; background: #fdecec; color: var(--red); font-size: 10px; font-weight: 700; border-radius: 6px; text-align: center; line-height: 1.1; }
+.promo-photos { display: flex; gap: 3px; }
+.promo-photos img { object-fit: contain; background: #fff; border: 2px solid transparent; border-radius: 4px; cursor: pointer; }
+.promo-photos img.sel { border-color: var(--blue); }
+.promo-ctl { display: flex; gap: 3px; }
+.color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin: 6px 0 4px; }
+.color-item { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; }
+.color-item input[type=color] { width: 38px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: #fff; }

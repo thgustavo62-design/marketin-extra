@@ -31,6 +31,7 @@ Regra: **telas não escrevem SQL** (usam `@/lib/data`); **cálculo não fica na 
 (app)/producao/              quadro Kanban (board.tsx, task-drawer.tsx, actions.ts) — lê `posts` via `src/lib/data/production.ts`
    aprovacoes/ · biblioteca/   (cada uma com page + actions)
 (app)/produtos/              catálogo de produtos + imagens (page, [id], novo, importar, conferir; actions.ts) — dados em `src/lib/catalog/` (store, erp, open-data, images) e regra de casamento em `src/lib/domain/catalog.ts`
+(app)/promocoes/             promoções por planilha: page (envio), [id] (estúdio: prévia, edição, downloads), temas (artes) — dados em `src/lib/promo/` (store, xlsx, render no navegador) e regras puras em `src/lib/domain/promo.ts`
 (app)/campanhas/             lista de campanhas
 (app)/resultados/            page = Insights (Meta, via Windsor) · instagram · meta-ads · vinculos · metas
 (app)/gestao/                base · unidades
