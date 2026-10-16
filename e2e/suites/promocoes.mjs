@@ -226,9 +226,91 @@ try {
   await picker.fill('talco'); await a.locator('.picker li button:has-text("Escolher")').first().click()
   await a.locator('input[aria-label="Preço do produto adicionado"]').fill('11,99'); await a.getByRole('button', { name: 'Adicionar' }).click(); await wait(1500)
   ck('adicionar produto pelo catálogo, com preço', (await q(`select count(*)::int n from promo_items where campaign_id = $1 and price = 11.99`, [camp.id]))[0].n === 1)
-  await a.getByRole('tab', { name: /Dados/ }).click()
+  await a.getByRole('tab', { name: /Textos/ }).click()
   await a.fill('#pc-title', 'NOVO TÍTULO'); await a.getByRole('button', { name: 'Salvar' }).first().click(); await wait(1500)
   ck('dados da promoção salvos', (await q(`select title from promo_campaigns where id = $1`, [camp.id]))[0].title === 'NOVO TÍTULO')
+
+  // ---------- edição fina (como o console do Criax) ----------
+  await a.goto(`${BASE}/promocoes/${camp.id}`); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  const row = (texto) => a.locator('.canva-list li', { hasText: texto }).first()
+  const it1 = async (texto) => (await q(`select * from promo_items where campaign_id = $1 and name like $2 limit 1`, [camp.id, `%${texto}%`]))[0]
+  await row('LEITE NINHO FASES').click()
+  await a.fill('#in-note', '800g · Leve 3 pague 2'); await a.locator('#in-note').blur(); await wait(1500)
+  ck('subtítulo do encarte salvo', (await it1('LEITE NINHO FASES')).note === '800g · Leve 3 pague 2')
+  await a.fill('#in-old', '49,90'); await a.locator('#in-old').blur(); await wait(1500)
+  ck('preço original ("De R$") salvo', (await it1('LEITE NINHO FASES')).old_price === '49.90')
+  await a.fill('#in-old', ''); await a.locator('#in-old').blur(); await wait(1500)
+  ck('apagar o preço original remove o "De R$"', (await it1('LEITE NINHO FASES')).old_price === null)
+  await a.fill('#in-old', 'abc'); await a.locator('#in-old').blur(); await wait(1200)
+  ck('preço original inválido é recusado', /Preço original inválido/.test(await a.textContent('main')))
+  await a.getByRole('button', { name: 'Leve 3 Pague 2' }).click(); await wait(1500)
+  ck('etiqueta pronta (Leve 3 Pague 2) escolhida no encarte', (await it1('LEITE NINHO FASES')).style?.tag === 'Leve 3 Pague 2')
+  await a.getByRole('button', { name: 'Sem etiqueta' }).click(); await wait(1500)
+  ck('"Sem etiqueta" esconde a etiqueta só neste encarte', (await it1('LEITE NINHO FASES')).style?.tag === '')
+  await a.getByRole('button', { name: 'Do tema' }).click(); await wait(1500)
+  ck('"Do tema" volta à etiqueta do tema', (await it1('LEITE NINHO FASES')).style?.tag === undefined)
+  await a.fill('#in-tag', 'Só hoje'); await a.locator('#in-tag').blur(); await wait(1500)
+  ck('etiqueta com texto próprio', (await it1('LEITE NINHO FASES')).style?.tag === 'Só hoje')
+  await a.locator('summary', { hasText: 'Cores e estilo do nome' }).click()
+  await a.locator('input[aria-label="Selo do preço"]').fill('#ff0000'); await a.locator('input[aria-label="Selo do preço"]').blur(); await wait(1500)
+  ck('cor do selo do preço só neste encarte', (await it1('LEITE NINHO FASES')).style?.badgeColor === '#ff0000')
+  await a.getByRole('button', { name: 'Alinhar left' }).click(); await wait(1500)
+  ck('alinhamento do nome à esquerda', (await it1('LEITE NINHO FASES')).style?.nameAlign === 'left')
+  await a.locator('#in-scale').focus(); await a.keyboard.press('ArrowRight'); await wait(1500)
+  ck('tamanho do nome ajustado (105%)', (await it1('LEITE NINHO FASES')).style?.nameScale === 105, JSON.stringify((await it1('LEITE NINHO FASES')).style))
+  await a.locator('button', { hasText: 'padrão' }).first().click(); await wait(1500)
+  ck('"padrão" devolve a cor do tema', (await it1('LEITE NINHO FASES')).style?.badgeColor === undefined || (await it1('LEITE NINHO FASES')).style?.tagColor === undefined)
+
+  // fragrâncias: mostrar ou não; tabela de tamanhos: mostrar ou não
+  await row('VÁRIAS OPÇÕES').click()
+  ck('fragrâncias começam ocultas no encarte', (await it1('VÁRIAS OPÇÕES')).variants.show !== true)
+  await a.getByLabel('Listar as fragrâncias/sabores no encarte').check(); await wait(1800)
+  ck('ligar "listar as fragrâncias" grava no encarte', (await it1('VÁRIAS OPÇÕES')).variants.show === true)
+  await a.getByLabel('Listar as fragrâncias/sabores no encarte').uncheck(); await wait(1800)
+  ck('desligar volta a ocultar', (await it1('VÁRIAS OPÇÕES')).variants.show === false)
+
+  // foto: enviar quando falta (produto do catálogo sem foto) e produto que nem está no catálogo
+  const semFotoAntes = await q(`select count(*)::int n from promo_items i where campaign_id = $1 and not exists (select 1 from product_images m where m.product_id = i.product_id)`, [camp.id])
+  await row('PRODUTO SEM FOTO 100ML').click()
+  await a.locator('input[aria-label="Enviar foto do produto"]').setInputFiles({ name: 'meu-produto.png', mimeType: 'image/png', buffer: await foto('#8e44ad') }); await wait(3500)
+  const sf = await it1('PRODUTO SEM FOTO 100ML')
+  ck('enviar foto no encarte sem foto: entra no banco de imagens, ligada ao produto e ao encarte', !!sf.photo_image_id && (await q(`select count(*)::int n from product_images where product_id = $1`, [sf.product_id]))[0].n === 1 && /Foto enviada/.test(await a.textContent('.canva-msg')))
+  await row('VÁRIAS OPÇÕES').click()
+  await a.locator('input[aria-label="Enviar foto do produto"]').setInputFiles({ name: 'novo.png', mimeType: 'image/png', buffer: await foto('#27ae60') }); await wait(3500)
+  const novo = await it1('VÁRIAS OPÇÕES')
+  const prodNovo = (await q(`select ean, description, source from products where id = $1`, [novo.product_id]))[0]
+  ck('encarte fora do catálogo: o produto é criado (EAN e descrição do encarte) e recebe a foto', !!novo.photo_image_id && prodNovo?.description === 'AMACIANTE COMFORT CONCENTRADO 1L - VÁRIAS OPÇÕES' && prodNovo.source === 'manual' && prodNovo.ean === gtin('789300000001'))
+  await a.locator('input[aria-label="Enviar foto do produto"]').setInputFiles({ name: 'texto.png', mimeType: 'image/png', buffer: Buffer.from('não é imagem de verdade') }); await wait(2000)
+  ck('arquivo que não é imagem é recusado com aviso', /Não é uma imagem|corrompido|não aceita/i.test(await a.textContent('.canva-msg')))
+  // usar a foto de outro produto do catálogo
+  await row('SAB. LIQ. GRANADO').click()
+  const antesProd = (await it1('SAB. LIQ. GRANADO')).product_id
+  await a.locator('summary', { hasText: /^Foto$/ }).click()
+  const pickerFoto = a.locator('.canva-right .picker input[type=search]')
+  await pickerFoto.fill('huggies'); await a.locator('.canva-right .picker li button:has-text("Escolher")').first().click(); await wait(2000)
+  ck('"usar a foto de outro produto": troca o produto que fornece as fotos', (await it1('SAB. LIQ. GRANADO')).product_id !== antesProd && (await it1('SAB. LIQ. GRANADO')).product_id !== null)
+
+  // textos da promoção (etiqueta padrão, texto livre) e aprovação
+  await a.getByRole('tab', { name: /Textos/ }).click()
+  await a.fill('#ov-tag', 'Oba!'); await a.fill('#ov-extra', 'Rua das Flores, 123 · (27) 99999-0000')
+  await a.getByRole('button', { name: 'Salvar textos' }).click(); await wait(1800)
+  const ovDb = (await q(`select overrides, status from promo_campaigns where id = $1`, [camp.id]))[0]
+  ck('textos da promoção salvos (etiqueta padrão e texto livre)', ovDb.overrides?.tagText === 'Oba!' && ovDb.overrides?.extraText === 'Rua das Flores, 123 · (27) 99999-0000')
+  await a.getByRole('tab', { name: /Produtos/ }).click()
+  await a.getByRole('button', { name: 'Aprovar encartes' }).click(); await wait(1800)
+  ck('depois de tudo, aprovar funciona', (await q(`select status from promo_campaigns where id = $1`, [camp.id]))[0].status === 'aprovada')
+
+  // console em outra aba
+  const linkConsole = a.locator('a:has-text("Abrir console em outra aba")')
+  ck('o editor dentro da promoção tem o link para abrir o console em outra aba', (await linkConsole.getAttribute('href')) === `/editor/${camp.id}` && (await linkConsole.getAttribute('target')) === '_blank')
+  const { p: tab } = await mk(); await login(tab, 'teste_e2e')
+  await tab.goto(BASE + '/editor'); await idle(tab)
+  ck('o console em tela cheia lista as promoções (sem o menu lateral)', (await tab.locator('.editor-shell').count()) === 1 && (await tab.locator('.side-nav').count()) === 0 && (await tab.locator(`a[href="/editor/${camp.id}"]`).count()) === 1)
+  await tab.locator(`a[href="/editor/${camp.id}"]`).click(); await tab.waitForURL(`${BASE}/editor/${camp.id}`); await idle(tab); await tab.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  ck('o console em outra aba abre o mesmo editor (peça, painel, inspetor) e mostra a aprovação', (await tab.locator('.canva-tab .canva-paper canvas').count()) === 1 && /Aprovada por Admin Teste/.test(await tab.textContent('.canva-approval')) && (await tab.locator('a:has-text("Abrir dentro do sistema")').count()) === 1)
+  await tab.locator('.canva-hit').first().click()
+  await tab.fill('#in-price', '38,5'); await tab.locator('#in-price').blur(); await wait(1800)
+  ck('editar no console em outra aba salva e tira a aprovação (mesmo dado do editor de dentro)', (await q(`select price::float8 as p from promo_items where id = $1`, [await tab.locator('.canva-hit').first().getAttribute('data-item')]))[0].p === 38.5 && (await q(`select status from promo_campaigns where id = $1`, [camp.id]))[0].status === 'rascunho')
 
   // política desligada: um encarte por produto
   await a.goto(BASE + '/promocoes'); await idle(a)
@@ -261,7 +343,7 @@ try {
 
   // excluir promoção e tema
   await a.goto(`${BASE}/promocoes/${camp.id}`); await idle(a)
-  await a.getByRole('tab', { name: /Dados/ }).click()
+  await a.getByRole('tab', { name: /Textos/ }).click()
   await a.getByRole('button', { name: 'Excluir promoção' }).click(); await a.waitForURL(BASE + '/promocoes', { timeout: 15000 })
   ck('excluir a promoção apaga os itens', (await q(`select count(*)::int n from promo_items where campaign_id = $1`, [camp.id]))[0].n === 0)
 } catch (err) {

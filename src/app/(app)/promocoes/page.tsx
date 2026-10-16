@@ -12,7 +12,7 @@ export default async function Promocoes() {
     <>
       <header className="page-head">
         <h1>Promoções</h1>
-        <p>Planilha com código de barras e preço → peças prontas de story, feed e A4, com o nome do ERP e a foto do banco de imagens. <Link href="/promocoes/temas">Temas (artes)</Link></p>
+        <p>Planilha com código de barras e preço → peças prontas de story, feed e A4, com o nome do ERP e a foto do banco de imagens. <Link href="/promocoes/temas">Temas (artes)</Link> · <a href="/editor" target="_blank" rel="noopener noreferrer">Console de edição em outra aba</a></p>
       </header>
       {write && <NewPromo themes={themes.map((t) => ({ id: t.id, name: t.name }))} />}
       <h2 style={{ marginTop: 22 }}>Promoções criadas</h2>

@@ -1,9 +1,9 @@
 // Desenho da peça de promoção em canvas (navegador): feed, story e A4. Mesmo código para a prévia e para baixar.
-import { PROMO_FORMATS, pageLayout, placeCells, priceParts, type PromoFormat, type Rect, type ThemeConfig } from '../domain/promo.ts'
+import { PROMO_FORMATS, pageLayout, placeCells, priceParts, type ItemStyle, type PromoFormat, type Rect, type ThemeConfig } from '../domain/promo.ts'
 
 export type RenderAssets = { background?: HTMLImageElement | null; header?: HTMLImageElement | null; footer?: HTMLImageElement | null; badge?: HTMLImageElement | null; tag?: HTMLImageElement | null }
-export type RenderItem = { name: string; price: number; img: HTMLImageElement | null; /** tabela de tamanhos (fraldas): um quadro por tamanho com as unidades */ sizes?: { label: string; units: number | null }[] }
-export type RenderOpts = { format: PromoFormat; theme: ThemeConfig; title: string | null; validity: string | null; assets: RenderAssets; items: RenderItem[] }
+export type RenderItem = { name: string; price: number; img: HTMLImageElement | null; /** tabela de tamanhos (fraldas): um quadro por tamanho com as unidades */ sizes?: { label: string; units: number | null }[]; /** preço original ("De R$"), riscado no selo */ oldPrice?: number | null; /** subtítulo abaixo do nome */ note?: string | null; style?: ItemStyle }
+export type RenderOpts = { format: PromoFormat; theme: ThemeConfig; title: string | null; validity: string | null; /** texto livre (endereço, telefone) logo acima do rodapé */ extraText?: string | null; assets: RenderAssets; items: RenderItem[] }
 
 const DISPLAY = '"PromoDisplay", "Baloo 2", system-ui, sans-serif'
 const TEXT = '"PromoText", Montserrat, system-ui, sans-serif'
@@ -105,9 +105,19 @@ export function drawPage(canvas: HTMLCanvasElement, o: RenderOpts): void {
     ctx.fillStyle = c.footerText; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     o.theme.footerLines.forEach((line, i) => { ctx.font = `800 ${i === 0 ? 46 : 34}px ${DISPLAY}`; ctx.fillText(line, W / 2, H - footerH + (footerH / (o.theme.footerLines.length + 1)) * (i + 1)) })
   }
+  if (o.extraText) {
+    const fs = Math.round(W * 0.027)
+    ctx.font = `800 ${fs}px ${TEXT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'
+    ctx.lineJoin = 'round'; ctx.lineWidth = fs * 0.3; ctx.strokeStyle = 'rgba(0,0,0,0.55)'
+    const y = H - footerH - Math.round(fs * 0.5)
+    ctx.strokeText(o.extraText, W / 2, y); ctx.fillStyle = '#ffffff'; ctx.fillText(o.extraText, W / 2, y)
+  }
 }
 
-function drawCell(ctx: CanvasRenderingContext2D, cell: Rect, it: RenderItem, theme: ThemeConfig, cols: number, assets: RenderAssets, safe: { minY: number; maxY: number }): void {
+function drawCell(ctx: CanvasRenderingContext2D, cell: Rect, it: RenderItem, baseTheme: ThemeConfig, cols: number, assets: RenderAssets, safe: { minY: number; maxY: number }): void {
+  const st = it.style ?? {}
+  // estilo do próprio encarte (cores e etiqueta) vale no lugar do tema
+  const theme: ThemeConfig = { ...baseTheme, colors: { ...baseTheme.colors, badge: st.badgeColor ?? baseTheme.colors.badge, badgeText: st.priceColor ?? baseTheme.colors.badgeText, tag: st.tagColor ?? baseTheme.colors.tag, name: st.nameColor ?? baseTheme.colors.name } }
   const c = theme.colors
   // se o cabeçalho ou o rodapé cobrem parte do cartão (a arte fica por cima), o conteúdo usa só a parte visível
   const top = Math.max(cell.y, safe.minY), bottom = Math.min(cell.y + cell.h, safe.maxY)
@@ -134,14 +144,20 @@ function drawCell(ctx: CanvasRenderingContext2D, cell: Rect, it: RenderItem, the
 
   if (it.sizes?.length) drawSizeTable(ctx, r, it.sizes, theme)
 
-  // nome (à esquerda do selo, alinhado à direita, como nas peças da rede)
+  // nome (à esquerda do selo; alinhado à direita por padrão, como nas peças da rede) e subtítulo logo abaixo
   const nameRight = bx - badgeR * 1.02
   const nameLeft = r.x + r.w * 0.02
-  drawName(ctx, it.name, nameLeft, nameRight, r.y + r.h - r.h * 0.04, c.name, r.w * (cols >= 4 ? 0.085 : 0.075))
+  const startSize = r.w * (cols >= 4 ? 0.085 : 0.075) * ((st.nameScale ?? 100) / 100)
+  const bottomY = r.y + r.h - r.h * 0.04
+  let nameBottom = bottomY
+  if (it.note) nameBottom -= drawNote(ctx, it.note, nameLeft, nameRight, bottomY, c.name, startSize * 0.62, st.nameAlign ?? 'right') + 2
+  drawName(ctx, it.name, nameLeft, nameRight, nameBottom, c.name, startSize, st.nameAlign ?? 'right')
 
-  // selo de preço
-  drawBadge(ctx, bx, by, badgeR, it.price, theme, assets.badge ?? null)
-  if (theme.showTag && (assets.tag || theme.tagText)) drawTag(ctx, bx + badgeR * 0.2, by - badgeR * 1.0, badgeR, theme, assets.tag ?? null)
+  // selo de preço (com "De R$" riscado quando houver) e etiqueta
+  drawBadge(ctx, bx, by, badgeR, it.price, theme, assets.badge ?? null, it.oldPrice ?? null)
+  const tagText = st.tag !== undefined ? st.tag : theme.tagText
+  const showTag = st.tag !== undefined ? st.tag !== '' : theme.showTag
+  if (showTag && ((st.tag === undefined && assets.tag) || tagText)) drawTag(ctx, bx + badgeR * 0.2, by - badgeR * 1.0, badgeR, theme, st.tag === undefined ? (assets.tag ?? null) : null, tagText) // etiqueta própria escrita no encarte vale no lugar da arte do tema
 }
 
 /** Quadro de tamanhos e unidades (como nas peças de fralda da rede): uma linha por tamanho, no canto de cima à esquerda da foto. */
@@ -164,7 +180,10 @@ function drawSizeTable(ctx: CanvasRenderingContext2D, r: Rect, sizes: { label: s
   ctx.restore()
 }
 
-function drawName(ctx: CanvasRenderingContext2D, text: string, left: number, right: number, bottom: number, color: string, startSize: number): void {
+type Align = 'left' | 'center' | 'right'
+const anchorX = (a: Align, left: number, right: number) => (a === 'left' ? left : a === 'center' ? (left + right) / 2 : right)
+
+function drawName(ctx: CanvasRenderingContext2D, text: string, left: number, right: number, bottom: number, color: string, startSize: number, align: Align): void {
   const maxW = Math.max(10, right - left)
   let size = startSize
   let lines: string[] = []
@@ -173,9 +192,27 @@ function drawName(ctx: CanvasRenderingContext2D, text: string, left: number, rig
     lines = wrap(ctx, text, maxW)
     if (lines.length <= 3 && lines.every((l) => ctx.measureText(l).width <= maxW)) break
   }
-  ctx.fillStyle = color; ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'alphabetic'
   const lh = size * 1.12
-  lines.slice(0, 4).reverse().forEach((l, i) => ctx.fillText(l, right, bottom - i * lh))
+  const x = anchorX(align, left, right)
+  lines.slice(0, 4).reverse().forEach((l, i) => ctx.fillText(l, x, bottom - i * lh))
+}
+
+/** Subtítulo / descrição curta (ex.: "50ml", "Leve 3 pague 2"): até 2 linhas, mais leve que o nome. Devolve a altura ocupada. */
+function drawNote(ctx: CanvasRenderingContext2D, text: string, left: number, right: number, bottom: number, color: string, size: number, align: Align): number {
+  const maxW = Math.max(10, right - left)
+  let s = Math.max(10, size)
+  let lines: string[] = []
+  for (; s >= 9; s -= 1) {
+    ctx.font = `600 ${s}px ${TEXT}`
+    lines = wrap(ctx, text, maxW)
+    if (lines.length <= 2 && lines.every((l) => ctx.measureText(l).width <= maxW)) break
+  }
+  ctx.fillStyle = color; ctx.globalAlpha = 0.85; ctx.textAlign = align; ctx.textBaseline = 'alphabetic'
+  const lh = s * 1.15, x = anchorX(align, left, right)
+  lines.slice(0, 2).reverse().forEach((l, i) => ctx.fillText(l, x, bottom - i * lh))
+  ctx.globalAlpha = 1
+  return Math.min(lines.length, 2) * lh
 }
 
 function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
@@ -190,7 +227,7 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string
   return lines
 }
 
-function drawBadge(ctx: CanvasRenderingContext2D, cx: number, cy: number, R: number, price: number, theme: ThemeConfig, art: HTMLImageElement | null): void {
+function drawBadge(ctx: CanvasRenderingContext2D, cx: number, cy: number, R: number, price: number, theme: ThemeConfig, art: HTMLImageElement | null, oldPrice: number | null): void {
   const c = theme.colors
   const spikes = 14
   const path = (ox: number, oy: number) => {
@@ -215,7 +252,7 @@ function drawBadge(ctx: CanvasRenderingContext2D, cx: number, cy: number, R: num
 
   const { reais, centavos } = priceParts(price)
   const maxW = R * 1.42
-  let size = R * 0.82
+  let size = R * (oldPrice ? 0.72 : 0.82)
   const measure = () => { ctx.font = `800 ${size}px ${DISPLAY}`; return ctx.measureText(reais).width + size * 0.42 + R * 0.38 }
   while (measure() > maxW && size > 12) size -= 2
   ctx.font = `800 ${size}px ${DISPLAY}`
@@ -223,13 +260,25 @@ function drawBadge(ctx: CanvasRenderingContext2D, cx: number, cy: number, R: num
   const small = size * 0.4
   const total = wr + small * 1.9 // "R$" à esquerda + centavos à direita
   const x0 = cx - total / 2
+  const dy = oldPrice ? R * 0.1 : 0 // com preço original, o preço novo desce um pouco
   ctx.fillStyle = c.badgeText; ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left'
-  ctx.font = `800 ${small}px ${DISPLAY}`; ctx.fillText('R$', x0, cy - size * 0.12)
-  ctx.font = `800 ${size}px ${DISPLAY}`; ctx.fillText(reais, x0 + small * 1.15, cy + size * 0.36)
-  ctx.font = `800 ${small * 1.05}px ${DISPLAY}`; ctx.fillText(`,${centavos}`, x0 + small * 1.15 + wr + 2, cy - size * 0.12)
+  ctx.font = `800 ${small}px ${DISPLAY}`; ctx.fillText('R$', x0, cy - size * 0.12 + dy)
+  ctx.font = `800 ${size}px ${DISPLAY}`; ctx.fillText(reais, x0 + small * 1.15, cy + size * 0.36 + dy)
+  ctx.font = `800 ${small * 1.05}px ${DISPLAY}`; ctx.fillText(`,${centavos}`, x0 + small * 1.15 + wr + 2, cy - size * 0.12 + dy)
+  if (oldPrice) { // "DE R$ 99,99" riscado, no alto do selo
+    const op = priceParts(oldPrice)
+    const t = `DE R$ ${op.reais},${op.centavos}`
+    const fs = R * 0.2
+    ctx.font = `700 ${fs}px ${DISPLAY}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    const ty = cy - R * 0.5
+    ctx.globalAlpha = 0.9; ctx.fillText(t, cx, ty); ctx.globalAlpha = 1
+    const tw = ctx.measureText(t).width
+    ctx.strokeStyle = c.badgeText; ctx.lineWidth = Math.max(2, fs * 0.09)
+    ctx.beginPath(); ctx.moveTo(cx - tw / 2 - 2, ty); ctx.lineTo(cx + tw / 2 + 2, ty); ctx.stroke()
+  }
 }
 
-function drawTag(ctx: CanvasRenderingContext2D, cx: number, cy: number, R: number, theme: ThemeConfig, art: HTMLImageElement | null): void {
+function drawTag(ctx: CanvasRenderingContext2D, cx: number, cy: number, R: number, theme: ThemeConfig, art: HTMLImageElement | null, text: string): void {
   const c = theme.colors
   if (art) { // etiqueta pronta (ex.: "Uaau!" com o rostinho)
     const s = (R * 1.15) / art.width
@@ -239,10 +288,10 @@ function drawTag(ctx: CanvasRenderingContext2D, cx: number, cy: number, R: numbe
   ctx.save(); ctx.translate(cx, cy); ctx.rotate(-0.07)
   const fs = R * 0.3
   ctx.font = `800 ${fs}px ${DISPLAY}`
-  const tw = ctx.measureText(theme.tagText).width + fs * 0.9, th = fs * 1.35
+  const tw = ctx.measureText(text).width + fs * 0.9, th = fs * 1.35
   ctx.fillStyle = c.tag; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = fs * 0.1
   roundRect(ctx, -tw / 2, -th / 2, tw, th, th * 0.32); ctx.fill(); ctx.stroke()
-  ctx.fillStyle = c.tagText; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(theme.tagText, 0, fs * 0.04)
+  ctx.fillStyle = c.tagText; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 0, fs * 0.04)
   ctx.restore()
 }
 

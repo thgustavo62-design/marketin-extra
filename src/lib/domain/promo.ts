@@ -226,3 +226,40 @@ export function placeCells(cells: Rect[], count: number, cols: number, pitchX: n
 export function displayName(s: string): string {
   return s.replace(/\s+/g, ' ').trim().toUpperCase()
 }
+
+// ---------- estilo do encarte e textos da promoção (console de edição) ----------
+export const TAG_PRESETS = ['Promoção', 'Cliente Fidelidade', 'Exclusivo APP', 'Leve 2 ou Mais', 'Leve 3 ou Mais', 'Leve 3 Pague 2', 'Oferta'] as const
+export type ItemStyle = {
+  /** texto da etiqueta: ausente = a do tema; "" = sem etiqueta neste encarte */
+  tag?: string
+  tagColor?: string; badgeColor?: string; priceColor?: string; nameColor?: string
+  nameAlign?: 'left' | 'center' | 'right'
+  /** tamanho do nome em % do padrão */
+  nameScale?: number
+}
+/** Aceita só valores válidos: cor #rrggbb, alinhamento da lista, tamanho de 50 a 200 %, etiqueta de até 24 caracteres. */
+export function normalizeItemStyle(raw: unknown): ItemStyle {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const out: ItemStyle = {}
+  if (typeof r.tag === 'string') out.tag = r.tag.trim().slice(0, 24)
+  for (const k of ['tagColor', 'badgeColor', 'priceColor', 'nameColor'] as const) if (typeof r[k] === 'string' && HEX.test(r[k] as string)) out[k] = (r[k] as string).toLowerCase()
+  if (r.nameAlign === 'left' || r.nameAlign === 'center' || r.nameAlign === 'right') out.nameAlign = r.nameAlign
+  const sc = Number(r.nameScale)
+  if (r.nameScale !== undefined && r.nameScale !== '' && Number.isFinite(sc) && sc >= 50 && sc <= 200) out.nameScale = Math.round(sc)
+  return out
+}
+
+export type PromoOverrides = { tagText?: string; showTag?: boolean; footerLines?: string[]; extraText?: string }
+export function normalizeOverrides(raw: unknown): PromoOverrides {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const out: PromoOverrides = {}
+  if (typeof r.tagText === 'string') out.tagText = r.tagText.trim().slice(0, 24)
+  if (typeof r.showTag === 'boolean') out.showTag = r.showTag
+  if (Array.isArray(r.footerLines)) out.footerLines = r.footerLines.filter((x): x is string => typeof x === 'string').map((x) => x.trim().slice(0, 80)).filter(Boolean).slice(0, 3)
+  if (typeof r.extraText === 'string') out.extraText = r.extraText.trim().slice(0, 140)
+  return out
+}
+/** O que a promoção define (etiqueta, rodapé) vale no lugar do tema. */
+export function applyOverrides(theme: ThemeConfig, o: PromoOverrides): ThemeConfig {
+  return { ...theme, tagText: o.tagText ?? theme.tagText, showTag: o.showTag ?? theme.showTag, footerLines: o.footerLines ?? theme.footerLines }
+}

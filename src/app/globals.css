@@ -712,3 +712,21 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .canva-sizes { display: grid; gap: 4px; }
 .canva-sizes div { display: grid; grid-template-columns: 70px 1fr; gap: 4px; }
 .canva-sizes input { min-height: 30px; font-size: 12.5px; }
+
+/* console: seções do inspetor, etiquetas e modo em outra aba */
+.canva-right details { border-top: 1px solid var(--line); padding: 8px 0; }
+.canva-right details > summary { cursor: pointer; font-weight: 700; font-size: 12.5px; padding: 2px 0; }
+.canva-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }
+.canva-chips button { min-height: 28px; padding: 0 10px; border: 1px solid var(--line); background: #fff; border-radius: 999px; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; }
+.canva-chips button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+.canva-chips button:disabled { opacity: 0.5; }
+.canva-tab .canva-body { grid-template-columns: 320px minmax(0, 1fr) 320px; }
+.canva-tab .canva-left, .canva-tab .canva-right { max-height: calc(100vh - 230px); }
+.canva-tab .canva-paper { max-height: calc(100vh - 290px); }
+
+/* console em tela cheia (outra aba) */
+.editor-shell { min-height: 100vh; background: var(--bg, #f2f5f9); }
+.editor-bar { display: flex; align-items: center; gap: 14px; background: #0f1c33; color: #fff; padding: 0 18px; min-height: 46px; }
+.editor-bar .muted { color: #9db0cc; }
+.editor-brand { color: #fff; font-weight: 800; letter-spacing: 0.08em; font-size: 13px; }
+.editor-body { padding: 14px 18px 30px; max-width: 1800px; margin: 0 auto; }

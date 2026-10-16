@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { DEFAULT_THEME, detectPromoColumns, normalizeTheme, pageLayout, paginate, paginateSections, parsePrice, parsePromoRows, placeCells, priceParts } from '../src/lib/domain/promo.ts'
+import { DEFAULT_THEME, applyOverrides, detectPromoColumns, normalizeItemStyle, normalizeOverrides, normalizeTheme, pageLayout, paginate, paginateSections, parsePrice, parsePromoRows, placeCells, priceParts } from '../src/lib/domain/promo.ts'
 
 test('preço: aceita número, texto brasileiro e com R$; recusa lixo e negativo', () => {
   assert.equal(parsePrice(59.99), 59.99)
@@ -132,4 +132,19 @@ test('abas da planilha: cada aba começa uma peça (quando o tema pede) e o repe
   assert.deepEqual(a.rows.map((r) => r.section), ['leite', 'leite'])
   assert.deepEqual(b.rows.map((r) => r.ean), ['7898357410015']) // o repetido da outra aba não entra
   assert.equal(b.errors.length, 1)
+})
+
+test('estilo do encarte: só aceita cor, alinhamento, tamanho e etiqueta válidos', () => {
+  assert.deepEqual(normalizeItemStyle({ tag: '  Leve 3 Pague 2  ', badgeColor: '#AA0000', priceColor: 'vermelho', nameAlign: 'center', nameScale: 120 }), { tag: 'Leve 3 Pague 2', badgeColor: '#aa0000', nameAlign: 'center', nameScale: 120 })
+  assert.deepEqual(normalizeItemStyle({ nameAlign: 'topo', nameScale: 500, tag: '' }), { tag: '' }) // "" = sem etiqueta neste encarte
+  assert.deepEqual(normalizeItemStyle(null), {})
+  assert.equal(normalizeItemStyle({ tag: 'x'.repeat(60) }).tag!.length, 24)
+})
+
+test('textos da promoção valem no lugar dos do tema', () => {
+  const o = normalizeOverrides({ tagText: ' Oba! ', showTag: false, footerLines: ['(27) 99999-0000', '', 'Rua A, 1'], extraText: 'Rua das Flores, 123' })
+  assert.deepEqual(o, { tagText: 'Oba!', showTag: false, footerLines: ['(27) 99999-0000', 'Rua A, 1'], extraText: 'Rua das Flores, 123' })
+  const t = applyOverrides(DEFAULT_THEME, o)
+  assert.equal(t.tagText, 'Oba!'); assert.equal(t.showTag, false); assert.deepEqual(t.footerLines, ['(27) 99999-0000', 'Rua A, 1'])
+  assert.deepEqual(applyOverrides(DEFAULT_THEME, {}), DEFAULT_THEME) // sem texto próprio: fica o do tema
 })

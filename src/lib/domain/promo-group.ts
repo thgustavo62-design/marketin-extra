@@ -5,8 +5,8 @@ export type GroupInput = { ean: string; name: string; price: number; section: st
 export type SizeRow = { label: string; units: number | null; ean: string; name: string }
 export type OptionMember = { ean: string; name: string; /** o que muda de um produto para o outro (fragrância, sabor, linha) */ variant: string }
 export type Variants =
-  | { kind: 'sizes'; rows: SizeRow[] }
-  | { kind: 'options'; members: OptionMember[] }
+  | { kind: 'sizes'; rows: SizeRow[]; /** mostrar a tabela no encarte (padrão: sim) */ show?: boolean }
+  | { kind: 'options'; members: OptionMember[]; /** listar as fragrâncias/sabores no encarte (padrão: não) */ show?: boolean }
 export type Encarte = {
   name: string
   price: number

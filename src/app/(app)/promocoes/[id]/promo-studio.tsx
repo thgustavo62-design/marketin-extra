@@ -5,12 +5,12 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { zipSync } from 'fflate'
 import { PDFDocument } from 'pdf-lib'
-import { ArrowDown, ArrowUp, Download, GripVertical, Layers, Palette, Settings2, Trash2 } from 'lucide-react'
-import { PROMO_FORMATS, PROMO_FORMAT_KEYS, paginateSections, type PromoFormat, type Rect, type ThemeConfig } from '@/lib/domain/promo'
+import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Download, ExternalLink, GripVertical, ImagePlus, Layers, Palette, Settings2, Trash2, Type } from 'lucide-react'
+import { PROMO_FORMATS, PROMO_FORMAT_KEYS, TAG_PRESETS, applyOverrides, paginateSections, type ItemStyle, type PromoFormat, type PromoOverrides, type Rect, type ThemeConfig } from '@/lib/domain/promo'
 import type { Campaign, PromoItem, SizeEdit, ThemeAsset } from '@/lib/promo/store'
 import { canvasToBlob, drawPage, loadImage, loadPromoFonts, pageGeometry, type RenderAssets, type RenderItem } from '@/lib/promo/render'
 import { ProductPicker } from '../../produtos/product-picker'
-import { addItemAction, approveCampaignAction, deleteCampaignAction, moveItemAction, removeItemAction, reorderItemsAction, ungroupItemAction, updateCampaignAction, updateItemAction } from '../actions'
+import { addItemAction, approveCampaignAction, deleteCampaignAction, moveItemAction, patchItemAction, removeItemAction, reorderItemsAction, saveOverridesAction, setItemProductAction, ungroupItemAction, updateCampaignAction, updateItemAction } from '../actions'
 
 type ThemeLite = { id: string; name: string }
 type Props = {
@@ -19,13 +19,28 @@ type Props = {
   themes: ThemeLite[]
   items: PromoItem[]
   canEdit: boolean
+  /** "tab" = console em tela cheia, aberto em outra aba */
+  mode?: 'embedded' | 'tab'
 }
 type Geo = { W: number; H: number; cells: Rect[]; ids: string[] }
 
 const slug = (s: string) => s.normalize('NFD').replace(/\p{M}+/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'promocao'
 const brl = (n: number) => n.toFixed(2).replace('.', ',')
 
-export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }: Props) {
+/** Seletor de cor com "padrão do tema": só salva ao sair do campo (evita um pedido por arrasto). */
+function ColorField({ label, value, fallback, disabled, onCommit }: { label: string; value: string | undefined; fallback: string; disabled: boolean; onCommit: (v: string | undefined) => void }) {
+  const [v, setV] = useState(value ?? fallback)
+  useEffect(() => setV(value ?? fallback), [value, fallback])
+  return (
+    <label className="color-item">
+      <input type="color" value={v} disabled={disabled} aria-label={label} onChange={(e) => setV(e.target.value)} onBlur={() => { if (v.toLowerCase() !== (value ?? fallback).toLowerCase()) onCommit(v) }} />
+      {label}
+      {value && !disabled && <button type="button" className="link" onClick={() => onCommit(undefined)}>padrão</button>}
+    </label>
+  )
+}
+
+export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, mode = 'embedded' }: Props) {
   const router = useRouter()
   const [items, setItems] = useState(initial)
   useEffect(() => setItems(initial), [initial])
@@ -40,10 +55,13 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
   const [thumbs, setThumbs] = useState<string[]>([])
   const [dragId, setDragId] = useState<string | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const fotoRef = useRef<HTMLInputElement>(null)
   const imgCache = useRef(new Map<string, HTMLImageElement | null>())
 
-  const cfg = theme?.config
+  const baseCfg = theme?.config
+  const cfg = useMemo(() => (baseCfg ? applyOverrides(baseCfg, campaign.overrides) : undefined), [baseCfg, campaign.overrides])
   const grid = cfg?.grid[format] ?? { cols: 2, rows: 3 }
   const perPage = grid.cols * grid.rows
   const pages = useMemo(() => paginateSections(items, perPage, cfg?.breakBySection[format] ?? false), [items, perPage, cfg, format])
@@ -60,6 +78,18 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
     return imgCache.current.get(url) ?? null
   }, [])
 
+  // o que cada encarte leva para o desenho: tabela de tamanhos e fragrâncias só quando ligadas
+  const toRender = useCallback(async (it: PromoItem): Promise<RenderItem> => {
+    const v = it.variants
+    const options = v?.kind === 'options' && v.show === true ? v.members.map((m) => m.variant).join(' · ') : null
+    return {
+      name: it.name, price: it.price, oldPrice: it.old_price, style: it.style,
+      note: [it.note, options].filter(Boolean).join(' · ') || null,
+      img: it.photo_id ? await getImg(`/api/produtos/imagem/${it.photo_id}`) : null,
+      sizes: v?.kind === 'sizes' && v.show !== false ? v.rows.map((r) => ({ label: r.label, units: r.units })) : undefined,
+    }
+  }, [getImg])
+
   // desenha uma peça (qualquer formato/página) num canvas e devolve a posição de cada produto
   const renderTo = useCallback(async (canvas: HTMLCanvasElement, fmt: PromoFormat, idx: number): Promise<Geo | null> => {
     if (!theme || !cfg) return null
@@ -74,11 +104,11 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
     const g = cfg.grid[fmt]
     const ps = paginateSections(items, g.cols * g.rows, cfg.breakBySection[fmt])
     const pg = ps[Math.min(idx, Math.max(0, ps.length - 1))] ?? []
-    const render: RenderItem[] = await Promise.all(pg.map(async (it) => ({ name: it.name, price: it.price, img: it.photo_id ? await getImg(`/api/produtos/imagem/${it.photo_id}`) : null, sizes: it.variants?.kind === 'sizes' ? it.variants.rows.map((r) => ({ label: r.label, units: r.units })) : undefined })))
-    drawPage(canvas, { format: fmt, theme: cfg, title: campaign.title, validity: campaign.validity, assets, items: render })
+    const render = await Promise.all(pg.map(toRender))
+    drawPage(canvas, { format: fmt, theme: cfg, title: campaign.title, validity: campaign.validity, extraText: campaign.overrides.extraText ?? null, assets, items: render })
     const gm = pageGeometry({ format: fmt, theme: cfg, assets, count: pg.length })
     return { W: gm.W, H: gm.H, cells: gm.cells, ids: pg.map((i) => i.id) }
-  }, [theme, cfg, items, campaign.title, campaign.validity, getImg])
+  }, [theme, cfg, items, campaign.title, campaign.validity, campaign.overrides, getImg, toRender])
 
   useEffect(() => {
     const c = canvasRef.current
@@ -145,6 +175,26 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
     act(() => reorderItemsAction(campaign.id, arr.map((x) => x.id)))
   }
 
+  // ---------- edição fina do encarte selecionado ----------
+  const setStyle = (patch: Partial<Record<keyof ItemStyle, ItemStyle[keyof ItemStyle] | undefined>>) => {
+    if (!sel) return
+    const next: Record<string, unknown> = { ...sel.style, ...patch }
+    for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k]
+    act(() => patchItemAction(campaign.id, sel.id, { style: next as ItemStyle }))
+  }
+  async function enviarFoto(file: File | undefined) {
+    if (!file || !sel) return
+    setUploading(true); setMsg(null)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const res = await fetch(`/api/promocoes/item/${sel.id}/foto`, { method: 'POST', body: fd })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { setMsg({ kind: 'error', text: j.error ?? 'Não foi possível enviar a foto.' }); return }
+      setMsg({ kind: 'ok', text: 'Foto enviada: ela também ficou no banco de imagens, ligada ao produto.' })
+      router.refresh()
+    } finally { setUploading(false); if (fotoRef.current) fotoRef.current.value = '' }
+  }
+
   // ---------- downloads ----------
   const pageBlob = async (fmt: PromoFormat, idx: number) => { const c = document.createElement('canvas'); await renderTo(c, fmt, idx); return canvasToBlob(c) }
   const save = (blob: Blob, name: string) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000) }
@@ -171,16 +221,21 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
     setMsg({ kind: 'ok', text: 'Pronto: PDF baixado.' })
   }
 
-  // ---------- dados da promoção ----------
+  // ---------- dados e textos da promoção ----------
   const [conf, setConf] = useState({ name: campaign.name, title: campaign.title ?? '', validity: campaign.validity ?? '', themeId: campaign.theme_id ?? '' })
+  const [ov, setOv] = useState<PromoOverrides>(campaign.overrides)
+  useEffect(() => setOv(campaign.overrides), [campaign.overrides])
   const [addPrice, setAddPrice] = useState('')
   const [picked, setPicked] = useState<{ id: string; description: string } | null>(null)
   const sections = [...new Set(items.map((i) => i.section).filter((x): x is string => !!x))]
+  const dis = !canEdit || busy
+  const tagNow = sel ? (sel.style.tag !== undefined ? sel.style.tag : '__tema') : '__tema'
+  const editorHref = `/editor/${campaign.id}`
 
   return (
-    <div className="canva">
+    <div className={`canva${mode === 'tab' ? ' canva-tab' : ''}`}>
       {msg && <p className={`canva-msg ${msg.kind === 'ok' ? 'form-ok' : 'form-error'}`} role={msg.kind === 'error' ? 'alert' : 'status'}>{msg.text}</p>}
-      {semFoto > 0 && <div className="notice" role="status">{semFoto} produto(s) estão <strong>sem foto</strong> no banco de imagens e saem com a caixa &quot;SEM FOTO&quot;. <Link href="/produtos?f=sem">Ver produtos sem foto</Link></div>}
+      {semFoto > 0 && <div className="notice" role="status">{semFoto} encarte(s) estão <strong>sem foto</strong> no banco de imagens e saem com a caixa &quot;SEM FOTO&quot;: selecione o encarte e use &quot;Enviar foto&quot;.</div>}
 
       {/* aprovação e resumo da importação */}
       <div className={`canva-approval ${campaign.status === 'aprovada' ? 'ok' : ''}`} role="status">
@@ -191,6 +246,8 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
             : 'Confira os encartes, ajuste o que precisar e aprove. Qualquer alteração depois de aprovar exige aprovar de novo.'}
         </span>
         {canEdit && campaign.status !== 'aprovada' && <button type="button" className="primary" style={{ width: 'auto', margin: 0, minHeight: 34 }} disabled={busy || !items.length} onClick={() => act(() => approveCampaignAction(campaign.id), 'Encartes aprovados.')}>Aprovar encartes</button>}
+        {mode === 'embedded' && <a className="btn" href={editorHref} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 'auto' }}><ExternalLink size={14} /> Abrir console em outra aba</a>}
+        {mode === 'tab' && <Link className="btn" href={`/promocoes/${campaign.id}`} style={{ marginLeft: 'auto' }}>Abrir dentro do sistema</Link>}
       </div>
       {campaign.import_report && (
         <details className="canva-report" open={campaign.status !== 'aprovada' && (campaign.import_report.withoutPhoto.length > 0 || campaign.import_report.rowErrors.length > 0)}>
@@ -228,7 +285,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
           <div className="canva-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === 'produtos'} className={tab === 'produtos' ? 'on' : ''} onClick={() => setTab('produtos')}><Layers size={14} /> Produtos</button>
             <button type="button" role="tab" aria-selected={tab === 'tema'} className={tab === 'tema' ? 'on' : ''} onClick={() => setTab('tema')}><Palette size={14} /> Tema</button>
-            <button type="button" role="tab" aria-selected={tab === 'dados'} className={tab === 'dados' ? 'on' : ''} onClick={() => setTab('dados')}><Settings2 size={14} /> Dados</button>
+            <button type="button" role="tab" aria-selected={tab === 'dados'} className={tab === 'dados' ? 'on' : ''} onClick={() => setTab('dados')}><Settings2 size={14} /> Textos</button>
           </div>
 
           {tab === 'produtos' && (
@@ -274,7 +331,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
               <ul className="canva-themes">
                 {themes.map((t) => (
                   <li key={t.id}>
-                    <button type="button" className={campaign.theme_id === t.id ? 'on' : ''} disabled={!canEdit || busy} onClick={() => act(() => updateCampaignAction(campaign.id, { name: campaign.name, title: campaign.title ?? '', validity: campaign.validity ?? '', themeId: t.id }))}>
+                    <button type="button" className={campaign.theme_id === t.id ? 'on' : ''} disabled={dis} onClick={() => act(() => updateCampaignAction(campaign.id, { name: campaign.name, title: campaign.title ?? '', validity: campaign.validity ?? '', themeId: t.id }))}>
                       {t.name}{campaign.theme_id === t.id ? ' ✓' : ''}
                     </button>
                   </li>
@@ -285,12 +342,24 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
           )}
 
           {tab === 'dados' && canEdit && (
-            <section aria-label="Dados da promoção" className="stack-form">
+            <section aria-label="Textos da promoção" className="stack-form">
               <label htmlFor="pc-name">Nome interno</label><input id="pc-name" type="text" value={conf.name} onChange={(e) => setConf({ ...conf, name: e.target.value })} maxLength={120} />
               <label htmlFor="pc-title">Título na peça (se o tema não traz na arte)</label><input id="pc-title" type="text" value={conf.title} onChange={(e) => setConf({ ...conf, title: e.target.value })} maxLength={60} />
               <label htmlFor="pc-val">Validade (texto)</label><input id="pc-val" type="text" value={conf.validity} onChange={(e) => setConf({ ...conf, validity: e.target.value })} maxLength={80} />
               <div className="form-actions">
                 <button type="button" className="primary" style={{ width: 'auto' }} disabled={busy} onClick={() => act(() => updateCampaignAction(campaign.id, { ...conf, themeId: campaign.theme_id ?? '' }), 'Salvo.')}>Salvar</button>
+              </div>
+              <h4 style={{ margin: '14px 0 4px' }}><Type size={14} style={{ verticalAlign: -2 }} /> Textos desta promoção</h4>
+              <p className="muted">Valem no lugar dos do tema, só para esta promoção.</p>
+              <label htmlFor="ov-tag">Etiqueta do preço (padrão)</label>
+              <input id="ov-tag" type="text" maxLength={24} value={ov.tagText ?? ''} placeholder={baseCfg?.tagText ?? ''} onChange={(e) => setOv({ ...ov, tagText: e.target.value })} />
+              <label><input type="checkbox" checked={ov.showTag ?? baseCfg?.showTag ?? true} onChange={(e) => setOv({ ...ov, showTag: e.target.checked })} /> Mostrar etiqueta nos encartes</label>
+              <label htmlFor="ov-extra">Texto livre (endereço, telefone) acima do rodapé</label>
+              <input id="ov-extra" type="text" maxLength={140} value={ov.extraText ?? ''} placeholder="Ex.: Rua das Flores, 123 - Centro · (27) 99999-0000" onChange={(e) => setOv({ ...ov, extraText: e.target.value })} />
+              <label htmlFor="ov-foot">Rodapé (uma linha por linha; só se o tema não traz o rodapé na arte)</label>
+              <textarea id="ov-foot" rows={3} value={(ov.footerLines ?? []).join('\n')} onChange={(e) => setOv({ ...ov, footerLines: e.target.value.split('\n').slice(0, 3) })} style={{ width: '100%' }} />
+              <div className="form-actions">
+                <button type="button" className="primary" style={{ width: 'auto' }} disabled={busy} onClick={() => act(() => saveOverridesAction(campaign.id, ov), 'Textos salvos.')}>Salvar textos</button>
                 <button type="button" className="danger" disabled={busy} onClick={() => { if (confirm('Excluir esta promoção?')) start(async () => { await deleteCampaignAction(campaign.id); router.push('/promocoes') }) }}>Excluir promoção</button>
               </div>
             </section>
@@ -330,48 +399,117 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
         <aside className="canva-right" aria-label="Editar produto">
           {sel ? (
             <section>
-              <h3>Produto selecionado</h3>
+              <h3>Encarte selecionado</h3>
               <p className="muted">{sel.ean ?? 'sem código de barras'}{sel.section ? ` · aba ${sel.section}` : ''}</p>
-              {sel.photo_id
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={`/api/produtos/imagem/${sel.photo_id}?mini=1`} alt="" className="canva-photo" />
-                : <p className="empty">Sem foto no banco de imagens. <Link href={sel.product_id ? `/produtos/${sel.product_id}` : '/produtos'}>Adicionar foto</Link></p>}
-              <label htmlFor="in-name">Nome na peça</label>
-              <textarea id="in-name" key={`n-${sel.id}-${sel.name}`} rows={3} defaultValue={sel.name} disabled={!canEdit || busy} maxLength={160}
-                onBlur={(e) => { if (e.target.value !== sel.name) act(() => updateItemAction(campaign.id, sel.id, e.target.value, String(sel.price), sel.photo_image_id)) }} />
-              <label htmlFor="in-price">Preço (R$)</label>
-              <input id="in-price" key={`p-${sel.id}-${sel.price}`} type="text" inputMode="decimal" defaultValue={brl(sel.price)} disabled={!canEdit || busy}
-                onBlur={(e) => { if (e.target.value.replace(',', '.') !== String(sel.price)) act(() => updateItemAction(campaign.id, sel.id, sel.name, e.target.value, sel.photo_image_id)) }} />
-              {sel.variants?.kind === 'sizes' && (
-                <>
-                  <label>Tabela de tamanhos (unidades por tamanho)</label>
-                  <div className="canva-sizes">
-                    {sizesDraft.map((r, i) => (
-                      <div key={i}>
-                        <input type="text" value={r.label} maxLength={6} aria-label={`Tamanho ${i + 1}`} disabled={!canEdit || busy} onChange={(e) => setSizesDraft(sizesDraft.map((x, k) => (k === i ? { ...x, label: e.target.value } : x)))} onBlur={() => act(() => updateItemAction(campaign.id, sel.id, sel.name, String(sel.price), sel.photo_image_id, sizesDraft))} />
-                        <input type="text" inputMode="numeric" value={r.units ?? ''} placeholder="un." aria-label={`Unidades do tamanho ${i + 1}`} disabled={!canEdit || busy} onChange={(e) => setSizesDraft(sizesDraft.map((x, k) => (k === i ? { ...x, units: e.target.value === '' ? null : Number(e.target.value.replace(/\D/g, '')) } : x)))} onBlur={() => act(() => updateItemAction(campaign.id, sel.id, sel.name, String(sel.price), sel.photo_image_id, sizesDraft))} />
-                      </div>
-                    ))}
+
+              <details open>
+                <summary>Texto e preço</summary>
+                <label htmlFor="in-name">Nome na peça</label>
+                <textarea id="in-name" key={`n-${sel.id}-${sel.name}`} rows={3} defaultValue={sel.name} disabled={dis} maxLength={160}
+                  onBlur={(e) => { if (e.target.value !== sel.name) act(() => updateItemAction(campaign.id, sel.id, e.target.value, String(sel.price), sel.photo_image_id)) }} />
+                <label htmlFor="in-note">Subtítulo / descrição</label>
+                <input id="in-note" key={`s-${sel.id}-${sel.note ?? ''}`} type="text" maxLength={100} defaultValue={sel.note ?? ''} placeholder="Ex.: 50ml · Leve 3 pague 2" disabled={dis}
+                  onBlur={(e) => { if (e.target.value !== (sel.note ?? '')) act(() => patchItemAction(campaign.id, sel.id, { note: e.target.value })) }} />
+                <div className="grid-2">
+                  <div>
+                    <label htmlFor="in-price">Preço (R$)</label>
+                    <input id="in-price" key={`p-${sel.id}-${sel.price}`} type="text" inputMode="decimal" defaultValue={brl(sel.price)} disabled={dis}
+                      onBlur={(e) => { if (e.target.value.replace(',', '.') !== String(sel.price)) act(() => updateItemAction(campaign.id, sel.id, sel.name, e.target.value, sel.photo_image_id)) }} />
                   </div>
-                </>
-              )}
+                  <div>
+                    <label htmlFor="in-old">Preço original (De R$)</label>
+                    <input id="in-old" key={`o-${sel.id}-${sel.old_price ?? ''}`} type="text" inputMode="decimal" defaultValue={sel.old_price != null ? brl(sel.old_price) : ''} placeholder="vazio = não exibir" disabled={dis}
+                      onBlur={(e) => { if (e.target.value.replace(',', '.') !== (sel.old_price != null ? String(sel.old_price) : '')) act(() => patchItemAction(campaign.id, sel.id, { oldPrice: e.target.value })) }} />
+                  </div>
+                </div>
+              </details>
+
+              <details open>
+                <summary>Etiqueta do preço</summary>
+                <div className="canva-chips" role="group" aria-label="Estilo da etiqueta">
+                  <button type="button" className={tagNow === '__tema' ? 'on' : ''} disabled={dis} onClick={() => setStyle({ tag: undefined })}>Do tema</button>
+                  <button type="button" className={tagNow === '' ? 'on' : ''} disabled={dis} onClick={() => setStyle({ tag: '' })}>Sem etiqueta</button>
+                  {TAG_PRESETS.map((t) => <button key={t} type="button" className={tagNow === t ? 'on' : ''} disabled={dis} onClick={() => setStyle({ tag: t })}>{t}</button>)}
+                </div>
+                <label htmlFor="in-tag">Texto da etiqueta</label>
+                <input id="in-tag" key={`t-${sel.id}-${sel.style.tag ?? ''}`} type="text" maxLength={24} defaultValue={sel.style.tag ?? ''} placeholder="escreva a sua" disabled={dis}
+                  onBlur={(e) => { if (e.target.value && e.target.value !== (sel.style.tag ?? '')) setStyle({ tag: e.target.value }) }} />
+              </details>
+
+              <details>
+                <summary>Cores e estilo do nome</summary>
+                <div className="color-grid">
+                  <ColorField label="Etiqueta" value={sel.style.tagColor} fallback={cfg?.colors.tag ?? '#e3171d'} disabled={dis} onCommit={(v) => setStyle({ tagColor: v })} />
+                  <ColorField label="Selo do preço" value={sel.style.badgeColor} fallback={cfg?.colors.badge ?? '#1747b8'} disabled={dis} onCommit={(v) => setStyle({ badgeColor: v })} />
+                  <ColorField label="Número do preço" value={sel.style.priceColor} fallback={cfg?.colors.badgeText ?? '#ffffff'} disabled={dis} onCommit={(v) => setStyle({ priceColor: v })} />
+                  <ColorField label="Nome" value={sel.style.nameColor} fallback={cfg?.colors.name ?? '#111111'} disabled={dis} onCommit={(v) => setStyle({ nameColor: v })} />
+                </div>
+                <label>Alinhamento do nome</label>
+                <div className="canva-chips" role="group" aria-label="Alinhamento do nome">
+                  {([['left', AlignLeft], ['center', AlignCenter], ['right', AlignRight]] as const).map(([a, Icon]) => (
+                    <button key={a} type="button" className={(sel.style.nameAlign ?? 'right') === a ? 'on' : ''} disabled={dis} aria-label={`Alinhar ${a}`} onClick={() => setStyle({ nameAlign: a })}><Icon size={14} /></button>
+                  ))}
+                </div>
+                <label htmlFor="in-scale">Tamanho do nome: {sel.style.nameScale ?? 100}%</label>
+                <input id="in-scale" type="range" min={50} max={200} step={5} value={sel.style.nameScale ?? 100} disabled={dis} onChange={(e) => setItems(items.map((x) => (x.id === sel.id ? { ...x, style: { ...x.style, nameScale: Number(e.target.value) } } : x)))} onMouseUp={(e) => setStyle({ nameScale: Number((e.target as HTMLInputElement).value) })} onTouchEnd={(e) => setStyle({ nameScale: Number((e.target as HTMLInputElement).value) })} onKeyUp={(e) => setStyle({ nameScale: Number((e.target as HTMLInputElement).value) })} />
+              </details>
+
+              <details open={!sel.photo_id}>
+                <summary>Foto</summary>
+                {sel.photo_id
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={`/api/produtos/imagem/${sel.photo_id}?mini=1`} alt="" className="canva-photo" />
+                  : <p className="empty">Sem foto no banco de imagens para este código de barras.</p>}
+                {canEdit && (
+                  <div className="form-actions">
+                    <button type="button" className="secondary" disabled={uploading || busy} onClick={() => fotoRef.current?.click()}><ImagePlus size={14} /> {uploading ? 'Enviando…' : sel.photo_id ? 'Trocar por uma foto minha' : 'Enviar foto'}</button>
+                    <input ref={fotoRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif" aria-label="Enviar foto do produto" onChange={(e) => void enviarFoto(e.target.files?.[0])} />
+                  </div>
+                )}
+                {sel.photos.length > 1 && canEdit && (
+                  <>
+                    <label>Outras fotos deste produto</label>
+                    <span className="promo-photos big">
+                      {sel.photos.map((p) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img key={p} src={`/api/produtos/imagem/${p}?mini=1`} alt="" width={52} height={52} className={p === sel.photo_id ? 'sel' : ''} onClick={() => act(() => updateItemAction(campaign.id, sel.id, sel.name, String(sel.price), p))} />
+                      ))}
+                    </span>
+                  </>
+                )}
+                {canEdit && (
+                  <>
+                    <label>Usar a foto de outro produto do catálogo</label>
+                    <ProductPicker label="Buscar produto para usar a foto" placeholder="Buscar produto…" onPick={(p) => act(() => setItemProductAction(campaign.id, sel.id, p.id), 'Foto trocada pela do produto escolhido.')} />
+                  </>
+                )}
+              </details>
+
               {sel.variants && (
-                <>
+                <details open>
+                  <summary>{sel.variants.kind === 'sizes' ? 'Tamanhos' : 'Fragrâncias / opções'}</summary>
+                  {sel.variants.kind === 'sizes' && (
+                    <>
+                      <label><input type="checkbox" checked={sel.variants.show !== false} disabled={dis} onChange={(e) => { setItems(items.map((x) => (x.id === sel.id && x.variants ? { ...x, variants: { ...x.variants, show: e.target.checked } } : x))); act(() => patchItemAction(campaign.id, sel.id, { showVariants: e.target.checked })) }} /> Mostrar a tabela de tamanhos no encarte</label>
+                      <label>Tabela de tamanhos (unidades por tamanho)</label>
+                      <div className="canva-sizes">
+                        {sizesDraft.map((r, i) => (
+                          <div key={i}>
+                            <input type="text" value={r.label} maxLength={6} aria-label={`Tamanho ${i + 1}`} disabled={dis} onChange={(e) => setSizesDraft(sizesDraft.map((x, k) => (k === i ? { ...x, label: e.target.value } : x)))} onBlur={() => act(() => updateItemAction(campaign.id, sel.id, sel.name, String(sel.price), sel.photo_image_id, sizesDraft))} />
+                            <input type="text" inputMode="numeric" value={r.units ?? ''} placeholder="un." aria-label={`Unidades do tamanho ${i + 1}`} disabled={dis} onChange={(e) => setSizesDraft(sizesDraft.map((x, k) => (k === i ? { ...x, units: e.target.value === '' ? null : Number(e.target.value.replace(/\D/g, '')) } : x)))} onBlur={() => act(() => updateItemAction(campaign.id, sel.id, sel.name, String(sel.price), sel.photo_image_id, sizesDraft))} />
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {sel.variants.kind === 'options' && (
+                    <label><input type="checkbox" checked={sel.variants.show === true} disabled={dis} onChange={(e) => { setItems(items.map((x) => (x.id === sel.id && x.variants ? { ...x, variants: { ...x.variants, show: e.target.checked } } : x))); act(() => patchItemAction(campaign.id, sel.id, { showVariants: e.target.checked })) }} /> Listar as fragrâncias/sabores no encarte</label>
+                  )}
                   <p className="muted" style={{ marginTop: 8 }}><strong>Este encarte reúne {sel.variants.kind === 'sizes' ? sel.variants.rows.length : sel.variants.members.length} produtos:</strong> {sel.variants.kind === 'sizes' ? sel.variants.rows.map((r) => r.name).join(' · ') : sel.variants.members.map((m) => m.variant).join(' · ')}</p>
                   {canEdit && <button type="button" className="mini-btn" disabled={busy} onClick={() => { setSelected(null); act(() => ungroupItemAction(campaign.id, sel.id)) }}>Desagrupar (um encarte por produto)</button>}
-                </>
+                </details>
               )}
-              {sel.photos.length > 1 && canEdit && (
-                <>
-                  <label>Foto usada</label>
-                  <span className="promo-photos big">
-                    {sel.photos.map((p) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img key={p} src={`/api/produtos/imagem/${p}?mini=1`} alt="" width={52} height={52} className={p === sel.photo_id ? 'sel' : ''} onClick={() => act(() => updateItemAction(campaign.id, sel.id, sel.name, String(sel.price), p))} />
-                    ))}
-                  </span>
-                </>
-              )}
+
               {canEdit && (
                 <div className="form-actions">
                   <button type="button" className="mini-btn" disabled={busy || items[0]?.id === sel.id} onClick={() => act(() => moveItemAction(campaign.id, sel.id, -1))} aria-label="Subir"><ArrowUp size={12} /> Subir</button>
@@ -384,10 +522,10 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
           ) : (
             <section>
               <h3>Edição</h3>
-              <p className="muted">Clique em um produto na peça (ou na lista) para editar nome, preço e foto. Arraste um produto sobre outro para trocá-los de lugar.</p>
+              <p className="muted">Clique em um encarte na peça (ou na lista) para editar nome, subtítulo, preço, etiqueta, cores, foto e variações. Arraste um encarte sobre outro para trocá-los de lugar.</p>
               <ul className="files">
                 <li><span>Peças neste formato</span><strong>{pages.length}</strong></li>
-                <li><span>Produtos nesta peça</span><strong>{pages[pageIdx]?.length ?? 0}</strong></li>
+                <li><span>Encartes nesta peça</span><strong>{pages[pageIdx]?.length ?? 0}</strong></li>
                 <li><span>Sem foto</span><strong>{semFoto}</strong></li>
               </ul>
             </section>

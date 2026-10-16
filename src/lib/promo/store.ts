@@ -2,9 +2,10 @@
 import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import { pool, withTx } from '../db.ts'
-import { displayName, normalizeTheme, PROMO_FORMAT_KEYS, type PromoFormat, type PromoRow, type ThemeConfig } from '../domain/promo.ts'
+import { displayName, normalizeItemStyle, normalizeOverrides, normalizeTheme, PROMO_FORMAT_KEYS, type ItemStyle, type PromoFormat, type PromoOverrides, type PromoRow, type ThemeConfig } from '../domain/promo.ts'
 import { groupItems, groupSummary, type GroupInput, type Variants } from '../domain/promo-group.ts'
 import { sniffImage } from '../catalog/images.ts'
+import { ingestImage, saveProduct } from '../catalog/store.ts'
 
 export type ThemeRole = 'background' | 'header' | 'footer' | 'badge' | 'tag'
 export const THEME_ROLES: ThemeRole[] = ['background', 'header', 'footer', 'badge', 'tag']
@@ -122,10 +123,11 @@ export type ImportReport = {
 export type Campaign = {
   id: string; name: string; theme_id: string | null; title: string | null; validity: string | null
   status: CampaignStatus; approved_by_name: string | null; approved_at: string | null; import_report: ImportReport | null; group_variants: boolean
+  overrides: PromoOverrides
 }
 export type PromoItem = {
   id: string; position: number; ean: string | null; product_id: string | null; name: string; price: number
-  section: string | null; variants: Variants | null; photo_image_id: string | null; /** foto usada na arte (a escolhida ou a principal do produto) */ photo_id: string | null
+  section: string | null; variants: Variants | null; old_price: number | null; note: string | null; style: ItemStyle; photo_image_id: string | null; /** foto usada na arte (a escolhida ou a principal do produto) */ photo_id: string | null
   /** todas as fotos do produto, para trocar */ photos: string[]
 }
 
@@ -188,15 +190,15 @@ export async function createCampaignFromRows(o: {
 
 export async function getCampaign(id: string): Promise<{ campaign: Campaign; theme: Theme | null; items: PromoItem[] } | null> {
   const c = (await pool.query(
-    `select c.id, c.name, c.theme_id, c.title, c.validity, c.status, u.display_name as approved_by_name, c.approved_at::text as approved_at, c.import_report, c.group_variants
+    `select c.id, c.name, c.theme_id, c.title, c.validity, c.status, u.display_name as approved_by_name, c.approved_at::text as approved_at, c.import_report, c.group_variants, c.overrides
        from promo_campaigns c left join users u on u.id = c.approved_by where c.id = $1`, [id])).rows[0]
   if (!c) return null
   const rows = (await pool.query(
-    `select i.id, i.position, i.ean, i.product_id, i.name, i.price::float8 as price, i.section, i.variants, i.photo_image_id,
+    `select i.id, i.position, i.ean, i.product_id, i.name, i.price::float8 as price, i.section, i.variants, i.old_price::float8 as old_price, i.note, i.style, i.photo_image_id,
             coalesce(i.photo_image_id, (select m.id from product_images m where m.product_id = i.product_id order by m.is_primary desc, m.created_at limit 1)) as photo_id,
             coalesce((select array_agg(m.id order by m.is_primary desc, m.created_at) from product_images m where m.product_id = i.product_id), '{}') as photos
        from promo_items i where i.campaign_id = $1 order by i.position`, [id])).rows
-  return { campaign: c, theme: c.theme_id ? await getTheme(c.theme_id) : null, items: rows }
+  return { campaign: { ...c, overrides: normalizeOverrides(c.overrides) }, theme: c.theme_id ? await getTheme(c.theme_id) : null, items: rows.map((r) => ({ ...r, style: normalizeItemStyle(r.style) })) }
 }
 
 export async function updateCampaign(id: string, v: { name: string; title: string | null; validity: string | null; themeId: string | null }): Promise<{ ok: boolean; error?: string }> {
@@ -219,32 +221,95 @@ export async function approveCampaign(id: string, userId: string): Promise<{ ok:
 }
 
 export type SizeEdit = { label: string; units: number | null }
+export type ItemPatch = {
+  name?: string; price?: number; photoImageId?: string | null
+  /** tabela de tamanhos (mesma quantidade de linhas) */ sizes?: SizeEdit[]
+  /** preço original ("De R$"); null = sem */ oldPrice?: number | null
+  /** subtítulo / descrição curta abaixo do nome; null = sem */ note?: string | null
+  style?: ItemStyle
+  /** mostra a tabela de tamanhos (fraldas) ou a lista de fragrâncias/opções no encarte */ showVariants?: boolean
+}
 
-export async function updateItem(itemId: string, v: { name: string; price: number; photoImageId: string | null; sizes?: SizeEdit[] }): Promise<{ ok: boolean; error?: string }> {
-  const name = displayName(v.name)
-  if (!name || name.length > 160) return { ok: false, error: 'O nome deve ter de 1 a 160 caracteres.' }
-  if (!(v.price >= 0 && v.price < 100000)) return { ok: false, error: 'Preço inválido.' }
+/** Altera só o que veio no pedido. Qualquer mudança tira a aprovação. */
+export async function patchItem(itemId: string, p: ItemPatch): Promise<{ ok: boolean; error?: string }> {
   return withTx(async (db) => {
-    const cur = (await db.query(`select campaign_id, variants from promo_items where id = $1 for update`, [itemId])).rows[0]
+    const cur = (await db.query(`select campaign_id, name, price::float8 as price, variants, old_price::float8 as old_price, note, style from promo_items where id = $1 for update`, [itemId])).rows[0]
     if (!cur) return { ok: false, error: 'Item não encontrado.' }
+    const name = p.name === undefined ? cur.name as string : displayName(p.name)
+    if (!name || name.length > 160) return { ok: false, error: 'O nome deve ter de 1 a 160 caracteres.' }
+    const price = p.price === undefined ? cur.price as number : p.price
+    if (!(price >= 0 && price < 100000)) return { ok: false, error: 'Preço inválido.' }
+    let oldPrice: number | null = p.oldPrice === undefined ? (cur.old_price as number | null) : p.oldPrice
+    if (oldPrice !== null && !(oldPrice >= 0 && oldPrice < 100000)) return { ok: false, error: 'Preço original inválido.' }
+    if (oldPrice === 0) oldPrice = null
+    const note = p.note === undefined ? (cur.note as string | null) : (p.note ?? '').trim().replace(/\s+/g, ' ').slice(0, 100) || null
+    const style = p.style === undefined ? normalizeItemStyle(cur.style) : normalizeItemStyle(p.style)
     let variants = cur.variants as Variants | null
-    // tabela de tamanhos: a pessoa pode corrigir o nome do tamanho e as unidades (mesma quantidade de linhas)
-    if (v.sizes && variants?.kind === 'sizes') {
-      if (v.sizes.length !== variants.rows.length) return { ok: false, error: 'A tabela de tamanhos mudou. Recarregue a página.' }
-      const rows = variants.rows.map((r, i) => {
-        const label = String(v.sizes![i].label ?? '').toUpperCase().replace(/[^A-Z0-9/+-]/g, '').slice(0, 6) || r.label
-        const u = v.sizes![i].units
+    if (variants && p.sizes && variants.kind === 'sizes') {
+      if (p.sizes.length !== variants.rows.length) return { ok: false, error: 'A tabela de tamanhos mudou. Recarregue a página.' }
+      variants = { ...variants, rows: variants.rows.map((r, i) => {
+        const label = String(p.sizes![i].label ?? '').toUpperCase().replace(/[^A-Z0-9/+-]/g, '').slice(0, 6) || r.label
+        const u = p.sizes![i].units
         return { ...r, label, units: u === null || u === undefined || !Number.isFinite(Number(u)) || Number(u) < 0 || Number(u) > 9999 ? null : Math.round(Number(u)) }
-      })
-      variants = { kind: 'sizes', rows }
+      }) }
     }
+    if (variants && p.showVariants !== undefined) variants = { ...variants, show: p.showVariants } as Variants
     // a foto escolhida precisa ser do mesmo produto
+    const photo = p.photoImageId === undefined ? undefined : p.photoImageId
     await db.query(
-      `update promo_items i set name = $2, price = $3, variants = $5::jsonb, photo_image_id = case when $4::uuid is not null and exists (select 1 from product_images m where m.id = $4 and m.product_id = i.product_id) then $4 else null end where i.id = $1`,
-      [itemId, name, v.price, v.photoImageId, variants ? JSON.stringify(variants) : null])
+      `update promo_items i set name = $2, price = $3, old_price = $4, note = $5, style = $6::jsonb, variants = $7::jsonb where i.id = $1`,
+      [itemId, name, price, oldPrice, note, Object.keys(style).length ? JSON.stringify(style) : null, variants ? JSON.stringify(variants) : null])
+    if (photo !== undefined) await db.query(`update promo_items i set photo_image_id = case when $2::uuid is not null and exists (select 1 from product_images m where m.id = $2 and m.product_id = i.product_id) then $2 else null end where i.id = $1`, [itemId, photo])
     await touch(db, cur.campaign_id)
     return { ok: true }
   })
+}
+
+/** Textos da promoção que valem no lugar dos do tema (etiqueta, rodapé, texto livre). */
+export async function saveOverrides(campaignId: string, o: PromoOverrides): Promise<{ ok: boolean; error?: string }> {
+  const clean = normalizeOverrides(o)
+  const r = await pool.query(`update promo_campaigns set overrides = $2::jsonb where id = $1`, [campaignId, Object.keys(clean).length ? JSON.stringify(clean) : null])
+  if (!r.rowCount) return { ok: false, error: 'Promoção não encontrada.' }
+  await touch(pool, campaignId)
+  return { ok: true }
+}
+
+/** Troca o produto do banco de imagens que fornece as fotos do encarte (a foto escolhida antes é esquecida). */
+export async function setItemProduct(itemId: string, productId: string): Promise<{ ok: boolean; error?: string }> {
+  return withTx(async (db) => {
+    if (!(await db.query(`select 1 from products where id = $1 and active`, [productId])).rowCount) return { ok: false, error: 'Produto não encontrado.' }
+    const r = await db.query(`update promo_items set product_id = $2, photo_image_id = null where id = $1 returning campaign_id`, [itemId, productId])
+    if (!r.rowCount) return { ok: false, error: 'Item não encontrado.' }
+    await touch(db, r.rows[0].campaign_id)
+    return { ok: true }
+  })
+}
+
+/**
+ * Foto enviada direto no encarte que está sem foto. A imagem entra no banco de imagens (fundo transparente quando o fundo for liso) ligada ao produto;
+ * se o código de barras ainda não estava no catálogo, o produto é criado com a descrição do encarte.
+ */
+export async function attachItemPhoto(itemId: string, buf: Buffer, fileName: string, userId: string): Promise<{ ok: true; imageId: string } | { ok: false; error: string }> {
+  const it = (await pool.query(`select campaign_id, ean, name, product_id from promo_items where id = $1`, [itemId])).rows[0]
+  if (!it) return { ok: false, error: 'Item não encontrado.' }
+  let productId: string | null = it.product_id
+  if (!productId) {
+    if (it.ean) productId = (await pool.query(`select id from products where ean = $1 and active`, [it.ean])).rows[0]?.id ?? null
+    if (!productId) {
+      const created = await saveProduct(null, { description: it.name, ean: it.ean, group_name: null, manufacturer: null, active_ingredient: null }, userId)
+      if (!created.ok) return { ok: false, error: created.error }
+      productId = created.id
+    }
+    await pool.query(`update promo_items set product_id = $2 where id = $1`, [itemId, productId])
+  }
+  const r = await ingestImage({ buf, fileName, userId, source: 'upload', productId, method: 'manual' })
+  if (r.status === 'invalida') return { ok: false, error: r.error ?? 'Imagem não aceita.' }
+  let imageId = r.imageId ?? null
+  if (!imageId) imageId = (await pool.query(`select id from product_images where product_id = $1 order by is_primary desc, created_at limit 1`, [productId])).rows[0]?.id ?? null // já existia no produto
+  if (!imageId) return { ok: false, error: 'Não consegui guardar a imagem.' }
+  await pool.query(`update promo_items set photo_image_id = $2 where id = $1`, [itemId, imageId])
+  await touch(pool, it.campaign_id)
+  return { ok: true, imageId }
 }
 
 export async function removeItem(itemId: string): Promise<void> {
