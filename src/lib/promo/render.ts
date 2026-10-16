@@ -2,7 +2,7 @@
 import { PROMO_FORMATS, pageLayout, placeCells, priceParts, type PromoFormat, type Rect, type ThemeConfig } from '../domain/promo.ts'
 
 export type RenderAssets = { background?: HTMLImageElement | null; header?: HTMLImageElement | null; footer?: HTMLImageElement | null; badge?: HTMLImageElement | null; tag?: HTMLImageElement | null }
-export type RenderItem = { name: string; price: number; img: HTMLImageElement | null }
+export type RenderItem = { name: string; price: number; img: HTMLImageElement | null; /** tabela de tamanhos (fraldas): um quadro por tamanho com as unidades */ sizes?: { label: string; units: number | null }[] }
 export type RenderOpts = { format: PromoFormat; theme: ThemeConfig; title: string | null; validity: string | null; assets: RenderAssets; items: RenderItem[] }
 
 const DISPLAY = '"PromoDisplay", "Baloo 2", system-ui, sans-serif'
@@ -132,6 +132,8 @@ function drawCell(ctx: CanvasRenderingContext2D, cell: Rect, it: RenderItem, the
     ctx.fillText('SEM FOTO', photo.x + photo.w * 0.47, photo.y + photo.h * 0.5); ctx.restore()
   }
 
+  if (it.sizes?.length) drawSizeTable(ctx, r, it.sizes, theme)
+
   // nome (à esquerda do selo, alinhado à direita, como nas peças da rede)
   const nameRight = bx - badgeR * 1.02
   const nameLeft = r.x + r.w * 0.02
@@ -140,6 +142,26 @@ function drawCell(ctx: CanvasRenderingContext2D, cell: Rect, it: RenderItem, the
   // selo de preço
   drawBadge(ctx, bx, by, badgeR, it.price, theme, assets.badge ?? null)
   if (theme.showTag && (assets.tag || theme.tagText)) drawTag(ctx, bx + badgeR * 0.2, by - badgeR * 1.0, badgeR, theme, assets.tag ?? null)
+}
+
+/** Quadro de tamanhos e unidades (como nas peças de fralda da rede): uma linha por tamanho, no canto de cima à esquerda da foto. */
+function drawSizeTable(ctx: CanvasRenderingContext2D, r: Rect, sizes: { label: string; units: number | null }[], theme: ThemeConfig): void {
+  const rows = sizes.slice(0, 6)
+  const rh = Math.min((r.h * 0.5) / rows.length, r.w * 0.085)
+  const w1 = rh * 1.35, w2 = rh * 1.55
+  const x = r.x + r.w * 0.025, y = r.y + r.h * 0.06
+  ctx.save()
+  ctx.lineWidth = Math.max(2, rh * 0.09); ctx.strokeStyle = theme.colors.title
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'center'; ctx.font = `800 ${rh * 0.58}px ${TEXT}`
+  rows.forEach((row, i) => {
+    const yy = y + i * rh
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(x, yy, w1 + (row.units !== null ? w2 : 0), rh)
+    ctx.strokeRect(x, yy, w1, rh)
+    if (row.units !== null) ctx.strokeRect(x + w1, yy, w2, rh)
+    ctx.fillStyle = '#111111'; ctx.fillText(row.label, x + w1 / 2, yy + rh / 2 + rh * 0.04)
+    if (row.units !== null) ctx.fillText(String(row.units), x + w1 + w2 / 2, yy + rh / 2 + rh * 0.04)
+  })
+  ctx.restore()
 }
 
 function drawName(ctx: CanvasRenderingContext2D, text: string, left: number, right: number, bottom: number, color: string, startSize: number): void {

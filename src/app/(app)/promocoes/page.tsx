@@ -21,7 +21,7 @@ export default async function Promocoes() {
           {campaigns.map((c) => (
             <Link key={c.id} href={`/promocoes/${c.id}`} className="card" style={{ color: 'inherit' }}>
               <h3>{c.name}</h3>
-              <p className="muted">{c.items} produto(s) · {c.theme_name ?? 'sem tema'} · {c.created_at.slice(0, 10).split('-').reverse().join('/')}</p>
+              <p className="muted"><span className={`badge`} style={c.status === 'aprovada' ? { background: '#e1f5ec', color: '#1a7f4b' } : undefined}>{c.status === 'aprovada' ? 'Aprovada' : 'Em edição'}</span> {c.items} encarte(s) · {c.theme_name ?? 'sem tema'} · {c.created_at.slice(0, 10).split('-').reverse().join('/')}</p>
             </Link>
           ))}
         </div>

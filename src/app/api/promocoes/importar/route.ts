@@ -25,9 +25,9 @@ export async function POST(req: Request) {
   const name = String(fd.get('name') ?? '').trim() || file.name.replace(/\.[^.]+$/, '')
   const r = await createCampaignFromRows({
     name, themeId: isUuid(themeId) ? themeId : null, title: String(fd.get('title') ?? '').trim().slice(0, 60) || null, validity: String(fd.get('validity') ?? '').trim().slice(0, 80) || null,
-    rows: parsed.rows, userId: user.id,
+    rows: parsed.rows, userId: user.id, groupVariants: String(fd.get('group') ?? '1') !== '0', sheets: parsed.sheets, rowErrors: parsed.errors,
   })
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 422 })
-  await audit('promocao_criada', { userId: user.id, target: r.id, meta: { itens: r.report.created, fora_do_catalogo: r.report.notInCatalog.length, sem_foto: r.report.withoutPhoto.length } })
-  return NextResponse.json({ ok: true, id: r.id, report: r.report, errors: parsed.errors, sheets: parsed.sheets })
+  await audit('promocao_criada', { userId: user.id, target: r.id, meta: { linhas: r.report.lines, encartes: r.report.encartes, grupos_tamanho: r.report.gruposTamanho, grupos_opcoes: r.report.gruposOpcoes, fora_do_catalogo: r.report.notInCatalog.length, sem_foto: r.report.withoutPhoto.length } })
+  return NextResponse.json({ ok: true, id: r.id, report: r.report })
 }

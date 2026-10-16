@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import { pool, withTx } from '../db.ts'
 import { displayName, normalizeTheme, PROMO_FORMAT_KEYS, type PromoFormat, type PromoRow, type ThemeConfig } from '../domain/promo.ts'
+import { groupItems, groupSummary, type GroupInput, type Variants } from '../domain/promo-group.ts'
 import { sniffImage } from '../catalog/images.ts'
 
 export type ThemeRole = 'background' | 'header' | 'footer' | 'badge' | 'tag'
@@ -106,58 +107,92 @@ export async function getThemeAsset(themeId: string, role: string, format: strin
 }
 
 // ---------- campanhas ----------
-export type CampaignLite = { id: string; name: string; theme_name: string | null; items: number; created_at: string }
-export type Campaign = { id: string; name: string; theme_id: string | null; title: string | null; validity: string | null }
+export type CampaignStatus = 'rascunho' | 'aprovada'
+export type CampaignLite = { id: string; name: string; theme_name: string | null; items: number; status: CampaignStatus; created_at: string }
+export type ImportReport = {
+  /** linhas válidas da planilha */ lines: number
+  /** encartes depois do agrupamento */ encartes: number
+  gruposTamanho: number; gruposOpcoes: number; grouped: boolean
+  sheets: { name: string; items: number }[]
+  /** códigos que não estão no catálogo de produtos (sem foto) */ notInCatalog: { ean: string; name: string }[]
+  /** encartes sem nenhuma foto no banco de imagens */ withoutPhoto: { ean: string; name: string }[]
+  /** linhas com problema na planilha (código ou valor inválido, repetição, aba ignorada) */ rowErrors: { line: number; message: string }[]
+  /** linhas que não entraram (sem descrição) */ skipped: { ean: string; reason: string }[]
+}
+export type Campaign = {
+  id: string; name: string; theme_id: string | null; title: string | null; validity: string | null
+  status: CampaignStatus; approved_by_name: string | null; approved_at: string | null; import_report: ImportReport | null; group_variants: boolean
+}
 export type PromoItem = {
   id: string; position: number; ean: string | null; product_id: string | null; name: string; price: number
-  section: string | null; photo_image_id: string | null; /** foto usada na arte (a escolhida ou a principal do produto) */ photo_id: string | null
+  section: string | null; variants: Variants | null; photo_image_id: string | null; /** foto usada na arte (a escolhida ou a principal do produto) */ photo_id: string | null
   /** todas as fotos do produto, para trocar */ photos: string[]
 }
 
 export async function listCampaigns(): Promise<CampaignLite[]> {
   return (await pool.query(
-    `select c.id, c.name, t.name as theme_name, (select count(*)::int from promo_items i where i.campaign_id = c.id) as items, c.created_at::text as created_at
+    `select c.id, c.name, t.name as theme_name, (select count(*)::int from promo_items i where i.campaign_id = c.id) as items, c.status, c.created_at::text as created_at
        from promo_campaigns c left join promo_themes t on t.id = c.theme_id order by c.created_at desc limit 100`)).rows
 }
 
-export type ImportReport = { created: number; notInCatalog: { ean: string; name: string | null }[]; withoutPhoto: { ean: string; name: string }[] }
+/** Qualquer mudança nos encartes tira a aprovação: quem mexeu precisa aprovar de novo. */
+async function touch(db: { query: (sql: string, args?: unknown[]) => Promise<unknown> }, campaignId: string): Promise<void> {
+  await db.query(`update promo_campaigns set updated_at = now(), status = 'rascunho', approved_by = null, approved_at = null where id = $1`, [campaignId])
+}
 
-/** Cria a campanha a partir das linhas da planilha: o nome vem do catálogo (descrição do ERP) e o preço da planilha. Código que não está no catálogo só entra se a planilha trouxe o nome. */
-export async function createCampaignFromRows(o: { name: string; themeId: string | null; title: string | null; validity: string | null; rows: PromoRow[]; userId: string }): Promise<{ ok: true; id: string; report: ImportReport } | { ok: false; error: string }> {
+/**
+ * Cria a promoção a partir das linhas da planilha. Só entram código de barras, descrição e valor aproximado: o nome do encarte é a descrição da planilha
+ * (ou a do catálogo, se a planilha não trouxe), o preço é o valor da planilha e a foto vem do banco de imagens pelo código. Com `groupVariants`, produtos que só mudam
+ * de tamanho ou de fragrância viram um encarte só (política de encartes).
+ */
+export async function createCampaignFromRows(o: {
+  name: string; themeId: string | null; title: string | null; validity: string | null; rows: PromoRow[]; userId: string
+  groupVariants?: boolean; sheets?: { name: string; items: number }[]; rowErrors?: { line: number; message: string }[]
+}): Promise<{ ok: true; id: string; report: ImportReport } | { ok: false; error: string }> {
   const name = o.name.trim().replace(/\s+/g, ' ')
   if (name.length < 2 || name.length > 120) return { ok: false, error: 'O nome da promoção deve ter de 2 a 120 caracteres.' }
   if (!o.rows.length) return { ok: false, error: 'A planilha não tem nenhuma linha válida.' }
   const prods = (await pool.query(
     `select p.id, p.ean, p.description, (select i.id from product_images i where i.product_id = p.id order by i.is_primary desc, i.created_at limit 1) as photo from products p where p.active and p.ean = any($1::text[])`, [o.rows.map((r) => r.ean)])).rows
   const byEan = new Map(prods.map((p) => [p.ean as string, p]))
-  const report: ImportReport = { created: 0, notInCatalog: [], withoutPhoto: [] }
-  const items: { ean: string; product_id: string | null; name: string; price: number; section: string | null }[] = []
+  const skipped: ImportReport['skipped'] = []
+  const inputs: GroupInput[] = []
   for (const r of o.rows) {
-    const p = byEan.get(r.ean)
-    if (!p && !r.name) { report.notInCatalog.push({ ean: r.ean, name: null }); continue }
-    if (!p) report.notInCatalog.push({ ean: r.ean, name: r.name })
-    const nm = displayName(p?.description ?? r.name!)
-    if (!p?.photo) report.withoutPhoto.push({ ean: r.ean, name: nm })
-    items.push({ ean: r.ean, product_id: p?.id ?? null, name: nm, price: r.price, section: r.section })
+    const desc = r.name ?? byEan.get(r.ean)?.description ?? null
+    if (!desc) { skipped.push({ ean: r.ean, reason: 'sem descrição na planilha e fora do catálogo' }); continue }
+    inputs.push({ ean: r.ean, name: displayName(desc), price: r.price, section: r.section })
   }
-  if (!items.length) return { ok: false, error: 'Nenhum dos códigos de barras está no catálogo de produtos (e a planilha não traz o nome). Importe os produtos do ERP primeiro.' }
+  if (!inputs.length) return { ok: false, error: 'Nenhuma linha tem descrição. Confira se a planilha tem a coluna "Descrição".' }
+  const grouped = o.groupVariants !== false
+  const encartes = groupItems(inputs, grouped)
+  const notInCatalog = inputs.filter((x) => !byEan.has(x.ean)).map((x) => ({ ean: x.ean, name: x.name }))
+  const withoutPhoto: ImportReport['withoutPhoto'] = []
+  const rows = encartes.map((e, k) => {
+    // o encarte usa a foto do primeiro membro que tiver; sem foto em nenhum, usa o produto do primeiro (se estiver no catálogo)
+    const member = e.eans.map((x) => byEan.get(x)).find((p) => p?.photo) ?? e.eans.map((x) => byEan.get(x)).find(Boolean) ?? null
+    if (!member?.photo) withoutPhoto.push({ ean: e.ean, name: e.name })
+    return { pos: k + 1, ean: e.ean, product_id: member?.id ?? null, name: e.name, price: e.price, section: e.section, variants: e.variants }
+  })
+  const sum = groupSummary(inputs.length, encartes)
+  const report: ImportReport = { lines: sum.linhas, encartes: sum.encartes, gruposTamanho: sum.gruposTamanho, gruposOpcoes: sum.gruposOpcoes, grouped, sheets: o.sheets ?? [], notInCatalog: notInCatalog.slice(0, 200), withoutPhoto: withoutPhoto.slice(0, 200), rowErrors: (o.rowErrors ?? []).slice(0, 100), skipped: skipped.slice(0, 100) }
   const id = await withTx(async (db) => {
-    const c = await db.query(`insert into promo_campaigns (name, theme_id, title, validity, created_by) values ($1, $2, $3, $4, $5) returning id`, [name, o.themeId, o.title, o.validity, o.userId])
+    const c = await db.query(`insert into promo_campaigns (name, theme_id, title, validity, created_by, import_report, group_variants) values ($1, $2, $3, $4, $5, $6::jsonb, $7) returning id`, [name, o.themeId, o.title, o.validity, o.userId, JSON.stringify(report), grouped])
     await db.query(
-      `insert into promo_items (campaign_id, position, ean, product_id, name, price, section)
-       select $1, x.pos, x.ean, x.product_id, x.name, x.price, x.section from jsonb_to_recordset($2::jsonb) as x(pos int, ean text, product_id uuid, name text, price numeric, section text)`,
-      [c.rows[0].id, JSON.stringify(items.map((it, k) => ({ pos: k + 1, ...it })))])
+      `insert into promo_items (campaign_id, position, ean, product_id, name, price, section, variants)
+       select $1, x.pos, x.ean, x.product_id, x.name, x.price, x.section, x.variants from jsonb_to_recordset($2::jsonb) as x(pos int, ean text, product_id uuid, name text, price numeric, section text, variants jsonb)`,
+      [c.rows[0].id, JSON.stringify(rows)])
     return c.rows[0].id as string
   })
-  report.created = items.length
   return { ok: true, id, report }
 }
 
 export async function getCampaign(id: string): Promise<{ campaign: Campaign; theme: Theme | null; items: PromoItem[] } | null> {
-  const c = (await pool.query(`select id, name, theme_id, title, validity from promo_campaigns where id = $1`, [id])).rows[0]
+  const c = (await pool.query(
+    `select c.id, c.name, c.theme_id, c.title, c.validity, c.status, u.display_name as approved_by_name, c.approved_at::text as approved_at, c.import_report, c.group_variants
+       from promo_campaigns c left join users u on u.id = c.approved_by where c.id = $1`, [id])).rows[0]
   if (!c) return null
   const rows = (await pool.query(
-    `select i.id, i.position, i.ean, i.product_id, i.name, i.price::float8 as price, i.section, i.photo_image_id,
+    `select i.id, i.position, i.ean, i.product_id, i.name, i.price::float8 as price, i.section, i.variants, i.photo_image_id,
             coalesce(i.photo_image_id, (select m.id from product_images m where m.product_id = i.product_id order by m.is_primary desc, m.created_at limit 1)) as photo_id,
             coalesce((select array_agg(m.id order by m.is_primary desc, m.created_at) from product_images m where m.product_id = i.product_id), '{}') as photos
        from promo_items i where i.campaign_id = $1 order by i.position`, [id])).rows
@@ -167,31 +202,55 @@ export async function getCampaign(id: string): Promise<{ campaign: Campaign; the
 export async function updateCampaign(id: string, v: { name: string; title: string | null; validity: string | null; themeId: string | null }): Promise<{ ok: boolean; error?: string }> {
   const name = v.name.trim().replace(/\s+/g, ' ')
   if (name.length < 2 || name.length > 120) return { ok: false, error: 'O nome da promoção deve ter de 2 a 120 caracteres.' }
-  const r = await pool.query(`update promo_campaigns set name = $2, title = $3, validity = $4, theme_id = $5, updated_at = now() where id = $1`, [id, name, v.title, v.validity, v.themeId])
-  return r.rowCount ? { ok: true } : { ok: false, error: 'Promoção não encontrada.' }
+  const r = await pool.query(`update promo_campaigns set name = $2, title = $3, validity = $4, theme_id = $5 where id = $1`, [id, name, v.title, v.validity, v.themeId])
+  if (!r.rowCount) return { ok: false, error: 'Promoção não encontrada.' }
+  await touch(pool, id)
+  return { ok: true }
 }
 
 export async function deleteCampaign(id: string): Promise<void> {
   await pool.query(`delete from promo_campaigns where id = $1`, [id])
 }
 
-export async function updateItem(itemId: string, v: { name: string; price: number; photoImageId: string | null }): Promise<{ ok: boolean; error?: string }> {
+/** Aprova os encartes: guarda quem aprovou e quando. Qualquer edição depois disso volta para rascunho. */
+export async function approveCampaign(id: string, userId: string): Promise<{ ok: boolean; error?: string }> {
+  const r = await pool.query(`update promo_campaigns set status = 'aprovada', approved_by = $2, approved_at = now(), updated_at = now() where id = $1 and exists (select 1 from promo_items where campaign_id = $1)`, [id, userId])
+  return r.rowCount ? { ok: true } : { ok: false, error: 'Promoção não encontrada ou sem encartes.' }
+}
+
+export type SizeEdit = { label: string; units: number | null }
+
+export async function updateItem(itemId: string, v: { name: string; price: number; photoImageId: string | null; sizes?: SizeEdit[] }): Promise<{ ok: boolean; error?: string }> {
   const name = displayName(v.name)
   if (!name || name.length > 160) return { ok: false, error: 'O nome deve ter de 1 a 160 caracteres.' }
   if (!(v.price >= 0 && v.price < 100000)) return { ok: false, error: 'Preço inválido.' }
-  // a foto escolhida precisa ser do mesmo produto
-  const r = await pool.query(
-    `update promo_items i set name = $2, price = $3, photo_image_id = case when $4::uuid is not null and exists (select 1 from product_images m where m.id = $4 and m.product_id = i.product_id) then $4 else null end where i.id = $1 returning i.campaign_id`,
-    [itemId, name, v.price, v.photoImageId])
-  if (!r.rowCount) return { ok: false, error: 'Item não encontrado.' }
-  await pool.query(`update promo_campaigns set updated_at = now() where id = $1`, [r.rows[0].campaign_id])
-  return { ok: true }
+  return withTx(async (db) => {
+    const cur = (await db.query(`select campaign_id, variants from promo_items where id = $1 for update`, [itemId])).rows[0]
+    if (!cur) return { ok: false, error: 'Item não encontrado.' }
+    let variants = cur.variants as Variants | null
+    // tabela de tamanhos: a pessoa pode corrigir o nome do tamanho e as unidades (mesma quantidade de linhas)
+    if (v.sizes && variants?.kind === 'sizes') {
+      if (v.sizes.length !== variants.rows.length) return { ok: false, error: 'A tabela de tamanhos mudou. Recarregue a página.' }
+      const rows = variants.rows.map((r, i) => {
+        const label = String(v.sizes![i].label ?? '').toUpperCase().replace(/[^A-Z0-9/+-]/g, '').slice(0, 6) || r.label
+        const u = v.sizes![i].units
+        return { ...r, label, units: u === null || u === undefined || !Number.isFinite(Number(u)) || Number(u) < 0 || Number(u) > 9999 ? null : Math.round(Number(u)) }
+      })
+      variants = { kind: 'sizes', rows }
+    }
+    // a foto escolhida precisa ser do mesmo produto
+    await db.query(
+      `update promo_items i set name = $2, price = $3, variants = $5::jsonb, photo_image_id = case when $4::uuid is not null and exists (select 1 from product_images m where m.id = $4 and m.product_id = i.product_id) then $4 else null end where i.id = $1`,
+      [itemId, name, v.price, v.photoImageId, variants ? JSON.stringify(variants) : null])
+    await touch(db, cur.campaign_id)
+    return { ok: true }
+  })
 }
 
 export async function removeItem(itemId: string): Promise<void> {
   await withTx(async (db) => {
     const it = (await db.query(`delete from promo_items where id = $1 returning campaign_id, position`, [itemId])).rows[0]
-    if (it) await db.query(`update promo_items set position = position - 1 where campaign_id = $1 and position > $2`, [it.campaign_id, it.position])
+    if (it) { await db.query(`update promo_items set position = position - 1 where campaign_id = $1 and position > $2`, [it.campaign_id, it.position]); await touch(db, it.campaign_id) }
   })
 }
 
@@ -206,6 +265,7 @@ export async function moveItem(itemId: string, dir: -1 | 1): Promise<void> {
     await db.query(`update promo_items set position = -1 where id = $1`, [itemId])
     await db.query(`update promo_items set position = $2 where id = $1`, [other.id, it.position])
     await db.query(`update promo_items set position = $2 where id = $1`, [itemId, it.position + dir])
+    await touch(db, it.campaign_id)
   })
 }
 
@@ -217,6 +277,7 @@ export async function addItem(campaignId: string, productId: string, price: numb
     if (!(await db.query(`select 1 from promo_campaigns where id = $1`, [campaignId])).rowCount) return { ok: false, error: 'Promoção não encontrada.' }
     const pos = ((await db.query(`select coalesce(max(position), 0) + 1 as n from promo_items where campaign_id = $1`, [campaignId])).rows[0].n) as number
     await db.query(`insert into promo_items (campaign_id, position, ean, product_id, name, price) values ($1, $2, $3, $4, $5, $6)`, [campaignId, pos, p.ean, p.id, displayName(p.description), price])
+    await touch(db, campaignId)
     return { ok: true }
   })
 }
@@ -229,7 +290,30 @@ export async function reorderItems(campaignId: string, ids: string[]): Promise<{
     // posições temporárias negativas: a regra de unicidade (campanha, posição) não pode bater no meio da troca
     await db.query(`update promo_items set position = -position - 1 where campaign_id = $1`, [campaignId])
     await db.query(`update promo_items i set position = u.ord from unnest($2::uuid[]) with ordinality as u(id, ord) where i.id = u.id and i.campaign_id = $1`, [campaignId, ids])
-    await db.query(`update promo_campaigns set updated_at = now() where id = $1`, [campaignId])
+    await touch(db, campaignId)
+    return { ok: true }
+  })
+}
+
+/** Desfaz um encarte agrupado: cada produto do grupo volta a ser um encarte próprio, logo depois do original. */
+export async function ungroupItem(itemId: string): Promise<{ ok: boolean; error?: string }> {
+  return withTx(async (db) => {
+    const it = (await db.query(`select campaign_id, position, price, section, variants from promo_items where id = $1 for update`, [itemId])).rows[0]
+    if (!it || !it.variants) return { ok: false, error: 'Este encarte não é um grupo.' }
+    const v = it.variants as Variants
+    const members: { ean: string; name: string }[] = v.kind === 'sizes' ? v.rows.map((r) => ({ ean: r.ean, name: r.name })) : v.members.map((m) => ({ ean: m.ean, name: m.name }))
+    if (members.length < 2) return { ok: false, error: 'Este encarte não é um grupo.' }
+    const prods = (await db.query(`select id, ean from products where ean = any($1::text[]) and active`, [members.map((m) => m.ean)])).rows
+    const pid = new Map(prods.map((p) => [p.ean as string, p.id as string]))
+    const extra = members.length - 1
+    // abre espaço (posições temporárias negativas para não bater na unicidade) e insere os outros membros logo depois
+    await db.query(`update promo_items set position = -position - 1 where campaign_id = $1 and position > $2`, [it.campaign_id, it.position])
+    await db.query(`update promo_items set position = -position - 1 + $3 where campaign_id = $1 and position < 0 and -position - 1 > $2`, [it.campaign_id, it.position, extra])
+    await db.query(`update promo_items set name = $2, ean = $3, product_id = $4, variants = null, photo_image_id = null where id = $1`, [itemId, displayName(members[0].name), members[0].ean, pid.get(members[0].ean) ?? null])
+    for (let k = 1; k < members.length; k++) {
+      await db.query(`insert into promo_items (campaign_id, position, ean, product_id, name, price, section) values ($1, $2, $3, $4, $5, $6, $7)`, [it.campaign_id, it.position + k, members[k].ean, pid.get(members[k].ean) ?? null, displayName(members[k].name), it.price, it.section])
+    }
+    await touch(db, it.campaign_id)
     return { ok: true }
   })
 }

@@ -7,14 +7,14 @@ import { zipSync } from 'fflate'
 import { PDFDocument } from 'pdf-lib'
 import { ArrowDown, ArrowUp, Download, GripVertical, Layers, Palette, Settings2, Trash2 } from 'lucide-react'
 import { PROMO_FORMATS, PROMO_FORMAT_KEYS, paginateSections, type PromoFormat, type Rect, type ThemeConfig } from '@/lib/domain/promo'
-import type { PromoItem, ThemeAsset } from '@/lib/promo/store'
+import type { Campaign, PromoItem, SizeEdit, ThemeAsset } from '@/lib/promo/store'
 import { canvasToBlob, drawPage, loadImage, loadPromoFonts, pageGeometry, type RenderAssets, type RenderItem } from '@/lib/promo/render'
 import { ProductPicker } from '../../produtos/product-picker'
-import { addItemAction, deleteCampaignAction, moveItemAction, removeItemAction, reorderItemsAction, updateCampaignAction, updateItemAction } from '../actions'
+import { addItemAction, approveCampaignAction, deleteCampaignAction, moveItemAction, removeItemAction, reorderItemsAction, ungroupItemAction, updateCampaignAction, updateItemAction } from '../actions'
 
 type ThemeLite = { id: string; name: string }
 type Props = {
-  campaign: { id: string; name: string; title: string | null; validity: string | null; theme_id: string | null }
+  campaign: Campaign
   theme: { id: string; name: string; config: ThemeConfig; assets: ThemeAsset[] } | null
   themes: ThemeLite[]
   items: PromoItem[]
@@ -50,6 +50,9 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
   const pageIdx = Math.min(page, Math.max(0, pages.length - 1))
   const semFoto = items.filter((i) => !i.photo_id).length
   const sel = items.find((i) => i.id === selected) ?? null
+  const [sizesDraft, setSizesDraft] = useState<SizeEdit[]>([])
+  const selSizesKey = sel?.variants?.kind === 'sizes' ? JSON.stringify(sel.variants.rows.map((r) => [r.label, r.units])) : ''
+  useEffect(() => { setSizesDraft(sel?.variants?.kind === 'sizes' ? sel.variants.rows.map((r) => ({ label: r.label, units: r.units })) : []) }, [sel?.id, selSizesKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const getImg = useCallback(async (url: string) => {
     if (!url) return null
@@ -71,7 +74,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
     const g = cfg.grid[fmt]
     const ps = paginateSections(items, g.cols * g.rows, cfg.breakBySection[fmt])
     const pg = ps[Math.min(idx, Math.max(0, ps.length - 1))] ?? []
-    const render: RenderItem[] = await Promise.all(pg.map(async (it) => ({ name: it.name, price: it.price, img: it.photo_id ? await getImg(`/api/produtos/imagem/${it.photo_id}`) : null })))
+    const render: RenderItem[] = await Promise.all(pg.map(async (it) => ({ name: it.name, price: it.price, img: it.photo_id ? await getImg(`/api/produtos/imagem/${it.photo_id}`) : null, sizes: it.variants?.kind === 'sizes' ? it.variants.rows.map((r) => ({ label: r.label, units: r.units })) : undefined })))
     drawPage(canvas, { format: fmt, theme: cfg, title: campaign.title, validity: campaign.validity, assets, items: render })
     const gm = pageGeometry({ format: fmt, theme: cfg, assets, count: pg.length })
     return { W: gm.W, H: gm.H, cells: gm.cells, ids: pg.map((i) => i.id) }
@@ -179,6 +182,33 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
       {msg && <p className={`canva-msg ${msg.kind === 'ok' ? 'form-ok' : 'form-error'}`} role={msg.kind === 'error' ? 'alert' : 'status'}>{msg.text}</p>}
       {semFoto > 0 && <div className="notice" role="status">{semFoto} produto(s) estão <strong>sem foto</strong> no banco de imagens e saem com a caixa &quot;SEM FOTO&quot;. <Link href="/produtos?f=sem">Ver produtos sem foto</Link></div>}
 
+      {/* aprovação e resumo da importação */}
+      <div className={`canva-approval ${campaign.status === 'aprovada' ? 'ok' : ''}`} role="status">
+        <span className="badge" style={campaign.status === 'aprovada' ? { background: '#e1f5ec', color: '#1a7f4b' } : undefined}>{campaign.status === 'aprovada' ? 'Aprovada' : 'Em edição'}</span>
+        <span>
+          {campaign.status === 'aprovada'
+            ? `Aprovada por ${campaign.approved_by_name ?? '—'}${campaign.approved_at ? ` em ${new Date(campaign.approved_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : ''}. Qualquer alteração volta para edição.`
+            : 'Confira os encartes, ajuste o que precisar e aprove. Qualquer alteração depois de aprovar exige aprovar de novo.'}
+        </span>
+        {canEdit && campaign.status !== 'aprovada' && <button type="button" className="primary" style={{ width: 'auto', margin: 0, minHeight: 34 }} disabled={busy || !items.length} onClick={() => act(() => approveCampaignAction(campaign.id), 'Encartes aprovados.')}>Aprovar encartes</button>}
+      </div>
+      {campaign.import_report && (
+        <details className="canva-report" open={campaign.status !== 'aprovada' && (campaign.import_report.withoutPhoto.length > 0 || campaign.import_report.rowErrors.length > 0)}>
+          <summary>
+            Resumo da importação: {campaign.import_report.lines} produto(s) da planilha → <strong>{campaign.import_report.encartes} encarte(s)</strong>
+            {campaign.import_report.grouped ? ` · ${campaign.import_report.gruposTamanho} grupo(s) de tamanho · ${campaign.import_report.gruposOpcoes} grupo(s) de fragrâncias/sabores` : ' · sem agrupar variações'}
+            {campaign.import_report.withoutPhoto.length > 0 ? ` · ${campaign.import_report.withoutPhoto.length} sem foto` : ''}
+            {campaign.import_report.notInCatalog.length > 0 ? ` · ${campaign.import_report.notInCatalog.length} fora do catálogo` : ''}
+            {campaign.import_report.rowErrors.length > 0 ? ` · ${campaign.import_report.rowErrors.length} aviso(s) da planilha` : ''}
+          </summary>
+          {campaign.import_report.sheets.length > 1 && <p className="muted">Abas lidas: {campaign.import_report.sheets.map((x) => `${x.name} (${x.items})`).join(' · ')}</p>}
+          {campaign.import_report.withoutPhoto.length > 0 && <p className="muted"><strong>Sem foto no banco de imagens:</strong> {campaign.import_report.withoutPhoto.slice(0, 12).map((x) => x.name).join(' · ')}{campaign.import_report.withoutPhoto.length > 12 ? '…' : ''}</p>}
+          {campaign.import_report.notInCatalog.length > 0 && <p className="muted"><strong>Fora do catálogo de produtos:</strong> {campaign.import_report.notInCatalog.slice(0, 8).map((x) => x.ean).join(', ')}{campaign.import_report.notInCatalog.length > 8 ? '…' : ''}</p>}
+          {campaign.import_report.skipped.length > 0 && <p className="muted"><strong>Não entraram:</strong> {campaign.import_report.skipped.slice(0, 8).map((x) => `${x.ean} (${x.reason})`).join(' · ')}</p>}
+          {campaign.import_report.rowErrors.length > 0 && <ul className="files">{campaign.import_report.rowErrors.slice(0, 10).map((e, i) => <li key={i}><strong>{e.line ? `linha ${e.line}` : 'planilha'}</strong><span className="muted">{e.message}</span></li>)}</ul>}
+        </details>
+      )}
+
       {/* barra superior */}
       <div className="canva-top">
         <div className="tabs">
@@ -203,7 +233,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
 
           {tab === 'produtos' && (
             <section aria-label="Produtos da promoção">
-              <p className="muted">{items.length} produto(s){sections.length > 1 ? ` · ${sections.length} abas` : ''}. Arraste para mudar a ordem; clique para editar.</p>
+              <p className="muted">{items.length} encarte(s){sections.length > 1 ? ` · ${sections.length} abas` : ''}. Arraste para mudar a ordem; clique para editar.</p>
               <ul className="canva-list">
                 {items.map((it, k) => (
                   <li key={it.id} data-item={it.id} className={`${selected === it.id ? 'sel' : ''}${overId === it.id ? ' over' : ''}`} draggable={canEdit}
@@ -217,7 +247,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
                       // eslint-disable-next-line @next/next/no-img-element
                       ? <img src={`/api/produtos/imagem/${it.photo_id}?mini=1`} alt="" width={34} height={34} style={{ objectFit: 'contain', background: '#eef2f6', borderRadius: 5 }} />
                       : <span className="promo-nophoto" style={{ width: 34, height: 34 }}>sem foto</span>}
-                    <span className="canva-name">{it.name}</span>
+                    <span className="canva-name">{it.name}{it.variants ? <em className="canva-group">{it.variants.kind === 'sizes' ? `${it.variants.rows.length} tamanhos` : `${it.variants.members.length} opções`}</em> : null}</span>
                     <span className="canva-price">R$ {brl(it.price)}</span>
                   </li>
                 ))}
@@ -312,6 +342,25 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit }
               <label htmlFor="in-price">Preço (R$)</label>
               <input id="in-price" key={`p-${sel.id}-${sel.price}`} type="text" inputMode="decimal" defaultValue={brl(sel.price)} disabled={!canEdit || busy}
                 onBlur={(e) => { if (e.target.value.replace(',', '.') !== String(sel.price)) act(() => updateItemAction(campaign.id, sel.id, sel.name, e.target.value, sel.photo_image_id)) }} />
+              {sel.variants?.kind === 'sizes' && (
+                <>
+                  <label>Tabela de tamanhos (unidades por tamanho)</label>
+                  <div className="canva-sizes">
+                    {sizesDraft.map((r, i) => (
+                      <div key={i}>
+                        <input type="text" value={r.label} maxLength={6} aria-label={`Tamanho ${i + 1}`} disabled={!canEdit || busy} onChange={(e) => setSizesDraft(sizesDraft.map((x, k) => (k === i ? { ...x, label: e.target.value } : x)))} onBlur={() => act(() => updateItemAction(campaign.id, sel.id, sel.name, String(sel.price), sel.photo_image_id, sizesDraft))} />
+                        <input type="text" inputMode="numeric" value={r.units ?? ''} placeholder="un." aria-label={`Unidades do tamanho ${i + 1}`} disabled={!canEdit || busy} onChange={(e) => setSizesDraft(sizesDraft.map((x, k) => (k === i ? { ...x, units: e.target.value === '' ? null : Number(e.target.value.replace(/\D/g, '')) } : x)))} onBlur={() => act(() => updateItemAction(campaign.id, sel.id, sel.name, String(sel.price), sel.photo_image_id, sizesDraft))} />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              {sel.variants && (
+                <>
+                  <p className="muted" style={{ marginTop: 8 }}><strong>Este encarte reúne {sel.variants.kind === 'sizes' ? sel.variants.rows.length : sel.variants.members.length} produtos:</strong> {sel.variants.kind === 'sizes' ? sel.variants.rows.map((r) => r.name).join(' · ') : sel.variants.members.map((m) => m.variant).join(' · ')}</p>
+                  {canEdit && <button type="button" className="mini-btn" disabled={busy} onClick={() => { setSelected(null); act(() => ungroupItemAction(campaign.id, sel.id)) }}>Desagrupar (um encarte por produto)</button>}
+                </>
+              )}
               {sel.photos.length > 1 && canEdit && (
                 <>
                   <label>Foto usada</label>

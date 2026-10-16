@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { audit, writerOrError } from '@/lib/auth'
 import { isUuid } from '@/lib/form'
 import { PROMO_FORMAT_KEYS, parsePrice, type PromoFormat } from '@/lib/domain/promo'
-import { addItem, createTheme, deleteCampaign, deleteTheme, deleteThemeAsset, moveItem, removeItem, reorderItems, saveThemeConfig, THEME_ROLES, updateCampaign, updateItem, type ThemeRole } from '@/lib/promo/store'
+import { addItem, approveCampaign, createTheme, deleteCampaign, deleteTheme, deleteThemeAsset, moveItem, removeItem, reorderItems, saveThemeConfig, THEME_ROLES, ungroupItem, updateCampaign, updateItem, type SizeEdit, type ThemeRole } from '@/lib/promo/store'
 
 type Out = { ok: boolean; error?: string; id?: string }
 const NO: Out = { ok: false, error: 'Pedido inválido.' }
@@ -57,12 +57,12 @@ export async function deleteCampaignAction(id: string): Promise<Out> {
   return { ok: true }
 }
 
-export async function updateItemAction(campaignId: string, itemId: string, name: string, price: string, photoId: string | null): Promise<Out> {
+export async function updateItemAction(campaignId: string, itemId: string, name: string, price: string, photoId: string | null, sizes?: SizeEdit[]): Promise<Out> {
   const g = await writerOrError()
   if (!g.ok || !isUuid(itemId) || !isUuid(campaignId)) return g.ok ? NO : { ok: false, error: g.error }
   const p = parsePrice(price)
   if (p === null) return { ok: false, error: 'Preço inválido.' }
-  const r = await updateItem(itemId, { name: String(name), price: p, photoImageId: photoId && isUuid(photoId) ? photoId : null })
+  const r = await updateItem(itemId, { name: String(name), price: p, photoImageId: photoId && isUuid(photoId) ? photoId : null, sizes: Array.isArray(sizes) ? sizes.slice(0, 12).map((x) => ({ label: String(x?.label ?? ''), units: x?.units === null || x?.units === undefined ? null : Number(x.units) })) : undefined })
   if (r.ok) revalidatePath(`/promocoes/${campaignId}`)
   return r
 }
@@ -95,6 +95,22 @@ export async function reorderItemsAction(campaignId: string, ids: string[]): Pro
   const g = await writerOrError()
   if (!g.ok || !isUuid(campaignId) || !Array.isArray(ids) || !ids.every(isUuid)) return g.ok ? NO : { ok: false, error: g.error }
   const r = await reorderItems(campaignId, ids)
+  if (r.ok) revalidatePath(`/promocoes/${campaignId}`)
+  return r
+}
+
+export async function approveCampaignAction(campaignId: string): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(campaignId)) return g.ok ? NO : { ok: false, error: g.error }
+  const r = await approveCampaign(campaignId, g.user.id)
+  if (r.ok) { await audit('promocao_aprovada', { userId: g.user.id, target: campaignId }); revalidatePath(`/promocoes/${campaignId}`); revalidatePath('/promocoes') }
+  return r
+}
+
+export async function ungroupItemAction(campaignId: string, itemId: string): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(campaignId) || !isUuid(itemId)) return g.ok ? NO : { ok: false, error: g.error }
+  const r = await ungroupItem(itemId)
   if (r.ok) revalidatePath(`/promocoes/${campaignId}`)
   return r
 }

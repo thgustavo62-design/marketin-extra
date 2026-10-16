@@ -17,7 +17,7 @@ export default async function Promocao({ params }: { params: Promise<{ id: strin
     <>
       <header className="page-head">
         <h1>{campaign.name}</h1>
-        <p><Link href="/promocoes">← Promoções</Link> · {items.length} produto(s) · o sistema monta as peças de feed, story e A4 sozinho a partir da planilha.</p>
+        <p><Link href="/promocoes">← Promoções</Link> · {items.length} encarte(s) · o sistema monta as peças de story, feed e A4 sozinho a partir da planilha; ajuste o que precisar e aprove.</p>
       </header>
       <PromoStudio campaign={campaign} theme={theme} themes={themes.map((t) => ({ id: t.id, name: t.name }))} items={items} canEdit={canWrite(user.role)} />
     </>

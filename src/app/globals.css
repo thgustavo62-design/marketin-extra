@@ -702,3 +702,13 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .canva-thumb.on { border-color: var(--blue); }
 .canva-thumb img { height: 96px; width: auto; display: block; border-radius: 4px; }
 .canva-thumb small { font-size: 10.5px; color: var(--muted); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* política de encartes e aprovação */
+.canva-approval { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #fff8e8; border: 1px solid #f0dca8; border-radius: var(--radius); padding: 8px 12px; font-size: 13px; }
+.canva-approval.ok { background: #effaf4; border-color: #bfe6d0; }
+.canva-report { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; font-size: 13px; }
+.canva-report summary { cursor: pointer; font-weight: 600; }
+.canva-group { font-style: normal; font-size: 10px; font-weight: 800; color: #1a7f4b; background: #e1f5ec; border-radius: 999px; padding: 1px 7px; margin-left: 6px; white-space: nowrap; }
+.canva-sizes { display: grid; gap: 4px; }
+.canva-sizes div { display: grid; grid-template-columns: 70px 1fr; gap: 4px; }
+.canva-sizes input { min-height: 30px; font-size: 12.5px; }

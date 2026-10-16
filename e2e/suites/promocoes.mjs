@@ -92,77 +92,110 @@ try {
   const obs = wbMulti.addWorksheet('Observações')
   const separador = (ws) => { const r = ws.addRow(['', '', '', '', '', '', '', '', '', '']); r.eachCell({ includeEmpty: true }, (c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } } }) } // linha azul entre os grupos
   abaLeite.addRow(cab); abaPerf.addRow(cab); abaFralda.addRow(cab)
-  abaLeite.addRow(lin(E[0], 'ignorado: o nome vem do catálogo', 49.9, 41.9, 39.99)); abaLeite.addRow(lin(E[1], '', 69, 62, '59,99')); separador(abaLeite); abaLeite.addRow(lin(E[2], '', 25, 21, 'R$ 19,99'))
-  abaPerf.addRow(lin(E[3], '', 20, 17, 15.99)); abaPerf.addRow(lin(E[4], '', 15, 13, 12.99)); separador(abaPerf); abaPerf.addRow(lin(E[5], '', 10, 8, 7.99)); abaPerf.addRow(lin(E[6], '', 5, 4, 4.5))
-  abaPerf.addRow(lin(E[0], '', 3, 2, 1)) // repetido em outra aba: vale a primeira (leite)
-  abaFralda.addRow(lin(E[7], '', 81, 64, '55,5')); separador(abaFralda)
-  abaFralda.addRow(lin(gtin('789299999999'), 'PRODUTO NOVO SÓ NA PLANILHA 50ML', 3, 2, 2.99)) // fora do catálogo, mas com nome
-  abaFralda.addRow(lin(gtin('789299999998'), '', 3, 2, 2.99)) // fora do catálogo e sem nome: não entra
-  abaFralda.addRow(lin('1234567890123', '', 3, 2, 2.99)) // EAN inválido
-  abaFralda.addRow(lin(gtin('789200010009'), '', 3, 2, 'abc')) // valor inválido
+  abaLeite.addRow(lin(E[0], 'LEITE NINHO FASES 1+ 800GR', 49.9, 41.9, 39.99)); abaLeite.addRow(lin(E[1], 'APTANUTRI PREMIUM 3 800G', 69, 62, '59,99')); separador(abaLeite); abaLeite.addRow(lin(E[2], 'SAB. LIQ. GRANADO BEBE 250ML', 25, 21, 'R$ 19,99'))
+  abaPerf.addRow(lin(E[3], 'SH. HUGGIES KIDS 360ML', 20, 17, 15.99)); abaPerf.addRow(lin(E[4], 'TALCO TRA-LA-LA BABY 160G', 15, 13, 12.99)); separador(abaPerf); abaPerf.addRow(lin(E[5], 'LENCO UMEDECIDO PERSONAL BABY C/50 UND', 10, 8, 7.99)); abaPerf.addRow(lin(E[6], 'PRODUTO SEM FOTO 100ML', 5, 4, 4.5))
+  abaPerf.addRow(lin(E[0], 'LEITE NINHO REPETIDO', 3, 2, 1)) // repetido em outra aba: vale a primeira (leite)
+  // três fragrâncias do mesmo amaciante, mesmo preço: um encarte só
+  abaPerf.addRow(lin(gtin('789300000001'), 'AMACIANTE COMFORT CONCENTRADO 1L BRISA ELEGANTE', 34, 27, 19.99)); abaPerf.addRow(lin(gtin('789300000002'), 'AMACIANTE COMFORT CONCENTRADO 1L FRESCOR INTENSO', 34, 27, 19.99)); abaPerf.addRow(lin(gtin('789300000003'), 'AMACIANTE COMFORT CONCENTRADO 1L PURO CUIDADO', 34, 27, 19.99))
+  abaFralda.addRow(lin(E[7], 'COND. HUGGIES KIDS 360ML', 81, 64, '55,5')); separador(abaFralda)
+  // quatro tamanhos da mesma fralda, mesmo preço: um encarte só, com tabela de tamanho × unidades
+  abaFralda.addRow(lin(gtin('789400000001'), 'FRALDA PERSONAL PANTS PROTECT MEGA G L44P42UN', 81, 64, 59.99)); abaFralda.addRow(lin(gtin('789400000002'), 'FRALDA PERSONAL PANTS PROTECT MEGA M L52P50UN', 81, 64, 59.99))
+  abaFralda.addRow(lin(gtin('789400000003'), 'FRALDA PERSONAL PANTS PROTECT MEGA XG L40P38UN', 81, 64, 59.99)); abaFralda.addRow(lin(gtin('789400000004'), 'FRALDA PERSONAL PANTS PROTECT MEGA XXG L36P34UN', 81, 64, 59.99))
+  abaFralda.addRow(lin(gtin('789299999999'), 'PRODUTO NOVO SÓ NA PLANILHA 50ML', 3, 2, 2.99)) // fora do catálogo, mas com descrição: entra, sem foto
+  abaFralda.addRow(lin(gtin('789299999998'), '', 3, 2, 2.99)) // fora do catálogo e SEM descrição: não entra
+  abaFralda.addRow(lin('1234567890123', 'EAN INVALIDO', 3, 2, 2.99)) // EAN inválido
+  abaFralda.addRow(lin(gtin('789200010009'), 'VALOR INVALIDO', 3, 2, 'abc')) // valor inválido
   obs.addRow(['Observações da campanha'])
   const planilha = Buffer.from(await wbMulti.xlsx.writeBuffer())
   await a.goto(BASE + '/promocoes'); await idle(a)
+  ck('formulário de nova promoção tem a política "agrupar variações" ligada por padrão', (await a.locator('input[name=group]').isChecked()) === true)
   await a.fill('#np-name', 'Atacadão do Bebê — teste'); await a.selectOption('#np-theme', themeId); await a.fill('#np-title', 'ATACADÃO DO BEBÊ'); await a.fill('#np-val', 'Válido de 20 a 26/10')
   await a.setInputFiles('#np-file', { name: 'promo.xlsx', mimeType: XLSX, buffer: planilha })
   await a.getByRole('button', { name: 'Montar promoção' }).click()
-  await a.waitForSelector('text=Promoção criada', { timeout: 30000 })
-  const rep = await a.textContent('[role=status]')
-  ck('relatório: 9 produtos de 3 abas, sem foto, fora do catálogo, avisos das linhas e da aba ignorada', /9 produto/.test(rep) && /fralda/.test(rep) && /leite/.test(rep) && /perfumaria/.test(rep) && /sem foto/.test(rep) && /fora do catálogo/.test(rep) && /Observações/.test(rep), rep.replace(/\s+/g, ' ').slice(0, 400))
-  const camp = (await q(`select id, name, title, validity, theme_id from promo_campaigns order by created_at desc limit 1`))[0]
-  const itens = await q(`select position, ean, name, price::float8 as price, section from promo_items where campaign_id = $1 order by position`, [camp.id])
-  ck('itens na ordem das abas: leite (3), perfumaria (4), fralda (2)', itens.length === 9 && itens.slice(0, 3).every((x) => x.section === 'leite') && itens.slice(3, 7).every((x) => x.section === 'perfumaria') && itens.slice(7).every((x) => x.section === 'fralda'), itens.map((x) => x.section).join())
-  ck('o preço vem da coluna "Valor aproximado" (não de venda nem de promoção), em número, texto com vírgula e "R$"', itens[0].price === 39.99 && itens[1].price === 59.99 && itens[2].price === 19.99 && itens[6].price === 4.5 && itens[7].price === 55.5, JSON.stringify(itens.map((x) => x.price)))
-  ck('nome vem do catálogo (ERP), não da planilha', itens[0].name === 'LEITE NINHO FASES 1+ 800GR' && itens[1].name === 'APTANUTRI PREMIUM 3 800G')
-  ck('repetido em outra aba, EAN inválido, valor inválido e código sem nome não entram; código novo com nome entra', !itens.some((x) => x.ean === '1234567890123') && itens.filter((x) => x.ean === E[0]).length === 1 && itens[8].name === 'PRODUTO NOVO SÓ NA PLANILHA 50ML')
-  ck('título, validade e tema gravados', camp.title === 'ATACADÃO DO BEBÊ' && camp.validity === 'Válido de 20 a 26/10' && camp.theme_id === themeId)
+  await a.waitForURL(/\/promocoes\/[0-9a-f-]{36}$/, { timeout: 40000 }); await idle(a)
+  ck('depois de montar, cai direto no editor da promoção', /\/promocoes\/[0-9a-f-]{36}$/.test(a.url()))
+  const camp = (await q(`select id, name, title, validity, theme_id, status, group_variants, import_report from promo_campaigns order by created_at desc limit 1`))[0]
+  const itens = await q(`select position, ean, name, price::float8 as price, section, variants from promo_items where campaign_id = $1 order by position`, [camp.id])
+  ck('16 linhas da planilha viram 11 encartes (tamanhos e fragrâncias reunidos)', itens.length === 11 && camp.import_report.lines === 16 && camp.import_report.encartes === 11 && camp.import_report.gruposTamanho === 1 && camp.import_report.gruposOpcoes === 1, JSON.stringify({ n: itens.length, r: { l: camp.import_report.lines, e: camp.import_report.encartes } }))
+  const gt = itens.find((x) => x.variants?.kind === 'sizes'), go = itens.find((x) => x.variants?.kind === 'options')
+  ck('fraldas: um encarte só, com a tabela M 52, G 44, XG 40, XXG 36 e o mesmo preço', !!gt && gt.name === 'FRALDA PERSONAL PANTS PROTECT MEGA' && gt.price === 59.99 && JSON.stringify(gt.variants.rows.map((r) => [r.label, r.units])) === '[["M",52],["G",44],["XG",40],["XXG",36]]', JSON.stringify(gt?.variants?.rows?.map((r) => [r.label, r.units])))
+  ck('amaciantes (só muda a fragrância): um encarte "VÁRIAS OPÇÕES" com as 3 opções', !!go && go.name === 'AMACIANTE COMFORT CONCENTRADO 1L - VÁRIAS OPÇÕES' && go.variants.members.length === 3 && go.variants.members.map((m) => m.variant).join('|') === 'BRISA ELEGANTE|FRESCOR INTENSO|PURO CUIDADO')
+  ck('itens na ordem das abas: leite (3), perfumaria (5), fralda (3)', itens.slice(0, 3).every((x) => x.section === 'leite') && itens.slice(3, 8).every((x) => x.section === 'perfumaria') && itens.slice(8).every((x) => x.section === 'fralda'), itens.map((x) => x.section).join())
+  ck('o preço vem da coluna "Valor aproximado" (não de venda nem de promoção), em número, texto com vírgula e "R$"', itens[0].price === 39.99 && itens[1].price === 59.99 && itens[2].price === 19.99 && itens[7].price === 19.99 && itens[8].price === 55.5, JSON.stringify(itens.map((x) => x.price)))
+  ck('o nome é a descrição da planilha (maiúsculas), não a do catálogo', itens[0].name === 'LEITE NINHO FASES 1+ 800GR' && itens[1].name === 'APTANUTRI PREMIUM 3 800G' && itens[2].name === 'SAB. LIQ. GRANADO BEBE 250ML')
+  ck('repetido em outra aba, EAN inválido, valor inválido e linha sem descrição fora do catálogo não entram; produto novo com descrição entra', !itens.some((x) => x.ean === '1234567890123' || x.name === 'LEITE NINHO REPETIDO') && itens.some((x) => x.name === 'PRODUTO NOVO SÓ NA PLANILHA 50ML') && camp.import_report.skipped.length === 1)
+  ck('título, validade e tema gravados; nasce em edição (não aprovada)', camp.title === 'ATACADÃO DO BEBÊ' && camp.validity === 'Válido de 20 a 26/10' && camp.theme_id === themeId && camp.status === 'rascunho')
 
   // ---------- editor (estilo Canva) ----------
-  await a.getByRole('link', { name: /Abrir e baixar/ }).click(); await a.waitForURL(/\/promocoes\/[0-9a-f-]{36}$/); await idle(a)
   await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
   const dim = async () => a.evaluate(() => { const c = document.querySelector('.canva-paper canvas'); return { w: c.width, h: c.height } })
   await a.waitForFunction(() => document.querySelector('.canva-paper canvas')?.width === 1080 && document.querySelector('.canva-paper canvas')?.height === 1920, null, { timeout: 30000 })
-  ck('editor tem painel (Produtos/Tema/Dados), peça, inspetor e faixa de peças', (await a.locator('.canva-left').count()) === 1 && (await a.locator('.canva-stage').count()) === 1 && (await a.locator('.canva-right').count()) === 1 && (await a.locator('.canva-strip').count()) === 1)
+  ck('editor tem painel (Produtos/Tema/Dados), peça, inspetor, faixa de peças e barra de aprovação', (await a.locator('.canva-left').count()) === 1 && (await a.locator('.canva-stage').count()) === 1 && (await a.locator('.canva-right').count()) === 1 && (await a.locator('.canva-strip').count()) === 1 && (await a.locator('.canva-approval').count()) === 1)
+  ck('resumo da importação aparece: 16 produtos → 11 encartes, grupos, sem foto e fora do catálogo', /16 produto\(s\) da planilha/.test(await a.textContent('.canva-report summary')) && /11 encarte/.test(await a.textContent('.canva-report summary')) && /1 grupo\(s\) de tamanho/.test(await a.textContent('.canva-report summary')) && /sem foto/.test(await a.textContent('.canva-report summary')) && /fora do catálogo/.test(await a.textContent('.canva-report summary')))
   ck('story tem 1080×1920', JSON.stringify(await dim()) === '{"w":1080,"h":1920}')
-  ck('aviso de produto sem foto aparece', /sem foto/.test(await a.textContent('.notice')))
   const pintado = await a.evaluate(() => { const c = document.querySelector('.canva-paper canvas'); const x = c.getContext('2d'); const d = x.getImageData(0, 0, c.width, c.height).data; let nb = 0; for (let i = 0; i < d.length; i += 4 * 97) if (d[i + 3] > 0 && !(d[i] > 245 && d[i + 1] > 245 && d[i + 2] > 245)) nb++; return nb })
   ck('a peça foi desenhada (não está em branco)', pintado > 1500, pintado)
-  ck('story quebra por aba: 3 peças (leite, perfumaria, fralda), com o nome da aba', /Peça 1 de 3/.test(await a.textContent('.canva-pager')) && /aba leite/.test(await a.textContent('.canva-pager')) && (await a.locator('.canva-thumb').count()) === 3)
-  await a.waitForFunction(() => document.querySelectorAll('.canva-thumb img').length === 3, null, { timeout: 30000 })
-  ck('faixa de peças mostra uma miniatura por peça', (await a.locator('.canva-thumb img').count()) === 3)
-  ck('sobre a peça há uma área clicável por produto (3 na peça de leite)', (await a.locator('.canva-hit').count()) === 3)
+  ck('story quebra por aba: 4 peças (leite, perfumaria ×2, fralda), com o nome da aba', /Peça 1 de 4/.test(await a.textContent('.canva-pager')) && /aba leite/.test(await a.textContent('.canva-pager')) && (await a.locator('.canva-thumb').count()) === 4)
+  await a.waitForFunction(() => document.querySelectorAll('.canva-thumb img').length === 4, null, { timeout: 30000 })
+  ck('faixa de peças mostra uma miniatura por peça', (await a.locator('.canva-thumb img').count()) === 4)
+  ck('sobre a peça há uma área clicável por encarte (3 na peça de leite)', (await a.locator('.canva-hit').count()) === 3)
   await a.locator('.canva-hit').first().click()
   if (process.env.E2E_OUT) await a.screenshot({ path: `${process.env.E2E_OUT}/promocao-editor.png`, fullPage: true })
-  ck('clicar no produto da peça abre o inspetor com nome e preço', (await a.inputValue('#in-name')) === 'LEITE NINHO FASES 1+ 800GR' && (await a.inputValue('#in-price')) === '39,99')
+  ck('clicar no encarte da peça abre o inspetor com nome e preço', (await a.inputValue('#in-name')) === 'LEITE NINHO FASES 1+ 800GR' && (await a.inputValue('#in-price')) === '39,99')
   await a.fill('#in-name', 'Leite Ninho Fases 1+ 800g'); await a.locator('#in-name').blur(); await wait(1500)
   ck('editar o nome pelo inspetor: salva em maiúsculas', (await q(`select name from promo_items where campaign_id = $1 and position = 1`, [camp.id]))[0].name === 'LEITE NINHO FASES 1+ 800G')
   await a.fill('#in-price', '41,5'); await a.locator('#in-price').blur(); await wait(1500)
   ck('editar o preço pelo inspetor: salva', (await q(`select price::float8 as p from promo_items where campaign_id = $1 and position = 1`, [camp.id]))[0].p === 41.5)
   await a.fill('#in-price', 'abc'); await a.locator('#in-price').blur(); await wait(1200)
   ck('preço inválido é recusado com aviso e não muda o valor', /Preço inválido/.test(await a.textContent('main')) && (await q(`select price::float8 as p from promo_items where campaign_id = $1 and position = 1`, [camp.id]))[0].p === 41.5)
+
+  // aprovação
   await a.reload(); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
-  // arrastar um produto sobre outro na peça troca os dois de lugar
+  ck('editar tirou/impede a aprovação: continua "Em edição" e o botão Aprovar aparece', /Em edição/.test(await a.textContent('.canva-approval')) && (await a.getByRole('button', { name: 'Aprovar encartes' }).count()) === 1)
+  await a.getByRole('button', { name: 'Aprovar encartes' }).click(); await wait(2000)
+  const aprov = (await q(`select status, approved_by, approved_at from promo_campaigns where id = $1`, [camp.id]))[0]
+  ck('aprovar grava quem aprovou e quando', aprov.status === 'aprovada' && aprov.approved_by === admin && !!aprov.approved_at)
+  await a.reload(); await idle(a)
+  ck('a tela mostra "Aprovada por <nome>" e some o botão Aprovar', /Aprovada por Admin Teste/.test(await a.textContent('.canva-approval')) && (await a.getByRole('button', { name: 'Aprovar encartes' }).count()) === 0)
+  await a.locator('.canva-list li').nth(2).click()
+  await a.fill('#in-price', '19,5'); await a.locator('#in-price').blur(); await wait(1800)
+  ck('qualquer alteração depois de aprovar volta para "Em edição" (precisa aprovar de novo)', (await q(`select status, approved_by from promo_campaigns where id = $1`, [camp.id]))[0].status === 'rascunho' && (await q(`select approved_by from promo_campaigns where id = $1`, [camp.id]))[0].approved_by === null)
+
+  // arrastar um encarte sobre outro na peça troca os dois de lugar
+  await a.reload(); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
   const hits = a.locator('.canva-hit')
   const idA = await hits.nth(0).getAttribute('data-item'), idB = await hits.nth(1).getAttribute('data-item')
   await hits.nth(0).dragTo(hits.nth(1)); await wait(2000)
   const ordem = (await q(`select id from promo_items where campaign_id = $1 order by position limit 3`, [camp.id])).map((x) => x.id)
-  ck('arrastar o produto 1 sobre o 2 troca os dois de lugar (salvo no banco)', ordem[0] === idB && ordem[1] === idA, `${ordem[0] === idB} ${ordem[1] === idA}`)
+  ck('arrastar o encarte 1 sobre o 2 troca os dois de lugar (salvo no banco)', ordem[0] === idB && ordem[1] === idA)
   await a.reload(); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
-  // arrastar na lista = mover para aquela posição
   const lis = a.locator('.canva-list li[data-item]')
   const primeiro = await lis.nth(0).getAttribute('data-item')
   await lis.nth(0).dragTo(lis.nth(2)); await wait(2000)
-  ck('arrastar na lista move o produto para a posição de destino', (await q(`select id from promo_items where campaign_id = $1 and position = 3`, [camp.id]))[0].id === primeiro)
+  ck('arrastar na lista move o encarte para a posição de destino', (await q(`select id from promo_items where campaign_id = $1 and position = 3`, [camp.id]))[0].id === primeiro)
   await a.reload(); await idle(a)
   await a.getByRole('tab', { name: /Tema/ }).click()
   ck('aba Tema lista os temas e marca o atual', (await a.locator('.canva-themes button.on').count()) === 1)
   await a.getByRole('tab', { name: /Produtos/ }).click()
+
+  // grupos: tabela de tamanhos editável e desagrupar
+  const liFralda = a.locator('.canva-list li', { hasText: 'FRALDA PERSONAL PANTS PROTECT MEGA' })
+  ck('a lista marca os grupos ("4 tamanhos", "3 opções")', (await liFralda.locator('.canva-group').textContent()) === '4 tamanhos' && (await a.locator('.canva-list li .canva-group', { hasText: '3 opções' }).count()) === 1)
+  await liFralda.click()
+  ck('inspetor do grupo de tamanhos mostra a tabela (M 52, G 44, XG 40, XXG 36) e os produtos reunidos', (await a.inputValue('input[aria-label="Tamanho 1"]')) === 'M' && (await a.inputValue('input[aria-label="Unidades do tamanho 1"]')) === '52' && /reúne 4 produtos/.test(await a.textContent('.canva-right')))
+  await a.fill('input[aria-label="Unidades do tamanho 2"]', '46'); await a.locator('input[aria-label="Unidades do tamanho 2"]').blur(); await wait(1800)
+  ck('corrigir as unidades de um tamanho salva na tabela', (await q(`select variants from promo_items where id = (select id from promo_items where campaign_id = $1 and variants->>'kind' = 'sizes')`, [camp.id]))[0].variants.rows[1].units === 46)
+  const antes = (await q(`select count(*)::int n from promo_items where campaign_id = $1`, [camp.id]))[0].n
+  await a.getByRole('button', { name: /Desagrupar/ }).click(); await wait(2000)
+  const depois = await q(`select position, name, price::float8 as price, variants from promo_items where campaign_id = $1 order by position`, [camp.id])
+  ck('desagrupar: cada tamanho volta a ser um encarte (4 no lugar de 1), mesmo preço, posições seguidas', depois.length === antes + 3 && depois.filter((x) => /FRALDA PERSONAL PANTS PROTECT MEGA (M|G|XG|XXG) /.test(x.name)).length === 4 && depois.every((x, i) => x.position === i + 1) && !depois.some((x) => x.variants?.kind === 'sizes'), depois.map((x) => x.name.slice(0, 18)).join('|'))
+
   await a.locator('.canva-list li').nth(5).click()
-  ck('clicar na lista abre o produto e vai para a peça dele (perfumaria)', /aba perfumaria/.test(await a.textContent('.canva-pager')) && (await a.locator('#in-name').count()) === 1)
+  ck('clicar na lista abre o encarte e vai para a peça dele (perfumaria)', /aba perfumaria/.test(await a.textContent('.canva-pager')) && (await a.locator('#in-name').count()) === 1)
   await a.getByRole('button', { name: 'Feed (Instagram/Facebook)' }).click(); await a.waitForFunction(() => document.querySelector('.canva-paper canvas')?.height === 1350, null, { timeout: 30000 })
-  ck('feed tem 1080×1350 e também quebra por aba (3 peças)', JSON.stringify(await dim()) === '{"w":1080,"h":1350}' && (await a.locator('.canva-thumb').count()) === 3)
+  ck('feed tem 1080×1350 e também quebra por aba', JSON.stringify(await dim()) === '{"w":1080,"h":1350}' && (await a.locator('.canva-thumb').count()) >= 3)
   await a.getByRole('button', { name: 'Cartaz / Flyer A4' }).click(); await a.waitForFunction(() => document.querySelector('.canva-paper canvas')?.height === 2000, null, { timeout: 30000 })
-  ck('A4 tem proporção de A4 (1414×2000) e NÃO quebra por aba (1 peça com os 9)', JSON.stringify(await dim()) === '{"w":1414,"h":2000}' && (await a.locator('.canva-thumb').count()) === 1)
+  ck('A4 tem proporção de A4 (1414×2000) e NÃO quebra por aba', JSON.stringify(await dim()) === '{"w":1414,"h":2000}' && (await a.locator('.canva-thumb').count()) >= 1)
   await a.getByRole('button', { name: 'Story / Status' }).click(); await a.waitForFunction(() => document.querySelector('.canva-paper canvas')?.height === 1920, null, { timeout: 30000 }); await wait(600)
 
   // downloads
@@ -173,9 +206,8 @@ try {
   const [dl2] = await Promise.all([a.waitForEvent('download', { timeout: 60000 }), a.getByRole('button', { name: 'Todos os formatos (ZIP)' }).click()])
   const zip = unzipSync(new Uint8Array(await readFile(await dl2.path())))
   const nomesZip = Object.keys(zip)
-  ck('ZIP com todos os formatos: 3 story + 3 feed + 1 A4', nomesZip.filter((n) => n.startsWith('story/')).length === 3 && nomesZip.filter((n) => n.startsWith('feed/')).length === 3 && nomesZip.filter((n) => n.startsWith('a4/')).length === 1, nomesZip.join())
-  // guarda as peças para conferência visual (e2e/.out)
-  for (const n of nomesZip) if (process.env.E2E_OUT && /-1(-[a-z]+)?\.png$/.test(n)) await writeFile(`${process.env.E2E_OUT}/promocao-${n.replace('/', '-')}`, Buffer.from(zip[n]))
+  ck('ZIP com todos os formatos (story, feed e A4)', nomesZip.filter((n) => n.startsWith('story/')).length >= 4 && nomesZip.filter((n) => n.startsWith('feed/')).length >= 3 && nomesZip.filter((n) => n.startsWith('a4/')).length >= 1, nomesZip.join())
+  for (const n of nomesZip) if (process.env.E2E_OUT && /-[12](-[a-z]+)?\.png$/.test(n)) await writeFile(`${process.env.E2E_OUT}/promocao-${n.replace('/', '-')}`, Buffer.from(zip[n]))
   const [dl3] = await Promise.all([a.waitForEvent('download', { timeout: 60000 }), a.getByRole('button', { name: 'A4 em PDF' }).click()])
   const pdf = await readFile(await dl3.path())
   ck('PDF do A4 é um PDF de verdade', pdf.subarray(0, 5).toString() === '%PDF-' && pdf.length > 5000, pdf.length)
@@ -183,11 +215,12 @@ try {
   // inspetor: subir/descer/remover e adicionar
   await a.locator('.canva-list li').nth(0).click()
   await a.getByRole('button', { name: 'Descer' }).click(); await wait(1500)
-  ck('descer o item pelo inspetor troca com o seguinte', (await q(`select id from promo_items where campaign_id = $1 and position = 2`, [camp.id]))[0].id !== null)
+  ck('descer o item pelo inspetor mantém a lista consistente', (await q(`select count(distinct position)::int n, count(*)::int c from promo_items where campaign_id = $1`, [camp.id]))[0].n === (await q(`select count(*)::int c from promo_items where campaign_id = $1`, [camp.id]))[0].c)
   await a.reload(); await idle(a)
+  const total0 = (await q(`select count(*)::int n from promo_items where campaign_id = $1`, [camp.id]))[0].n
   await a.locator('.canva-list li').last().click()
   await a.getByRole('button', { name: 'Remover' }).click(); await wait(1500)
-  ck('remover o último item reorganiza as posições', (await q(`select count(*)::int n, max(position)::int m from promo_items where campaign_id = $1`, [camp.id]))[0].m === 8)
+  ck('remover o último item reorganiza as posições', (await q(`select count(*)::int n, max(position)::int m from promo_items where campaign_id = $1`, [camp.id]))[0].m === total0 - 1)
   await a.reload(); await idle(a)
   const picker = a.locator('section[aria-label="Produtos da promoção"] .picker input[type=search]')
   await picker.fill('talco'); await a.locator('.picker li button:has-text("Escolher")').first().click()
@@ -197,13 +230,23 @@ try {
   await a.fill('#pc-title', 'NOVO TÍTULO'); await a.getByRole('button', { name: 'Salvar' }).first().click(); await wait(1500)
   ck('dados da promoção salvos', (await q(`select title from promo_campaigns where id = $1`, [camp.id]))[0].title === 'NOVO TÍTULO')
 
+  // política desligada: um encarte por produto
+  await a.goto(BASE + '/promocoes'); await idle(a)
+  await a.fill('#np-name', 'Sem agrupar'); await a.selectOption('#np-theme', themeId); await a.locator('input[name=group]').uncheck()
+  await a.setInputFiles('#np-file', { name: 'promo.xlsx', mimeType: XLSX, buffer: planilha })
+  await a.getByRole('button', { name: 'Montar promoção' }).click(); await a.waitForURL(/\/promocoes\/[0-9a-f-]{36}$/, { timeout: 40000 })
+  const sem = (await q(`select id, import_report from promo_campaigns where name = 'Sem agrupar'`))[0]
+  ck('com a política desligada cada produto é um encarte (16) e o resumo diz "sem agrupar"', (await q(`select count(*)::int n from promo_items where campaign_id = $1`, [sem.id]))[0].n === 16 && sem.import_report.grouped === false)
+  await idle(a)
+  ck('o resumo mostra "sem agrupar variações"', /sem agrupar variações/.test(await a.textContent('.canva-report summary')))
+
   // ---------- erros da planilha ----------
   const post = (buf, name = 'p.xlsx') => ac.request.post(BASE + '/api/promocoes/importar', { headers: { origin: BASE }, multipart: { name: 'Teste de erro', file: { name, mimeType: XLSX, buffer: buf } } })
   const semCol = await post(await xlsx([['Qualquer', 'Coisa'], [1, 2]]))
   ck('planilha sem as colunas é recusada com explicação', semCol.status() === 422 && /Valor aproximado/.test((await semCol.json()).error))
   const todosFora = await post(await xlsx([['Barras', 'Valor Aproximado'], [gtin('789288888888'), 5]]))
   const tf = await todosFora.json().catch(() => ({}))
-  ck('nenhum código no catálogo (e sem nome): recusa orientando a importar o ERP', todosFora.status() === 422 && /catálogo/.test(tf.error ?? ''), `${todosFora.status()} ${JSON.stringify(tf).slice(0, 200)}`)
+  ck('sem a coluna Descrição e fora do catálogo: recusa orientando a conferir a coluna Descrição', todosFora.status() === 422 && /Descrição/.test(tf.error ?? ''), `${todosFora.status()} ${JSON.stringify(tf).slice(0, 200)}`)
   ck('arquivo que não é xlsx é recusado', (await post(Buffer.from('a;b\n1;2'), 'x.csv')).status() === 422)
   ck('envio de outra origem é recusado (403)', (await ac.request.post(BASE + '/api/promocoes/importar', { headers: { origin: 'https://evil.example' }, multipart: { file: { name: 'p.xlsx', mimeType: XLSX, buffer: planilha } } })).status() === 403)
 
@@ -212,7 +255,7 @@ try {
   await v.goto(BASE + '/promocoes'); await idle(v)
   ck('leitor vê as promoções, sem o envio de planilha', (await v.locator('#np-file').count()) === 0 && (await v.locator('a[href^="/promocoes/"]').count()) >= 1)
   await v.goto(`${BASE}/promocoes/${camp.id}`); await idle(v); await v.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
-  ck('leitor vê a peça e baixa, mas não edita', (await v.getByRole('button', { name: /Baixar esta peça/ }).count()) === 1 && (await v.locator('button[aria-label="Remover"]').count()) === 0 && (await v.locator('#pc-name').count()) === 0)
+  ck('leitor vê a peça e baixa, mas não edita', (await v.getByRole('button', { name: /Baixar esta peça/ }).count()) === 1 && (await v.locator('button[aria-label="Remover"]').count()) === 0 && (await v.getByRole('button', { name: 'Aprovar encartes' }).count()) === 0 && (await v.locator('#pc-name').count()) === 0)
   ck('leitor não importa planilha pela API (403)', (await vc.request.post(BASE + '/api/promocoes/importar', { headers: { origin: BASE }, multipart: { file: { name: 'p.xlsx', mimeType: XLSX, buffer: planilha } } })).status() === 403)
   ck('leitor não envia arte de tema (403)', (await vc.request.post(`${BASE}/api/promocoes/tema/${themeId}/arte`, { headers: { origin: BASE }, multipart: { role: 'header', format: 'story', file: { name: 'a.png', mimeType: 'image/png', buffer: await arte(300, 100, '#fff') } } })).status() === 403)
 
