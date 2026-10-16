@@ -832,3 +832,18 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .canva-quick label { font-size: 11px; font-weight: 700; color: var(--muted); margin: 2px 0 0; }
 .canva-quick textarea, .canva-quick input { width: 100%; font: inherit; font-size: 13px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
 .canva-quick-actions { display: flex; gap: 6px; margin-top: 6px; }
+
+/* biblioteca de imagens das promoções */
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.lib-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: grid; }
+.lib-thumb { aspect-ratio: 1; display: grid; place-items: center; background: repeating-conic-gradient(#eef2f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; }
+.lib-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.lib-info { display: grid; gap: 2px; padding: 8px 10px 10px; min-width: 0; }
+.lib-info strong { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-info small { font-size: 11px; }
+.lib-actions { display: flex; gap: 6px; margin-top: 6px; }
+.lib-edit { display: grid; gap: 6px; padding: 8px 10px 10px; }
+.lib-edit input, .lib-edit select { width: 100%; font: inherit; font-size: 12.5px; border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
+.lib-pick { position: relative; }
+.lib-pick .bg-option img { object-fit: contain; background: repeating-conic-gradient(#eef2f6 0% 25%, #fff 0% 50%) 50% / 12px 12px; }
+.lib-bg { position: absolute; top: 6px; right: 6px; font-size: 10.5px; padding: 1px 7px; background: rgba(255, 255, 255, 0.92); }

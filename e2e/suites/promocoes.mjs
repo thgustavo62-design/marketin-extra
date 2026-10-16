@@ -534,6 +534,59 @@ try {
   await a.keyboard.press('Escape'); await wait(300)
   ck('Esc cancela a edição rápida sem salvar', (await a.locator('.canva-quick').count()) === 0)
 
+  // ---------- biblioteca de imagens (sub-aba de Promoções) ----------
+  await a.goto(BASE + '/promocoes'); await idle(a)
+  ck('Promoções tem as sub-abas Promoções, Temas e Biblioteca de imagens', (await a.locator('nav[aria-label="Promoções"] a').allTextContents()).join('|') === 'Promoções|Temas (artes)|Biblioteca de imagens' && (await a.locator('nav[aria-label="Promoções"] a.active').textContent()) === 'Promoções')
+  await a.locator('nav[aria-label="Promoções"] a', { hasText: 'Biblioteca de imagens' }).click(); await a.waitForURL(BASE + '/promocoes/biblioteca'); await idle(a)
+  ck('a sub-aba Biblioteca fica ativa e mostra o envio', (await a.locator('nav[aria-label="Promoções"] a.active').textContent()) === 'Biblioteca de imagens' && (await a.locator('#lib-file').count()) === 1)
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><circle cx="32" cy="32" r="28" fill="#e3171d"/><path d="M20 32h24M32 20v24" stroke="#fff" stroke-width="8"/></svg>')
+  await a.selectOption('#lib-cat', 'icone')
+  await a.setInputFiles('#lib-file', [
+    { name: 'cruz_vermelha.svg', mimeType: 'image/svg+xml', buffer: svg },
+    { name: 'selo azul.png', mimeType: 'image/png', buffer: await foto('#1d5fe0') },
+  ]); await wait(5000)
+  const lib = await q(`select id, name, category, width, height, mime from promo_library order by created_at`)
+  ck('SVG e PNG enviados de uma vez entram na biblioteca (WEBP) com nome do arquivo e a categoria escolhida', lib.length === 2 && lib.every((x) => x.mime === 'image/webp' && x.category === 'icone') && lib[0].name === 'cruz vermelha' && lib[1].name === 'selo azul', JSON.stringify(lib))
+  ck('o SVG foi rasterizado em boa resolução (maior lado ≥ 1000 px)', Math.max(lib[0].width, lib[0].height) >= 1000, `${lib[0].width}x${lib[0].height}`)
+  ck('as imagens aparecem no grid da biblioteca', (await a.locator('.lib-card').count()) === 2)
+  await a.setInputFiles('#lib-file', { name: 'de-novo.png', mimeType: 'image/png', buffer: await foto('#1d5fe0') }); await wait(2500)
+  ck('a mesma imagem não entra duas vezes', (await q(`select count(*)::int n from promo_library`))[0].n === 2 && /já estava/.test(await a.textContent('main')))
+  await a.setInputFiles('#lib-file', { name: 'mau.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><image href="file:///etc/passwd"/></svg>') }); await wait(2000)
+  ck('SVG com referência a arquivo externo é recusado', (await q(`select count(*)::int n from promo_library`))[0].n === 2 && /problema/.test(await a.textContent('main')))
+  const badLib = await ac.request.post(BASE + '/api/promocoes/biblioteca', { headers: { origin: BASE }, multipart: { category: 'icone', file: { name: 'x.png', mimeType: 'image/png', buffer: Buffer.from('não é imagem') } } })
+  ck('arquivo que não é imagem é recusado pela API (422)', badLib.status() === 422)
+  await a.locator('.lib-card', { hasText: 'selo azul' }).getByRole('button', { name: 'Editar' }).click()
+  await a.fill('input[aria-label="Nome da imagem"]', 'Selo oferta'); await a.selectOption('select[aria-label="Categoria da imagem"]', 'selo'); await a.getByRole('button', { name: 'Salvar' }).click(); await wait(2000)
+  ck('renomear e trocar a categoria salva', (await q(`select name, category from promo_library where name = 'Selo oferta'`))[0]?.category === 'selo')
+  await a.getByRole('button', { name: /Selos e adesivos \(1\)/ }).click()
+  ck('o filtro por categoria mostra só a escolhida', (await a.locator('.lib-card').count()) === 1)
+  const libId = lib[0].id
+  const mini = await ac.request.get(`${BASE}/api/promocoes/biblioteca/${libId}?mini=1`)
+  ck('a miniatura é servida como WEBP, só para quem está logado', mini.status() === 200 && /webp/.test(mini.headers()['content-type'] ?? '') && (await fetch(`${BASE}/api/promocoes/biblioteca/${libId}`)).status === 401)
+
+  // usar no editor: como elemento e como fundo
+  await a.goto(`${BASE}/promocoes/${camp.id}`); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  await q(`update promo_campaigns set layers = null where id = $1`, [camp.id])
+  await a.reload(); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  await a.getByRole('tab', { name: /Biblioteca/ }).click()
+  ck('a aba Biblioteca do editor lista as imagens guardadas', (await a.locator('.lib-pick').count()) === 2)
+  await a.locator('button[aria-label="Colocar cruz vermelha na peça"]').click(); await wait(3000)
+  const lyL = (await q(`select layers from promo_campaigns where id = $1`, [camp.id]))[0].layers.story ?? []
+  ck('clicar na imagem da biblioteca a coloca na peça como elemento (copiada para a promoção)', lyL.length === 1 && lyL[0].type === 'image' && (await q(`select count(*)::int n from promo_assets where id = $1 and campaign_id = $2`, [lyL[0].asset, camp.id]))[0].n === 1, JSON.stringify(lyL[0] ?? null).slice(0, 140))
+  await a.getByRole('tab', { name: /Biblioteca/ }).click()
+  await a.locator('button[aria-label="Usar Selo oferta como fundo"]').click(); await wait(3000)
+  const bgL = (await q(`select overrides from promo_campaigns where id = $1`, [camp.id]))[0].overrides?.background
+  ck('"Fundo" usa a imagem da biblioteca como fundo da promoção', bgL?.kind === 'asset' && (await q(`select count(*)::int n from promo_assets where id = $1 and campaign_id = $2`, [bgL.asset, camp.id]))[0].n === 1)
+  await a.getByRole('tab', { name: /Biblioteca/ }).click()
+  await a.locator('button[aria-label="Colocar cruz vermelha na peça"]').click(); await wait(2500)
+  ck('usar a mesma imagem de novo não duplica o arquivo da promoção', (await q(`select count(*)::int n from promo_assets where campaign_id = $1 and sha256 = (select sha256 from promo_library where id = $2)`, [camp.id, libId]))[0].n === 1)
+
+  // excluir da biblioteca não quebra a peça
+  await a.goto(BASE + '/promocoes/biblioteca'); await idle(a)
+  await a.locator('.lib-card', { hasText: 'cruz vermelha' }).getByRole('button', { name: /Excluir/ }).click(); await wait(2000)
+  ck('excluir da biblioteca apaga só a biblioteca; a peça que usou continua com a imagem', (await q(`select count(*)::int n from promo_library where id = $1`, [libId]))[0].n === 0 && (await q(`select count(*)::int n from promo_assets where id = $1`, [lyL[0].asset]))[0].n === 1)
+  await q(`update promo_campaigns set layers = null where id = $1`, [camp.id])
+
   // política desligada: um encarte por produto
   await a.goto(BASE + '/promocoes'); await idle(a)
   await a.fill('#np-name', 'Sem agrupar'); await a.selectOption('#np-theme', themeId); await a.locator('input[name=group]').uncheck()
@@ -562,6 +615,9 @@ try {
   ck('leitor vê a peça e baixa, mas não edita', (await v.getByRole('button', { name: /Baixar esta peça/ }).count()) === 1 && (await v.locator('button[aria-label="Remover"]').count()) === 0 && (await v.getByRole('button', { name: 'Aprovar encartes' }).count()) === 0 && (await v.locator('#pc-name').count()) === 0)
   ck('leitor vê a barra de zoom mas não pode adicionar elementos', (await v.locator('.canva-addbar button[aria-label="Aumentar zoom"]').count()) === 1 && (await v.locator('.canva-addbar button[title="Adicionar título"]').count()) === 0)
   ck('leitor não envia imagem de elemento pela API (403)', (await vc.request.post(`${BASE}/api/promocoes/camada-imagem/${camp.id}`, { headers: { origin: BASE }, multipart: { file: { name: 'x.png', mimeType: 'image/png', buffer: await foto('#111111') } } })).status() === 403)
+  await v.goto(BASE + '/promocoes/biblioteca'); await idle(v)
+  ck('leitor vê a biblioteca, sem envio nem exclusão', (await v.locator('#lib-file').count()) === 0 && (await v.getByRole('button', { name: /Excluir/ }).count()) === 0)
+  ck('leitor não envia imagem para a biblioteca pela API (403)', (await vc.request.post(BASE + '/api/promocoes/biblioteca', { headers: { origin: BASE }, multipart: { category: 'icone', file: { name: 'x.png', mimeType: 'image/png', buffer: await foto('#111111') } } })).status() === 403)
   ck('leitor não importa planilha pela API (403)', (await vc.request.post(BASE + '/api/promocoes/importar', { headers: { origin: BASE }, multipart: { file: { name: 'p.xlsx', mimeType: XLSX, buffer: planilha } } })).status() === 403)
   ck('leitor não envia arte de tema (403)', (await vc.request.post(`${BASE}/api/promocoes/tema/${themeId}/arte`, { headers: { origin: BASE }, multipart: { role: 'header', format: 'story', file: { name: 'a.png', mimeType: 'image/png', buffer: await arte(300, 100, '#fff') } } })).status() === 403)
 

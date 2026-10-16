@@ -5,16 +5,17 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { zipSync } from 'fflate'
 import { PDFDocument } from 'pdf-lib'
-import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Download, ExternalLink, GripVertical, ImagePlus, Image as ImageIcon, Layers, Palette, Shapes, Settings2, Trash2, Type } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Download, ExternalLink, GripVertical, ImagePlus, Image as ImageIcon, Images, Layers, Palette, Shapes, Settings2, Trash2, Type } from 'lucide-react'
 import { PROMO_FORMATS, PROMO_FORMAT_KEYS, TAG_PRESETS, applyOverrides, paginateSections, type BackgroundChoice, type ItemStyle, type PromoFormat, type PromoOverrides, type Rect, type ThemeConfig } from '@/lib/domain/promo'
 import { expandSelection, layersForPage } from '@/lib/domain/promo-layers'
 import type { Campaign, PromoItem, SizeEdit, ThemeAsset } from '@/lib/promo/store'
 import { canvasToBlob, drawPage, loadImage, loadPromoFonts, pageGeometry, type RenderAssets, type RenderBackground, type RenderItem } from '@/lib/promo/render'
 import { ProductPicker } from '../../produtos/product-picker'
 import { BackgroundGallery } from './background-gallery'
-import { AddBar, LayerBoxes, LayerInspector, LayersCanvas, LayersPanel, MultiInspector, duplicateSelection, useLayerKeys, useLayers } from './layers-ui'
+import { LibraryPicker } from './library-picker'
+import { AddBar, LayerBoxes, addImageLayer, LayerInspector, LayersCanvas, LayersPanel, MultiInspector, duplicateSelection, useLayerKeys, useLayers } from './layers-ui'
 import { QuickEdit } from './quick-edit'
-import { addItemAction, approveCampaignAction, deleteAssetAction, deleteCampaignAction, moveItemAction, patchItemAction, removeItemAction, reorderItemsAction, saveOverridesAction, setItemProductAction, ungroupItemAction, updateCampaignAction, updateItemAction } from '../actions'
+import { addItemAction, approveCampaignAction, deleteAssetAction, deleteCampaignAction, useLibraryImageAction, moveItemAction, patchItemAction, removeItemAction, reorderItemsAction, saveOverridesAction, setItemProductAction, ungroupItemAction, updateCampaignAction, updateItemAction } from '../actions'
 
 type ThemeLite = { id: string; name: string }
 type Props = {
@@ -51,7 +52,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   const [format, setFormat] = useState<PromoFormat>('story')
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
-  const [tab, setTab] = useState<'produtos' | 'camadas' | 'fundo' | 'tema' | 'dados'>('produtos')
+  const [tab, setTab] = useState<'produtos' | 'camadas' | 'fundo' | 'biblioteca' | 'tema' | 'dados'>('produtos')
   const [selIds, setSelIds] = useState<string[]>([])
   const [editingLayer, setEditingLayer] = useState<string | null>(null)
   const [quickId, setQuickId] = useState<string | null>(null)
@@ -249,6 +250,20 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
     } finally { setUploadingBg(false) }
   }
 
+  // ---------- biblioteca de imagens ----------
+  const [libBusy, setLibBusy] = useState(false)
+  async function fromLibrary(item: { id: string; name: string }, as: 'element' | 'bg') {
+    setLibBusy(true); setMsg(null)
+    try {
+      const r = await useLibraryImageAction(campaign.id, item.id)
+      if (!r.ok || !r.id) { setMsg({ kind: 'error', text: r.error ?? 'Não foi possível usar a imagem.' }); return }
+      if (as === 'bg') { chooseBg({ kind: 'asset', asset: r.id }); return }
+      const id = addImageLayer(layersApi, format, pageIdx, { asset: r.id, width: r.width ?? 400, height: r.height ?? 400 })
+      if (!id) { setMsg({ kind: 'error', text: 'Cada formato aceita até 40 elementos livres.' }); return }
+      selectLayer(id); setTab('camadas'); router.refresh()
+    } finally { setLibBusy(false) }
+  }
+
   // ---------- downloads ----------
   const pageBlob = async (fmt: PromoFormat, idx: number) => { layersApi.flush(); const c = document.createElement('canvas'); await renderTo(c, fmt, idx, true); return canvasToBlob(c) }
   const save = (blob: Blob, name: string) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000) }
@@ -339,6 +354,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
           <div className="canva-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === 'produtos'} className={tab === 'produtos' ? 'on' : ''} onClick={() => setTab('produtos')}><Layers size={14} /> Produtos</button>
             <button type="button" role="tab" aria-selected={tab === 'camadas'} className={tab === 'camadas' ? 'on' : ''} onClick={() => setTab('camadas')}><Shapes size={14} /> Camadas{curLayers.length ? ` (${curLayers.length})` : ''}</button>
+            <button type="button" role="tab" aria-selected={tab === 'biblioteca'} className={tab === 'biblioteca' ? 'on' : ''} onClick={() => setTab('biblioteca')}><Images size={14} /> Biblioteca</button>
             <button type="button" role="tab" aria-selected={tab === 'fundo'} className={tab === 'fundo' ? 'on' : ''} onClick={() => setTab('fundo')}><ImageIcon size={14} /> Fundo</button>
             <button type="button" role="tab" aria-selected={tab === 'tema'} className={tab === 'tema' ? 'on' : ''} onClick={() => setTab('tema')}><Palette size={14} /> Tema</button>
             <button type="button" role="tab" aria-selected={tab === 'dados'} className={tab === 'dados' ? 'on' : ''} onClick={() => setTab('dados')}><Settings2 size={14} /> Textos</button>
@@ -382,6 +398,8 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
           )}
 
           {tab === 'camadas' && <LayersPanel api={layersApi} format={format} page={pageIdx} selectedIds={selIds} onSelect={selectLayers} canEdit={canEdit} />}
+
+          {tab === 'biblioteca' && <LibraryPicker items={campaign.library} canEdit={canEdit} busy={libBusy || busy} onAdd={(i) => void fromLibrary(i, 'element')} onBackground={(i) => void fromLibrary(i, 'bg')} />}
 
           {tab === 'fundo' && <BackgroundGallery campaign={campaign} format={format} canEdit={canEdit} busy={busy} uploading={uploadingBg} onChoose={chooseBg} onUpload={(f) => void uploadBg(f)} onDeleteAsset={(id) => act(() => deleteAssetAction(campaign.id, id))} />}
 

@@ -5,6 +5,7 @@ import { pool, withTx } from '../db.ts'
 import { displayName, normalizeItemStyle, normalizeOverrides, normalizeTheme, PROMO_FORMAT_KEYS, type ItemStyle, type PromoFormat, type PromoOverrides, type PromoRow, type ThemeConfig } from '../domain/promo.ts'
 import { groupItems, groupSummary, type GroupInput, type Variants } from '../domain/promo-group.ts'
 import { normalizeLayers, type Layers } from '../domain/promo-layers.ts'
+import { listLibrary, type LibraryItem } from './library.ts'
 import { sniffImage } from '../catalog/images.ts'
 import { ingestImage, saveProduct } from '../catalog/store.ts'
 
@@ -127,6 +128,7 @@ export type Campaign = {
   overrides: PromoOverrides
   /** elementos livres (texto, imagem, formas) por formato */ layers: Layers
   /** imagens enviadas para esta promoção (elementos e fundos) */ assets: CampaignAsset[]
+  /** imagens da biblioteca (ícones, logos, selos…) para colocar na peça */ library: LibraryItem[]
   /** temas que têm imagem de fundo, para escolher o fundo de outro tema */ themeBackgrounds: { id: string; name: string; formats: PromoFormat[] }[]
 }
 export type CampaignAsset = { id: string; width: number; height: number; used: boolean }
@@ -208,7 +210,7 @@ export async function getCampaign(id: string): Promise<{ campaign: Campaign; the
   if (overrides.background?.kind === 'asset') usedIds.add(overrides.background.asset)
   const assets: CampaignAsset[] = (await pool.query(`select id, width, height from promo_assets where campaign_id = $1 order by created_at`, [id])).rows.map((a) => ({ id: a.id, width: a.width, height: a.height, used: usedIds.has(a.id) }))
   const tb = (await pool.query(`select t.id, t.name, array_agg(a.format order by a.format) as formats from promo_themes t join promo_theme_assets a on a.theme_id = t.id and a.role = 'background' group by t.id, t.name order by t.name`)).rows
-  return { campaign: { ...c, overrides, layers, assets, themeBackgrounds: tb as Campaign['themeBackgrounds'] }, theme: c.theme_id ? await getTheme(c.theme_id) : null, items: rows.map((r) => ({ ...r, style: normalizeItemStyle(r.style) })) }
+  return { campaign: { ...c, overrides, layers, assets, library: await listLibrary(), themeBackgrounds: tb as Campaign['themeBackgrounds'] }, theme: c.theme_id ? await getTheme(c.theme_id) : null, items: rows.map((r) => ({ ...r, style: normalizeItemStyle(r.style) })) }
 }
 
 export async function updateCampaign(id: string, v: { name: string; title: string | null; validity: string | null; themeId: string | null }): Promise<{ ok: boolean; error?: string }> {

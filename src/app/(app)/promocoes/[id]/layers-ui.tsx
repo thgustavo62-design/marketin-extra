@@ -119,6 +119,15 @@ export function duplicateSelection(api: LayersApi, fmt: PromoFormat, ids: string
   return r.ids.length && api.add(fmt, ...r.added) ? r.ids : []
 }
 
+/** Coloca uma imagem já guardada na promoção como elemento no meio da peça (até 40% da largura, na proporção original). Devolve o id ou null se passou do limite. */
+export function addImageLayer(api: LayersApi, fmt: PromoFormat, page: number, img: { asset: string; width: number; height: number }): string | null {
+  const { w: W, h: H } = PROMO_FORMATS[fmt]
+  const k = (W * 0.4) / Math.max(img.width, img.height)
+  const w = Math.round(img.width * k), h = Math.round(img.height * k)
+  const l = makeLayer('image', fmt, { page, asset: img.asset, w, h, x: Math.round((W - w) / 2), y: Math.round((H - h) / 2) })
+  return api.add(fmt, l) ? l.id : null
+}
+
 /** Atalhos como no Canva: Delete, setas (Shift = 10 px), Ctrl+A (tudo da peça), Ctrl+D (duplicar), Ctrl+G (agrupar) e Ctrl+Shift+G (desagrupar), Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z, Esc. Não atrapalha quem está digitando. */
 export function useLayerKeys(o: { api: LayersApi; format: PromoFormat; selIds: string[]; select: (ids: string[]) => void; canEdit: boolean; pageIds: () => string[] }) {
   const ref = useRef(o)

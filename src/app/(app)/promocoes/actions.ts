@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { audit, writerOrError } from '@/lib/auth'
+import { deleteLibraryItem, importLibraryToCampaign, updateLibraryItem } from '@/lib/promo/library'
 import { isUuid } from '@/lib/form'
 import { PROMO_FORMAT_KEYS, parsePrice, type ItemStyle, type PromoFormat, type PromoOverrides } from '@/lib/domain/promo'
 import { addItem, approveCampaign, createTheme, deleteCampaign, deleteTheme, deleteThemeAsset, moveItem, patchItem, removeItem, reorderItems, deleteAsset, saveLayers, saveOverrides, saveThemeConfig, setItemProduct, THEME_ROLES, ungroupItem, updateCampaign, type SizeEdit, type ThemeRole } from '@/lib/promo/store'
@@ -161,4 +162,30 @@ export async function deleteAssetAction(campaignId: string, assetId: string): Pr
   const r = await deleteAsset(campaignId, assetId)
   if (r.ok) refresh(campaignId)
   return r
+}
+
+// ---------- biblioteca de imagens ----------
+export async function updateLibraryItemAction(id: string, name: string, category: string): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(id)) return g.ok ? NO : { ok: false, error: g.error }
+  const r = await updateLibraryItem(id, { name, category })
+  if (r.ok) revalidatePath('/promocoes/biblioteca')
+  return r
+}
+
+export async function deleteLibraryItemAction(id: string): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(id)) return g.ok ? NO : { ok: false, error: g.error }
+  if (!(await deleteLibraryItem(id))) return { ok: false, error: 'Imagem não encontrada.' }
+  await audit('promocao_biblioteca_excluida', { userId: g.user.id, target: id })
+  revalidatePath('/promocoes/biblioteca')
+  return { ok: true }
+}
+
+/** Traz uma imagem da biblioteca para a promoção (para usar como elemento ou fundo). */
+export async function useLibraryImageAction(campaignId: string, libraryId: string): Promise<{ ok: boolean; error?: string; id?: string; width?: number; height?: number }> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(campaignId) || !isUuid(libraryId)) return g.ok ? NO : { ok: false, error: g.error }
+  const r = await importLibraryToCampaign(campaignId, libraryId, g.user.id)
+  return r.ok ? { ok: true, id: r.id, width: r.width, height: r.height } : { ok: false, error: r.error }
 }
