@@ -9,7 +9,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ assetId: string
   const user = await getSession()
   if (!user || user.mustChange) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
   if (!isUuid(assetId)) return NextResponse.json({ error: 'Não encontrado.' }, { status: 404 })
-  const a = await getAsset(assetId)
+  const a = await getAsset(assetId, new URL(req.url).searchParams.get('mini') === '1')
   if (!a) return NextResponse.json({ error: 'Não encontrado.' }, { status: 404 })
   const etag = `"${a.sha}"`
   if (req.headers.get('if-none-match') === etag) return new NextResponse(null, { status: 304, headers: { ETag: etag, 'Cache-Control': 'private, max-age=86400, immutable' } })

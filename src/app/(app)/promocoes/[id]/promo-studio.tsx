@@ -5,14 +5,16 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { zipSync } from 'fflate'
 import { PDFDocument } from 'pdf-lib'
-import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Download, ExternalLink, GripVertical, ImagePlus, Layers, Palette, Shapes, Settings2, Trash2, Type } from 'lucide-react'
-import { PROMO_FORMATS, PROMO_FORMAT_KEYS, TAG_PRESETS, applyOverrides, paginateSections, type ItemStyle, type PromoFormat, type PromoOverrides, type Rect, type ThemeConfig } from '@/lib/domain/promo'
-import { layersForPage } from '@/lib/domain/promo-layers'
+import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Download, ExternalLink, GripVertical, ImagePlus, Image as ImageIcon, Layers, Palette, Shapes, Settings2, Trash2, Type } from 'lucide-react'
+import { PROMO_FORMATS, PROMO_FORMAT_KEYS, TAG_PRESETS, applyOverrides, paginateSections, type BackgroundChoice, type ItemStyle, type PromoFormat, type PromoOverrides, type Rect, type ThemeConfig } from '@/lib/domain/promo'
+import { expandSelection, layersForPage } from '@/lib/domain/promo-layers'
 import type { Campaign, PromoItem, SizeEdit, ThemeAsset } from '@/lib/promo/store'
-import { canvasToBlob, drawPage, loadImage, loadPromoFonts, pageGeometry, type RenderAssets, type RenderItem } from '@/lib/promo/render'
+import { canvasToBlob, drawPage, loadImage, loadPromoFonts, pageGeometry, type RenderAssets, type RenderBackground, type RenderItem } from '@/lib/promo/render'
 import { ProductPicker } from '../../produtos/product-picker'
-import { AddBar, LayerBoxes, LayerInspector, LayersCanvas, LayersPanel, duplicateLayer, useLayerKeys, useLayers } from './layers-ui'
-import { addItemAction, approveCampaignAction, deleteCampaignAction, moveItemAction, patchItemAction, removeItemAction, reorderItemsAction, saveOverridesAction, setItemProductAction, ungroupItemAction, updateCampaignAction, updateItemAction } from '../actions'
+import { BackgroundGallery } from './background-gallery'
+import { AddBar, LayerBoxes, LayerInspector, LayersCanvas, LayersPanel, MultiInspector, duplicateSelection, useLayerKeys, useLayers } from './layers-ui'
+import { QuickEdit } from './quick-edit'
+import { addItemAction, approveCampaignAction, deleteAssetAction, deleteCampaignAction, moveItemAction, patchItemAction, removeItemAction, reorderItemsAction, saveOverridesAction, setItemProductAction, ungroupItemAction, updateCampaignAction, updateItemAction } from '../actions'
 
 type ThemeLite = { id: string; name: string }
 type Props = {
@@ -49,8 +51,10 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   const [format, setFormat] = useState<PromoFormat>('story')
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
-  const [tab, setTab] = useState<'produtos' | 'camadas' | 'tema' | 'dados'>('produtos')
-  const [selLayer, setSelLayer] = useState<string | null>(null)
+  const [tab, setTab] = useState<'produtos' | 'camadas' | 'fundo' | 'tema' | 'dados'>('produtos')
+  const [selIds, setSelIds] = useState<string[]>([])
+  const [editingLayer, setEditingLayer] = useState<string | null>(null)
+  const [quickId, setQuickId] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, start] = useTransition()
@@ -60,6 +64,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   const [dragId, setDragId] = useState<string | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadingBg, setUploadingBg] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const paperRef = useRef<HTMLDivElement>(null)
   const fotoRef = useRef<HTMLInputElement>(null)
@@ -85,11 +90,12 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
 
   const layersApi = useLayers(campaign.id, campaign.layers, canEdit, () => router.refresh())
   const curLayers = layersApi.layers[format]
-  const selL = curLayers.find((l) => l.id === selLayer) ?? null
+  const selL = selIds.length === 1 ? (curLayers.find((l) => l.id === selIds[0]) ?? null) : null
   const pageLayers = useMemo(() => layersForPage(curLayers, pageIdx), [curLayers, pageIdx])
   // sem peça aberta com este elemento, a seleção some
-  useEffect(() => { if (selLayer && !curLayers.some((l) => l.id === selLayer)) setSelLayer(null) }, [selLayer, curLayers])
-  useLayerKeys({ api: layersApi, format, selId: selLayer, select: (id) => { setSelLayer(id) }, canEdit })
+  useEffect(() => { if (selIds.some((id) => !curLayers.some((l) => l.id === id))) setSelIds((ids) => ids.filter((id) => curLayers.some((l) => l.id === id))) }, [selIds, curLayers])
+  useEffect(() => { if (editingLayer && selIds[0] !== editingLayer) setEditingLayer(null) }, [editingLayer, selIds])
+  useLayerKeys({ api: layersApi, format, selIds, select: (ids) => { setSelIds(ids); if (ids.length) { setSelected(null); setQuickId(null) } }, canEdit, pageIds: () => pageLayers.filter((l) => !l.locked).map((l) => l.id) })
 
   // o que cada encarte leva para o desenho: tabela de tamanhos e fragrâncias só quando ligadas
   const toRender = useCallback(async (it: PromoItem): Promise<RenderItem> => {
@@ -114,6 +120,17 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
       background: await getImg(url('background', find('background'))), header: await getImg(url('header', find('header'))), footer: await getImg(url('footer', find('footer'))),
       badge: await getImg(shared('badge')), tag: await getImg(shared('tag')),
     }
+    // fundo escolhido para a promoção (galeria) vale no lugar do fundo do tema
+    const choice = campaign.overrides.background
+    let bg: RenderBackground | null = null
+    if (choice?.kind === 'preset' || choice?.kind === 'color') bg = choice
+    else if (choice?.kind === 'asset') { const img = await getImg(`/api/promocoes/asset/${choice.asset}`); if (img) bg = { kind: 'image', img } }
+    else if (choice?.kind === 'theme') {
+      const tb = campaign.themeBackgrounds.find((t) => t.id === choice.themeId)
+      const tf = tb ? (tb.formats.includes(fmt) ? fmt : tb.formats[0]) : null
+      const img = tf ? await getImg(`/api/promocoes/tema/${choice.themeId}/background/${tf}`) : null
+      if (img) bg = { kind: 'image', img }
+    }
     const g = cfg.grid[fmt]
     const ps = paginateSections(items, g.cols * g.rows, cfg.breakBySection[fmt])
     const pg = ps[Math.min(idx, Math.max(0, ps.length - 1))] ?? []
@@ -121,10 +138,10 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
     const ls = withLayers ? layersForPage(layersApi.latest.current[fmt], Math.min(idx, Math.max(0, ps.length - 1))) : []
     const layerImages: Record<string, HTMLImageElement | null> = {}
     for (const l of ls) if (l.asset && !(l.asset in layerImages)) layerImages[l.asset] = await getImg(`/api/promocoes/asset/${l.asset}`)
-    drawPage(canvas, { format: fmt, theme: cfg, title: campaign.title, validity: campaign.validity, extraText: campaign.overrides.extraText ?? null, assets, items: render, layers: ls, layerImages })
+    drawPage(canvas, { format: fmt, theme: cfg, title: campaign.title, validity: campaign.validity, extraText: campaign.overrides.extraText ?? null, assets, items: render, layers: ls, layerImages, bg })
     const gm = pageGeometry({ format: fmt, theme: cfg, assets, count: pg.length })
     return { W: gm.W, H: gm.H, cells: gm.cells, ids: pg.map((i) => i.id) }
-  }, [theme, cfg, items, campaign.title, campaign.validity, campaign.overrides, getImg, toRender, layersApi.latest])
+  }, [theme, cfg, items, campaign.title, campaign.validity, campaign.overrides, campaign.themeBackgrounds, getImg, toRender, layersApi.latest])
 
   useEffect(() => {
     const c = canvasRef.current
@@ -166,13 +183,15 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   // ---------- seleção e reordenação ----------
   const select = (id: string | null) => {
     setSelected(id)
-    if (id) setSelLayer(null)
+    if (id) setSelIds([])
+    if (id !== quickId) setQuickId(null)
     if (id) {
       const k = pages.findIndex((p) => p.some((i) => i.id === id))
       if (k >= 0) setPage(k)
     }
   }
-  const selectLayer = (id: string | null) => { setSelLayer(id); if (id) setSelected(null) }
+  const selectLayers = (ids: string[]) => { setSelIds(ids); if (ids.length) { setSelected(null); setQuickId(null) } }
+  const selectLayer = (id: string | null) => selectLayers(id ? expandSelection(layersApi.latest.current[format], [id]) : [])
   const reorder = (fromId: string, toId: string) => {
     if (fromId === toId) return
     const arr = [...items]
@@ -211,6 +230,23 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
       setMsg({ kind: 'ok', text: 'Foto enviada: ela também ficou no banco de imagens, ligada ao produto.' })
       router.refresh()
     } finally { setUploading(false); if (fotoRef.current) fotoRef.current.value = '' }
+  }
+
+  // ---------- fundo da promoção ----------
+  const chooseBg = (bg: BackgroundChoice | null) => {
+    const next = { ...campaign.overrides }
+    if (bg) next.background = bg; else delete next.background
+    act(() => saveOverridesAction(campaign.id, next))
+  }
+  async function uploadBg(file: File) {
+    setUploadingBg(true); setMsg(null)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const res = await fetch(`/api/promocoes/camada-imagem/${campaign.id}`, { method: 'POST', body: fd })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { setMsg({ kind: 'error', text: j.error ?? 'Não foi possível enviar a imagem.' }); return }
+      chooseBg({ kind: 'asset', asset: j.id })
+    } finally { setUploadingBg(false) }
   }
 
   // ---------- downloads ----------
@@ -303,6 +339,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
           <div className="canva-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === 'produtos'} className={tab === 'produtos' ? 'on' : ''} onClick={() => setTab('produtos')}><Layers size={14} /> Produtos</button>
             <button type="button" role="tab" aria-selected={tab === 'camadas'} className={tab === 'camadas' ? 'on' : ''} onClick={() => setTab('camadas')}><Shapes size={14} /> Camadas{curLayers.length ? ` (${curLayers.length})` : ''}</button>
+            <button type="button" role="tab" aria-selected={tab === 'fundo'} className={tab === 'fundo' ? 'on' : ''} onClick={() => setTab('fundo')}><ImageIcon size={14} /> Fundo</button>
             <button type="button" role="tab" aria-selected={tab === 'tema'} className={tab === 'tema' ? 'on' : ''} onClick={() => setTab('tema')}><Palette size={14} /> Tema</button>
             <button type="button" role="tab" aria-selected={tab === 'dados'} className={tab === 'dados' ? 'on' : ''} onClick={() => setTab('dados')}><Settings2 size={14} /> Textos</button>
           </div>
@@ -344,7 +381,9 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
             </section>
           )}
 
-          {tab === 'camadas' && <LayersPanel api={layersApi} format={format} page={pageIdx} selectedId={selLayer} onSelect={selectLayer} canEdit={canEdit} />}
+          {tab === 'camadas' && <LayersPanel api={layersApi} format={format} page={pageIdx} selectedIds={selIds} onSelect={selectLayers} canEdit={canEdit} />}
+
+          {tab === 'fundo' && <BackgroundGallery campaign={campaign} format={format} canEdit={canEdit} busy={busy} uploading={uploadingBg} onChoose={chooseBg} onUpload={(f) => void uploadBg(f)} onDeleteAsset={(id) => act(() => deleteAssetAction(campaign.id, id))} />}
 
           {tab === 'tema' && (
             <section aria-label="Temas">
@@ -393,7 +432,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
           {!theme ? <p className="empty">Escolha um tema na aba &quot;Tema&quot; para ver a peça.</p> : (
             <div ref={paperRef} className="canva-paper" style={{ aspectRatio: `${PROMO_FORMATS[format].w} / ${PROMO_FORMATS[format].h}`, ['--ar' as string]: PROMO_FORMATS[format].w / PROMO_FORMATS[format].h, ['--zoom' as string]: zoom }}>
               <canvas ref={canvasRef} aria-label={`Prévia ${PROMO_FORMATS[format].label}`} data-ready={rendering ? '0' : '1'} />
-              <LayersCanvas format={format} list={pageLayers} getImg={getImg} />
+              <LayersCanvas format={format} list={pageLayers} hideId={editingLayer} getImg={getImg} />
               {geo && (
                 <div className="canva-overlay">
                   {geo.cells.map((c, i) => {
@@ -401,7 +440,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
                     return (
                       <div key={id} className={`canva-hit${selected === id ? ' sel' : ''}${overId === id ? ' over' : ''}`} data-item={id} title="Clique para editar; arraste sobre outro para trocar de lugar" draggable={canEdit}
                         style={{ left: `${(c.x / geo.W) * 100}%`, top: `${(c.y / geo.H) * 100}%`, width: `${(c.w / geo.W) * 100}%`, height: `${(c.h / geo.H) * 100}%` }}
-                        onClick={() => select(id)}
+                        onClick={() => select(id)} onDoubleClick={() => { if (canEdit) { select(id); setQuickId(id) } }}
                         onDragStart={(e) => { setDragId(id); e.dataTransfer.setData('text/plain', id) }} onDragEnd={() => { setDragId(null); setOverId(null) }}
                         onDragOver={(e) => { if (dragId && dragId !== id) { e.preventDefault(); setOverId(id) } }} onDragLeave={() => setOverId((o) => (o === id ? null : o))}
                         onDrop={(e) => { e.preventDefault(); if (dragId) reorder(dragId, id); setDragId(null); setOverId(null) }} />
@@ -409,7 +448,15 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
                   })}
                 </div>
               )}
-              <LayerBoxes format={format} list={pageLayers} selectedId={selLayer} onSelect={selectLayer} onEditText={() => { setTimeout(() => document.getElementById('ly-text')?.focus(), 30) }} api={layersApi} paperRef={paperRef} canEdit={canEdit} />
+              {quickId && geo && (() => {
+                const k = geo.ids.indexOf(quickId), it = items.find((x) => x.id === quickId)
+                if (k < 0 || !it) return null
+                const c = geo.cells[k]
+                return <QuickEdit key={it.id} initial={{ name: it.name, note: it.note ?? '', price: brl(it.price) }} left={(c.x / geo.W) * 100} top={((c.y + c.h * 0.5) / geo.H) * 100} disabled={busy}
+                  onClose={() => setQuickId(null)}
+                  onSave={(v) => { setQuickId(null); act(async () => { const r = await updateItemAction(campaign.id, it.id, v.name, v.price, it.photo_image_id); if (!r.ok) return r; return v.note !== (it.note ?? '') ? patchItemAction(campaign.id, it.id, { note: v.note }) : r }) }} />
+              })()}
+              <LayerBoxes format={format} list={pageLayers} selectedIds={selIds} onSelect={selectLayers} editingId={editingLayer} setEditingId={setEditingLayer} api={layersApi} paperRef={paperRef} canEdit={canEdit} />
             </div>
           )}
           <div className="canva-pager">
@@ -421,9 +468,11 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
 
         {/* inspetor */}
         <aside className="canva-right" aria-label="Editar produto">
-          {selL ? (
+          {selIds.length > 1 ? (
+            <MultiInspector api={layersApi} format={format} ids={selIds} canEdit={canEdit} onSelect={selectLayers} onClose={() => selectLayers([])} />
+          ) : selL ? (
             <LayerInspector api={layersApi} format={format} layer={selL} page={pageIdx} pageCount={Math.max(1, pages.length)} canEdit={canEdit} onClose={() => selectLayer(null)} onMsg={setMsg}
-              onDuplicate={() => { const id = duplicateLayer(layersApi, format, selL.id); if (id) selectLayer(id) }}
+              onDuplicate={() => { const c = duplicateSelection(layersApi, format, [selL.id]); if (c.length) selectLayers(c) }}
               onDelete={() => { layersApi.remove(format, selL.id); selectLayer(null) }} />
           ) : sel ? (
             <section>

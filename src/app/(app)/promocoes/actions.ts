@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { audit, writerOrError } from '@/lib/auth'
 import { isUuid } from '@/lib/form'
 import { PROMO_FORMAT_KEYS, parsePrice, type ItemStyle, type PromoFormat, type PromoOverrides } from '@/lib/domain/promo'
-import { addItem, approveCampaign, createTheme, deleteCampaign, deleteTheme, deleteThemeAsset, moveItem, patchItem, removeItem, reorderItems, saveLayers, saveOverrides, saveThemeConfig, setItemProduct, THEME_ROLES, ungroupItem, updateCampaign, type SizeEdit, type ThemeRole } from '@/lib/promo/store'
+import { addItem, approveCampaign, createTheme, deleteCampaign, deleteTheme, deleteThemeAsset, moveItem, patchItem, removeItem, reorderItems, deleteAsset, saveLayers, saveOverrides, saveThemeConfig, setItemProduct, THEME_ROLES, ungroupItem, updateCampaign, type SizeEdit, type ThemeRole } from '@/lib/promo/store'
 
 type Out = { ok: boolean; error?: string; id?: string }
 const refresh = (id: string) => { revalidatePath(`/promocoes/${id}`); revalidatePath(`/editor/${id}`) }
@@ -151,6 +151,14 @@ export async function ungroupItemAction(campaignId: string, itemId: string): Pro
   const g = await writerOrError()
   if (!g.ok || !isUuid(campaignId) || !isUuid(itemId)) return g.ok ? NO : { ok: false, error: g.error }
   const r = await ungroupItem(itemId)
+  if (r.ok) refresh(campaignId)
+  return r
+}
+
+export async function deleteAssetAction(campaignId: string, assetId: string): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(campaignId) || !isUuid(assetId)) return g.ok ? NO : { ok: false, error: g.error }
+  const r = await deleteAsset(campaignId, assetId)
   if (r.ok) refresh(campaignId)
   return r
 }

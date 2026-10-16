@@ -148,3 +148,19 @@ test('textos da promoção valem no lugar dos do tema', () => {
   assert.equal(t.tagText, 'Oba!'); assert.equal(t.showTag, false); assert.deepEqual(t.footerLines, ['(27) 99999-0000', 'Rua A, 1'])
   assert.deepEqual(applyOverrides(DEFAULT_THEME, {}), DEFAULT_THEME) // sem texto próprio: fica o do tema
 })
+
+test('fundo da peça: aceita só escolha válida (pronto, cores, imagem, tema) e entra nos textos da promoção', async () => {
+  const { normalizeBackground, normalizeOverrides, BACKGROUND_PRESETS } = await import('../src/lib/domain/promo.ts')
+  const U = '3f2b6c1e-8a4d-4c7e-9f10-2b5d6e7a8c90'
+  assert.deepEqual(normalizeBackground({ kind: 'preset', id: 'ceu' }), { kind: 'preset', id: 'ceu' })
+  assert.equal(normalizeBackground({ kind: 'preset', id: 'nao-existe' }), undefined)
+  assert.deepEqual(normalizeBackground({ kind: 'color', color: '#FF0000', color2: '#00FF00' }), { kind: 'color', color: '#ff0000', color2: '#00ff00' })
+  assert.deepEqual(normalizeBackground({ kind: 'color', color: '#ff0000', color2: 'azul' }), { kind: 'color', color: '#ff0000' })
+  assert.equal(normalizeBackground({ kind: 'color', color: 'vermelho' }), undefined)
+  assert.deepEqual(normalizeBackground({ kind: 'asset', asset: U }), { kind: 'asset', asset: U })
+  assert.equal(normalizeBackground({ kind: 'asset', asset: '../etc/passwd' }), undefined)
+  assert.deepEqual(normalizeBackground({ kind: 'theme', themeId: U }), { kind: 'theme', themeId: U })
+  assert.equal(normalizeBackground('lixo'), undefined)
+  assert.deepEqual(normalizeOverrides({ background: { kind: 'preset', id: 'roxo' }, tagText: 'Oba' }), { tagText: 'Oba', background: { kind: 'preset', id: 'roxo' } })
+  assert.ok(BACKGROUND_PRESETS.length >= 12 && new Set(BACKGROUND_PRESETS.map((p) => p.id)).size === BACKGROUND_PRESETS.length)
+})

@@ -12,6 +12,7 @@ export type Layer = {
   /** giro em graus */ rot: number
   opacity: number
   hidden: boolean; locked: boolean
+  /** elementos com o mesmo grupo se movem e se redimensionam juntos */ group?: string
   /** null = aparece em todas as peças do formato; n = só na peça n (começando em 0) */
   page: number | null
   // texto
@@ -52,6 +53,7 @@ export function normalizeLayers(raw: unknown): Layers {
         x: num(l.x, -W, 2 * W, 0), y: num(l.y, -H, 2 * H, 0), w: num(l.w, 8, 2 * W, 200), h: num(l.h, 4, 2 * H, 80),
         rot: num(l.rot, -360, 360, 0), opacity: num(l.opacity, 0, 1, 1),
         hidden: l.hidden === true, locked: l.locked === true,
+        ...(typeof l.group === 'string' && /^[a-z0-9-]{4,40}$/i.test(l.group) ? { group: l.group } : {}),
         page: l.page === null || l.page === undefined ? null : Number.isInteger(l.page) && (l.page as number) >= 0 && (l.page as number) < 200 ? (l.page as number) : null,
       }
       if (type === 'text') {
@@ -125,4 +127,104 @@ export function makeLayer(type: LayerType, f: PromoFormat, extra: Partial<Layer>
   if (type === 'image') { const w = Math.round(W * 0.4), h = Math.round(W * 0.4); return { ...base, x: Math.round((W - w) / 2), y: Math.round((H - h) / 2), w, h, ...extra } }
   const w = Math.round(W * 0.4), h = Math.round(W * 0.25)
   return { ...base, x: Math.round((W - w) / 2), y: Math.round((H - h) / 2), w, h, shape: 'round', fill: '#ffd21f', border: null, borderW: 0, radius: 36, ...extra }
+}
+
+// ---------- seleção múltipla e grupos ----------
+export type Bounds = { x: number; y: number; w: number; h: number }
+
+/** Caixa que envolve os elementos (considerando o giro de cada um). */
+export function boundsOf(list: Layer[], ids: string[]): Bounds | null {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (const l of list) {
+    if (!ids.includes(l.id)) continue
+    const r = (l.rot * Math.PI) / 180, c = Math.abs(Math.cos(r)), s = Math.abs(Math.sin(r))
+    const bw = l.w * c + l.h * s, bh = l.w * s + l.h * c, cx = l.x + l.w / 2, cy = l.y + l.h / 2
+    x0 = Math.min(x0, cx - bw / 2); x1 = Math.max(x1, cx + bw / 2); y0 = Math.min(y0, cy - bh / 2); y1 = Math.max(y1, cy + bh / 2)
+  }
+  return Number.isFinite(x0) ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null
+}
+
+/** Clicar em um membro de um grupo seleciona o grupo inteiro; ids que não existem saem. */
+export function expandSelection(list: Layer[], ids: string[]): string[] {
+  const groups = new Set(list.filter((l) => ids.includes(l.id) && l.group).map((l) => l.group))
+  return list.filter((l) => ids.includes(l.id) || (l.group && groups.has(l.group))).map((l) => l.id)
+}
+
+/** Junta os elementos num grupo (pelo menos dois). Os que já estavam em outro grupo passam para o novo. */
+export function groupLayers(list: Layer[], ids: string[]): Layer[] {
+  const sel = expandSelection(list, ids)
+  if (sel.length < 2) return list
+  const g = newLayerId()
+  return list.map((l) => (sel.includes(l.id) ? { ...l, group: g } : l))
+}
+
+/** Desfaz os grupos dos elementos escolhidos (e de quem estiver no mesmo grupo). */
+export function ungroupLayers(list: Layer[], ids: string[]): Layer[] {
+  const sel = expandSelection(list, ids)
+  return list.map((l) => {
+    if (!sel.includes(l.id) || !l.group) return l
+    const { group: _g, ...rest } = l
+    return rest
+  })
+}
+
+export function moveSelection(list: Layer[], ids: string[], dx: number, dy: number): Layer[] {
+  return list.map((l) => (ids.includes(l.id) && !l.locked ? { ...l, x: Math.round(l.x + dx), y: Math.round(l.y + dy) } : l))
+}
+
+/** Alinha a seleção: com 2 ou mais elementos, entre si (pela caixa que os envolve); com um só, à peça. */
+export function alignSelection(list: Layer[], ids: string[], a: Align, W: number, H: number): Layer[] {
+  const sel = list.filter((l) => ids.includes(l.id) && !l.locked)
+  if (!sel.length) return list
+  const area: Bounds = sel.length > 1 ? boundsOf(list, sel.map((l) => l.id))! : { x: 0, y: 0, w: W, h: H }
+  return list.map((l) => {
+    if (!sel.includes(l)) return l
+    const b = boundsOf([l], [l.id])!
+    const dx = a === 'left' ? area.x - b.x : a === 'hcenter' ? area.x + area.w / 2 - (b.x + b.w / 2) : a === 'right' ? area.x + area.w - (b.x + b.w) : 0
+    const dy = a === 'top' ? area.y - b.y : a === 'vcenter' ? area.y + area.h / 2 - (b.y + b.h / 2) : a === 'bottom' ? area.y + area.h - (b.y + b.h) : 0
+    return { ...l, x: Math.round(l.x + dx), y: Math.round(l.y + dy) }
+  })
+}
+
+/** Distribui pelo menos 3 elementos com espaços iguais entre eles (horizontal ou vertical). */
+export function distribute(list: Layer[], ids: string[], axis: 'h' | 'v'): Layer[] {
+  const sel = list.filter((l) => ids.includes(l.id) && !l.locked)
+  if (sel.length < 3) return list
+  const box = (l: Layer) => boundsOf([l], [l.id])!
+  const pos = (b: Bounds) => (axis === 'h' ? b.x : b.y), size = (b: Bounds) => (axis === 'h' ? b.w : b.h)
+  const order = [...sel].sort((p, q) => pos(box(p)) - pos(box(q)))
+  const first = box(order[0]), last = box(order[order.length - 1])
+  const total = pos(last) + size(last) - pos(first)
+  const gap = (total - order.reduce((n, l) => n + size(box(l)), 0)) / (order.length - 1)
+  const moved = new Map<string, number>()
+  let cur = pos(first)
+  for (const l of order) { const b = box(l); moved.set(l.id, cur - pos(b)); cur += size(b) + gap }
+  return list.map((l) => (moved.has(l.id) ? { ...l, ...(axis === 'h' ? { x: Math.round(l.x + moved.get(l.id)!) } : { y: Math.round(l.y + moved.get(l.id)!) }) } : l))
+}
+
+/** Redimensiona a seleção como um bloco: leva a caixa "from" para a caixa "to" (posição e tamanho de cada um na mesma proporção; letras escalam junto). */
+export function scaleSelection(list: Layer[], ids: string[], from: Bounds, to: Bounds): Layer[] {
+  if (from.w <= 0 || from.h <= 0) return list
+  const kx = to.w / from.w, ky = to.h / from.h, kt = Math.min(kx, ky)
+  return list.map((l) => {
+    if (!ids.includes(l.id) || l.locked) return l
+    const cx = l.x + l.w / 2, cy = l.y + l.h / 2
+    const ncx = to.x + (cx - from.x) * kx, ncy = to.y + (cy - from.y) * ky
+    const w = Math.max(8, l.w * kx), h = Math.max(4, l.h * ky)
+    const n: Layer = { ...l, x: Math.round(ncx - w / 2), y: Math.round(ncy - h / 2), w: Math.round(w), h: Math.round(h) }
+    if (l.type === 'text') n.size = Math.max(8, Math.min(600, Math.round((l.size ?? 64) * kt)))
+    return n
+  })
+}
+
+/** Cópias da seleção (deslocadas) para colocar no fim da lista. Cada grupo copiado vira um grupo novo. */
+export function duplicateLayers(list: Layer[], ids: string[], offset = 24): { added: Layer[]; ids: string[] } {
+  const sel = list.filter((l) => ids.includes(l.id))
+  const groups = new Map<string, string>()
+  const added = sel.map((l) => {
+    const c: Layer = { ...l, id: newLayerId(), x: l.x + offset, y: l.y + offset, locked: false }
+    if (l.group) { if (!groups.has(l.group)) groups.set(l.group, newLayerId()); c.group = groups.get(l.group) }
+    return c
+  })
+  return { added, ids: added.map((l) => l.id) }
 }

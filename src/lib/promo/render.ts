@@ -1,11 +1,14 @@
 // Desenho da peça de promoção em canvas (navegador): feed, story e A4. Mesmo código para a prévia e para baixar.
-import { PROMO_FORMATS, pageLayout, placeCells, priceParts, type ItemStyle, type PromoFormat, type Rect, type ThemeConfig } from '../domain/promo.ts'
+import { BACKGROUND_PRESETS, PROMO_FORMATS, pageLayout, placeCells, priceParts, type ItemStyle, type PromoFormat, type Rect, type ThemeConfig } from '../domain/promo.ts'
 import type { Layer } from '../domain/promo-layers.ts'
 
 export type RenderAssets = { background?: HTMLImageElement | null; header?: HTMLImageElement | null; footer?: HTMLImageElement | null; badge?: HTMLImageElement | null; tag?: HTMLImageElement | null }
+/** Fundo escolhido para a promoção no lugar do fundo do tema: pronto, duas cores ou imagem (já carregada). */
+export type RenderBackground = { kind: 'preset'; id: string } | { kind: 'color'; color: string; color2?: string } | { kind: 'image'; img: HTMLImageElement }
 export type RenderItem = { name: string; price: number; img: HTMLImageElement | null; /** tabela de tamanhos (fraldas): um quadro por tamanho com as unidades */ sizes?: { label: string; units: number | null }[]; /** preço original ("De R$"), riscado no selo */ oldPrice?: number | null; /** subtítulo abaixo do nome */ note?: string | null; style?: ItemStyle }
 export type RenderOpts = {
   format: PromoFormat; theme: ThemeConfig; title: string | null; validity: string | null; /** texto livre (endereço, telefone) logo acima do rodapé */ extraText?: string | null; assets: RenderAssets; items: RenderItem[]
+  /** fundo da promoção (vale no lugar do fundo do tema) */ bg?: RenderBackground | null
   /** elementos livres desta peça (já filtrados pela página), do fundo para o topo; imagens em `layerImages` pelo id do arquivo */ layers?: Layer[]; layerImages?: Record<string, HTMLImageElement | null>
 }
 
@@ -60,7 +63,8 @@ export function drawPage(canvas: HTMLCanvasElement, o: RenderOpts): void {
   ctx.clearRect(0, 0, W, H)
 
   // fundo
-  if (o.assets.background) drawCover(ctx, o.assets.background, 0, 0, W, H)
+  if (o.bg) drawBackgroundChoice(ctx, o.bg, W, H)
+  else if (o.assets.background) drawCover(ctx, o.assets.background, 0, 0, W, H)
   else {
     const g = ctx.createLinearGradient(0, 0, 0, H)
     g.addColorStop(0, c.skyTop); g.addColorStop(1, c.skyBottom)
@@ -118,6 +122,55 @@ export function drawPage(canvas: HTMLCanvasElement, o: RenderOpts): void {
   }
 
   if (o.layers?.length) drawLayers(ctx, o.layers, o.layerImages ?? {})
+}
+
+// ---------- fundos prontos ----------
+function seeded(seed: number): () => number { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296 } }
+
+export function drawBackgroundChoice(ctx: CanvasRenderingContext2D, bg: RenderBackground, W: number, H: number): void {
+  if (bg.kind === 'image') { drawCover(ctx, bg.img, 0, 0, W, H); return }
+  if (bg.kind === 'color') { drawGradient(ctx, bg.color, bg.color2 ?? bg.color, W, H); return }
+  const p = BACKGROUND_PRESETS.find((x) => x.id === bg.id)
+  if (!p) { drawGradient(ctx, '#4db4ee', '#bfe8fb', W, H); return }
+  const [a, b] = p.colors
+  if (p.style === 'linear') drawGradient(ctx, a, b, W, H)
+  else if (p.style === 'sky') {
+    drawGradient(ctx, a, b, W, H)
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'
+    for (const [cx, cy, r] of [[0.1, 0.05, 0.2], [0.85, 0.03, 0.22], [0.5, 0.01, 0.18], [0.02, 0.5, 0.15], [0.98, 0.6, 0.16]] as const) { ctx.beginPath(); ctx.arc(W * cx, H * cy, W * r, 0, Math.PI * 2); ctx.fill() }
+  } else if (p.style === 'radial') {
+    const g = ctx.createRadialGradient(W / 2, H * 0.3, 0, W / 2, H * 0.3, Math.hypot(W, H) * 0.7)
+    g.addColorStop(0, a); g.addColorStop(1, b)
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+  } else if (p.style === 'rays') {
+    ctx.fillStyle = a; ctx.fillRect(0, 0, W, H)
+    ctx.fillStyle = b
+    const n = 24, cx = W / 2, cy = H * 0.28, R = Math.hypot(W, H)
+    for (let i = 0; i < n; i += 2) { ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, R, (i / n) * Math.PI * 2, ((i + 1) / n) * Math.PI * 2); ctx.closePath(); ctx.fill() }
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, W * 0.8)
+    g.addColorStop(0, 'rgba(255,255,255,0.35)'); g.addColorStop(1, 'rgba(255,255,255,0)')
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+  } else if (p.style === 'confetti') {
+    drawGradient(ctx, a, b, W, H)
+    const rnd = seeded(7), cols = ['#e3171d', '#1d5fe0', '#ffb800', '#27c58a', '#ff6fa6']
+    for (let i = 0; i < 90; i++) {
+      ctx.save(); ctx.translate(rnd() * W, rnd() * H); ctx.rotate(rnd() * Math.PI); ctx.fillStyle = cols[Math.floor(rnd() * cols.length)]; ctx.globalAlpha = 0.55
+      ctx.fillRect(-W * 0.012, -W * 0.006, W * 0.024, W * 0.012); ctx.restore()
+    }
+  } else { // stripes
+    ctx.fillStyle = b; ctx.fillRect(0, 0, W, H)
+    ctx.fillStyle = a
+    const step = W * 0.09
+    ctx.save(); ctx.rotate(-0.35)
+    for (let x = -H; x < W + H; x += step * 2) ctx.fillRect(x, -H, step, H * 3)
+    ctx.restore()
+  }
+}
+
+function drawGradient(ctx: CanvasRenderingContext2D, a: string, b: string, W: number, H: number): void {
+  const g = ctx.createLinearGradient(0, 0, 0, H)
+  g.addColorStop(0, a); g.addColorStop(1, b)
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
 }
 
 // ---------- elementos livres (texto, imagem, formas) ----------

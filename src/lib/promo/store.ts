@@ -126,7 +126,10 @@ export type Campaign = {
   status: CampaignStatus; approved_by_name: string | null; approved_at: string | null; import_report: ImportReport | null; group_variants: boolean
   overrides: PromoOverrides
   /** elementos livres (texto, imagem, formas) por formato */ layers: Layers
+  /** imagens enviadas para esta promoção (elementos e fundos) */ assets: CampaignAsset[]
+  /** temas que têm imagem de fundo, para escolher o fundo de outro tema */ themeBackgrounds: { id: string; name: string; formats: PromoFormat[] }[]
 }
+export type CampaignAsset = { id: string; width: number; height: number; used: boolean }
 export type PromoItem = {
   id: string; position: number; ean: string | null; product_id: string | null; name: string; price: number
   section: string | null; variants: Variants | null; old_price: number | null; note: string | null; style: ItemStyle; photo_image_id: string | null; /** foto usada na arte (a escolhida ou a principal do produto) */ photo_id: string | null
@@ -200,7 +203,12 @@ export async function getCampaign(id: string): Promise<{ campaign: Campaign; the
             coalesce(i.photo_image_id, (select m.id from product_images m where m.product_id = i.product_id order by m.is_primary desc, m.created_at limit 1)) as photo_id,
             coalesce((select array_agg(m.id order by m.is_primary desc, m.created_at) from product_images m where m.product_id = i.product_id), '{}') as photos
        from promo_items i where i.campaign_id = $1 order by i.position`, [id])).rows
-  return { campaign: { ...c, overrides: normalizeOverrides(c.overrides), layers: normalizeLayers(c.layers) }, theme: c.theme_id ? await getTheme(c.theme_id) : null, items: rows.map((r) => ({ ...r, style: normalizeItemStyle(r.style) })) }
+  const layers = normalizeLayers(c.layers), overrides = normalizeOverrides(c.overrides)
+  const usedIds = new Set<string>(PROMO_FORMAT_KEYS.flatMap((f) => layers[f].map((l) => l.asset).filter((x): x is string => !!x)))
+  if (overrides.background?.kind === 'asset') usedIds.add(overrides.background.asset)
+  const assets: CampaignAsset[] = (await pool.query(`select id, width, height from promo_assets where campaign_id = $1 order by created_at`, [id])).rows.map((a) => ({ id: a.id, width: a.width, height: a.height, used: usedIds.has(a.id) }))
+  const tb = (await pool.query(`select t.id, t.name, array_agg(a.format order by a.format) as formats from promo_themes t join promo_theme_assets a on a.theme_id = t.id and a.role = 'background' group by t.id, t.name order by t.name`)).rows
+  return { campaign: { ...c, overrides, layers, assets, themeBackgrounds: tb as Campaign['themeBackgrounds'] }, theme: c.theme_id ? await getTheme(c.theme_id) : null, items: rows.map((r) => ({ ...r, style: normalizeItemStyle(r.style) })) }
 }
 
 export async function updateCampaign(id: string, v: { name: string; title: string | null; validity: string | null; themeId: string | null }): Promise<{ ok: boolean; error?: string }> {
@@ -270,6 +278,9 @@ export async function patchItem(itemId: string, p: ItemPatch): Promise<{ ok: boo
 /** Textos da promoção que valem no lugar dos do tema (etiqueta, rodapé, texto livre). */
 export async function saveOverrides(campaignId: string, o: PromoOverrides): Promise<{ ok: boolean; error?: string }> {
   const clean = normalizeOverrides(o)
+  const bg = clean.background
+  if (bg?.kind === 'asset' && !(await pool.query(`select 1 from promo_assets where id = $1 and campaign_id = $2`, [bg.asset, campaignId])).rowCount) delete clean.background
+  if (bg?.kind === 'theme' && !(await pool.query(`select 1 from promo_theme_assets where theme_id = $1 and role = 'background'`, [bg.themeId])).rowCount) delete clean.background
   const r = await pool.query(`update promo_campaigns set overrides = $2::jsonb where id = $1`, [campaignId, Object.keys(clean).length ? JSON.stringify(clean) : null])
   if (!r.rowCount) return { ok: false, error: 'Promoção não encontrada.' }
   await touch(pool, campaignId)
@@ -308,9 +319,25 @@ export async function addAsset(campaignId: string, buf: Buffer, userId: string):
   }
 }
 
-export async function getAsset(assetId: string): Promise<{ data: Buffer; mime: string; sha: string } | null> {
+export async function getAsset(assetId: string, mini = false): Promise<{ data: Buffer; mime: string; sha: string } | null> {
   const r = (await pool.query(`select data, mime, sha256 from promo_assets where id = $1`, [assetId])).rows[0]
-  return r ? { data: r.data, mime: r.mime, sha: r.sha256 } : null
+  if (!r) return null
+  if (!mini) return { data: r.data, mime: r.mime, sha: r.sha256 }
+  // miniatura para a galeria (não muda o arquivo guardado)
+  const small = await sharp(r.data).resize({ width: 320, height: 320, fit: 'inside', withoutEnlargement: true }).webp({ quality: 75 }).toBuffer()
+  return { data: small, mime: 'image/webp', sha: `${r.sha256}-m` }
+}
+
+/** Apaga uma imagem enviada, se nenhum elemento nem o fundo da promoção a usa. */
+export async function deleteAsset(campaignId: string, assetId: string): Promise<{ ok: boolean; error?: string }> {
+  const c = (await pool.query(`select layers, overrides from promo_campaigns where id = $1`, [campaignId])).rows[0]
+  if (!c) return { ok: false, error: 'Promoção não encontrada.' }
+  const layers = normalizeLayers(c.layers), bg = normalizeOverrides(c.overrides).background
+  if ((bg?.kind === 'asset' && bg.asset === assetId) || PROMO_FORMAT_KEYS.some((f) => layers[f].some((l) => l.asset === assetId))) return { ok: false, error: 'Esta imagem está em uso na peça (fundo ou elemento). Troque ou remova antes de excluir.' }
+  const r = await pool.query(`delete from promo_assets where id = $1 and campaign_id = $2`, [assetId, campaignId])
+  if (!r.rowCount) return { ok: false, error: 'Imagem não encontrada.' }
+  await touch(pool, campaignId)
+  return { ok: true }
 }
 
 /** Troca o produto do banco de imagens que fornece as fotos do encarte (a foto escolhida antes é esquecida). */

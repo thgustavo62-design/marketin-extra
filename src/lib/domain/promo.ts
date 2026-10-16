@@ -249,7 +249,45 @@ export function normalizeItemStyle(raw: unknown): ItemStyle {
   return out
 }
 
-export type PromoOverrides = { tagText?: string; showTag?: boolean; footerLines?: string[]; extraText?: string }
+// ---------- fundo da peça (galeria "Imagem de Fundo") ----------
+export type BackgroundStyle = 'linear' | 'radial' | 'rays' | 'confetti' | 'stripes' | 'sky'
+export type BackgroundPreset = { id: string; label: string; style: BackgroundStyle; colors: [string, string] }
+/** Fundos prontos, desenhados pelo próprio sistema (valem para qualquer formato). */
+export const BACKGROUND_PRESETS: BackgroundPreset[] = [
+  { id: 'ceu', label: 'Céu azul', style: 'sky', colors: ['#4db4ee', '#bfe8fb'] },
+  { id: 'vermelhao', label: 'Vermelhão', style: 'radial', colors: ['#ff4a4a', '#a30d14'] },
+  { id: 'raios-vermelho', label: 'Raios vermelhos', style: 'rays', colors: ['#e3171d', '#c20f16'] },
+  { id: 'raios-amarelo', label: 'Raios amarelos', style: 'rays', colors: ['#ffd21f', '#ffb800'] },
+  { id: 'azul-royal', label: 'Azul royal', style: 'linear', colors: ['#1d5fe0', '#0b2f87'] },
+  { id: 'verde-saude', label: 'Verde saúde', style: 'linear', colors: ['#27c58a', '#0b6b4a'] },
+  { id: 'rosa-bebe', label: 'Rosa bebê', style: 'linear', colors: ['#ffb3d1', '#ff6fa6'] },
+  { id: 'roxo', label: 'Roxo', style: 'radial', colors: ['#9a5cf0', '#4b1fa6'] },
+  { id: 'preto', label: 'Preto premium', style: 'radial', colors: ['#3a3a46', '#0a0a0d'] },
+  { id: 'laranja', label: 'Laranja', style: 'linear', colors: ['#ffa93a', '#ff6a00'] },
+  { id: 'confete', label: 'Confete', style: 'confetti', colors: ['#fff6e0', '#ffe9b8'] },
+  { id: 'listras', label: 'Listras', style: 'stripes', colors: ['#e3171d', '#ffffff'] },
+]
+export const isBackgroundPreset = (id: unknown): id is string => typeof id === 'string' && BACKGROUND_PRESETS.some((p) => p.id === id)
+
+/** Fundo escolhido para a promoção: pronto, duas cores, imagem enviada ou o fundo de outro tema. Sem escolha = o do tema. */
+export type BackgroundChoice =
+  | { kind: 'preset'; id: string }
+  | { kind: 'color'; color: string; color2?: string }
+  | { kind: 'asset'; asset: string }
+  | { kind: 'theme'; themeId: string }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+export function normalizeBackground(raw: unknown): BackgroundChoice | undefined {
+  const r = (raw && typeof raw === 'object' ? raw : null) as Record<string, unknown> | null
+  if (!r) return undefined
+  if (r.kind === 'preset' && isBackgroundPreset(r.id)) return { kind: 'preset', id: r.id }
+  if (r.kind === 'color' && typeof r.color === 'string' && HEX.test(r.color)) return { kind: 'color', color: r.color.toLowerCase(), ...(typeof r.color2 === 'string' && HEX.test(r.color2) ? { color2: r.color2.toLowerCase() } : {}) }
+  if (r.kind === 'asset' && typeof r.asset === 'string' && UUID_RE.test(r.asset)) return { kind: 'asset', asset: r.asset }
+  if (r.kind === 'theme' && typeof r.themeId === 'string' && UUID_RE.test(r.themeId)) return { kind: 'theme', themeId: r.themeId }
+  return undefined
+}
+
+export type PromoOverrides = { tagText?: string; showTag?: boolean; footerLines?: string[]; extraText?: string; background?: BackgroundChoice }
 export function normalizeOverrides(raw: unknown): PromoOverrides {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const out: PromoOverrides = {}
@@ -257,6 +295,8 @@ export function normalizeOverrides(raw: unknown): PromoOverrides {
   if (typeof r.showTag === 'boolean') out.showTag = r.showTag
   if (Array.isArray(r.footerLines)) out.footerLines = r.footerLines.filter((x): x is string => typeof x === 'string').map((x) => x.trim().slice(0, 80)).filter(Boolean).slice(0, 3)
   if (typeof r.extraText === 'string') out.extraText = r.extraText.trim().slice(0, 140)
+  const bg = normalizeBackground(r.background)
+  if (bg) out.background = bg
   return out
 }
 /** O que a promoção define (etiqueta, rodapé) vale no lugar do tema. */

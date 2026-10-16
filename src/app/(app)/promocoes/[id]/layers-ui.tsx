@@ -2,9 +2,9 @@
 
 // Elementos livres sobre a peça (como no Canva): texto, imagem e formas que se arrastam, redimensionam, giram, ficam em camadas e podem ser desfeitos.
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
-import { AlignCenter, AlignHorizontalJustifyCenter, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, AlignEndHorizontal, AlignEndVertical, AlignVerticalJustifyCenter, ArrowDown, ArrowUp, Bold, ChevronsDown, ChevronsUp, Circle, Copy, Eye, EyeOff, ImagePlus, Italic, Lock, Minus, Redo2, Square, SquareRoundCorner, Star, Trash2, Type, Undo2, Unlock, ZoomIn, ZoomOut } from 'lucide-react'
+import { AlignCenter, AlignHorizontalJustifyCenter, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, AlignVerticalJustifyCenter, ArrowDown, ArrowUp, Bold, ChevronsDown, ChevronsUp, Circle, Copy, Eye, EyeOff, Group, ImagePlus, Italic, Lock, Minus, Redo2, Square, SquareRoundCorner, Star, Trash2, Type, Undo2, Ungroup, Unlock, ZoomIn, ZoomOut } from 'lucide-react'
 import { PROMO_FORMATS, PROMO_FORMAT_KEYS, type PromoFormat } from '@/lib/domain/promo'
-import { MAX_LAYERS, alignToPage, makeLayer, newLayerId, reorderLayer, snap, type Align, type Layer, type LayerFont, type LayerShape, type Layers } from '@/lib/domain/promo-layers'
+import { MAX_LAYERS, alignSelection, alignToPage, boundsOf, distribute, duplicateLayers, expandSelection, groupLayers, makeLayer, moveSelection, newLayerId, reorderLayer, scaleSelection, snap, ungroupLayers, type Align, type Bounds, type Layer, type LayerFont, type LayerShape, type Layers } from '@/lib/domain/promo-layers'
 import { drawLayers, loadPromoFonts, measureLayerHeight } from '@/lib/promo/render'
 import { saveLayersAction } from '../actions'
 
@@ -79,6 +79,10 @@ export function useLayers(campaignId: string, initial: Layers, canEdit: boolean,
     /** muda campos de um elemento (texto ajusta a altura sozinho) */
     patch: (fmt: PromoFormat, id: string, p: Partial<Layer>, key?: string) =>
       apply(mapOne(fmt, id, (l) => { const m = { ...l, ...p }; return m.type === 'text' && !('h' in p) && FIT_KEYS.some((k) => k in p) ? fitLayer(m) : m }), { key }),
+    /** aplica uma mudança na lista inteira do formato (várias de uma vez: agrupar, alinhar, excluir…) */
+    mutate: (fmt: PromoFormat, fn: (list: Layer[]) => Layer[], key?: string) => apply({ ...latest.current, [fmt]: fn(latest.current[fmt]) }, { key }),
+    /** durante o arrasto de vários: troca a lista sem registrar no histórico nem salvar */
+    liveList: (fmt: PromoFormat, list: Layer[]) => apply({ ...latest.current, [fmt]: list }, { push: false, save: false }),
     /** durante o arrasto: muda sem registrar no histórico nem salvar */
     live: (fmt: PromoFormat, id: string, p: Partial<Layer>) => apply(mapOne(fmt, id, (l) => ({ ...l, ...p })), { push: false, save: false }),
     begin: () => { if (!canEdit) return; past.current.push(latest.current); if (past.current.length > 60) past.current.shift(); future.current = []; lastKey.current = null; sync() },
@@ -109,35 +113,35 @@ export function useLayers(campaignId: string, initial: Layers, canEdit: boolean,
 }
 export type LayersApi = ReturnType<typeof useLayers>
 
-export function duplicateLayer(api: LayersApi, fmt: PromoFormat, id: string): string | null {
-  const l = api.latest.current[fmt].find((x) => x.id === id)
-  if (!l) return null
-  const c = { ...l, id: newLayerId(), x: l.x + 24, y: l.y + 24, locked: false }
-  return api.add(fmt, c) ? c.id : null
+/** Copia a seleção (deslocada) e devolve os ids das cópias; vazio se passar do limite de elementos. */
+export function duplicateSelection(api: LayersApi, fmt: PromoFormat, ids: string[]): string[] {
+  const r = duplicateLayers(api.latest.current[fmt], ids)
+  return r.ids.length && api.add(fmt, ...r.added) ? r.ids : []
 }
 
-/** Atalhos como no Canva: Delete, setas (Shift = 10 px), Ctrl+D, Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z, Esc. Não atrapalha quem está digitando. */
-export function useLayerKeys(o: { api: LayersApi; format: PromoFormat; selId: string | null; select: (id: string | null) => void; canEdit: boolean }) {
+/** Atalhos como no Canva: Delete, setas (Shift = 10 px), Ctrl+A (tudo da peça), Ctrl+D (duplicar), Ctrl+G (agrupar) e Ctrl+Shift+G (desagrupar), Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z, Esc. Não atrapalha quem está digitando. */
+export function useLayerKeys(o: { api: LayersApi; format: PromoFormat; selIds: string[]; select: (ids: string[]) => void; canEdit: boolean; pageIds: () => string[] }) {
   const ref = useRef(o)
   ref.current = o
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
       if (t?.closest('input, textarea, select, [contenteditable="true"]')) return
-      const { api, format, selId, select, canEdit } = ref.current
+      const { api, format, selIds, select, canEdit, pageIds } = ref.current
       if (!canEdit) return
       const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase()
       if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) api.redo(); else api.undo(); return }
       if (mod && k === 'y') { e.preventDefault(); api.redo(); return }
-      if (!selId) return
-      const l = api.latest.current[format].find((x) => x.id === selId)
-      if (!l) return
-      if (e.key === 'Escape') { select(null); return }
-      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); api.remove(format, selId); select(null); return }
-      if (mod && k === 'd') { e.preventDefault(); const id = duplicateLayer(api, format, selId); if (id) select(id); return }
+      if (mod && k === 'a') { const ids = pageIds(); if (ids.length) { e.preventDefault(); select(ids) } return }
+      const ids = selIds.filter((id) => api.latest.current[format].some((l) => l.id === id))
+      if (!ids.length) return
+      if (e.key === 'Escape') { select([]); return }
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); api.mutate(format, (l) => l.filter((x) => !ids.includes(x.id))); select([]); return }
+      if (mod && k === 'd') { e.preventDefault(); const c = duplicateSelection(api, format, ids); if (c.length) select(c); return }
+      if (mod && k === 'g') { e.preventDefault(); api.mutate(format, (l) => (e.shiftKey ? ungroupLayers(l, ids) : groupLayers(l, ids))); return }
       const step = e.shiftKey ? 10 : 1
       const d = e.key === 'ArrowLeft' ? [-step, 0] : e.key === 'ArrowRight' ? [step, 0] : e.key === 'ArrowUp' ? [0, -step] : e.key === 'ArrowDown' ? [0, step] : null
-      if (d && !l.locked) { e.preventDefault(); api.patch(format, selId, { x: l.x + d[0], y: l.y + d[1] }, 'nudge') }
+      if (d) { e.preventDefault(); api.mutate(format, (l) => moveSelection(l, ids, d[0], d[1]), 'nudge') }
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
@@ -146,7 +150,8 @@ export function useLayerKeys(o: { api: LayersApi; format: PromoFormat; selId: st
 
 // ---------- desenho ao vivo e caixas de seleção sobre a peça ----------
 /** Segunda tela sobre a peça: os elementos são redesenhados aqui enquanto se arrasta, sem refazer a peça inteira. */
-export function LayersCanvas({ format, list, getImg }: { format: PromoFormat; list: Layer[]; getImg: (url: string) => Promise<HTMLImageElement | null> }) {
+export function LayersCanvas({ format, list: all, hideId, getImg }: { format: PromoFormat; list: Layer[]; hideId?: string | null; getImg: (url: string) => Promise<HTMLImageElement | null> }) {
+  const list = hideId ? all.filter((l) => l.id !== hideId) : all
   const ref = useRef<HTMLCanvasElement>(null)
   const [imgs, setImgs] = useState<Record<string, HTMLImageElement | null>>({})
   const { w: W, h: H } = PROMO_FORMATS[format]
@@ -179,43 +184,75 @@ export function LayersCanvas({ format, list, getImg }: { format: PromoFormat; li
 type Handle = 'nw' | 'ne' | 'sw' | 'se' | 'e' | 'w' | 'n' | 's'
 const SIGNS: Record<Handle, [number, number]> = { nw: [-1, -1], ne: [1, -1], sw: [-1, 1], se: [1, 1], e: [1, 0], w: [-1, 0], n: [0, -1], s: [0, 1] }
 const handlesFor = (l: Layer): Handle[] => (l.type === 'image' ? ['nw', 'ne', 'sw', 'se'] : l.type === 'text' ? ['nw', 'ne', 'sw', 'se', 'e', 'w'] : l.shape === 'line' ? ['e', 'w'] : ['nw', 'ne', 'sw', 'se', 'e', 'w', 'n', 's'])
-type Gesture = { id: string; kind: 'move' | 'resize' | 'rotate'; handle?: Handle; start: Layer; px: number; py: number; sx: number; sy: number; left: number; top: number }
+type Gesture = {
+  kind: 'move' | 'resize' | 'rotate' | 'scale'; id: string; ids: string[]; handle?: Handle; start: Layer; base: Layer[]; bounds: Bounds | null
+  px: number; py: number; sx: number; sy: number; left: number; top: number
+}
+const FONT_CSS: Record<LayerFont, string> = { display: '"PromoDisplay", "Baloo 2", system-ui, sans-serif', text: '"PromoText", Montserrat, system-ui, sans-serif', serif: 'Georgia, "Times New Roman", serif', mono: '"Courier New", ui-monospace, monospace' }
 
-/** Caixas clicáveis dos elementos: arrastar move, alças redimensionam, a bolinha de cima gira. Ímã nas bordas e no centro (Alt desliga). */
-export function LayerBoxes({ format, list, selectedId, onSelect, onEditText, api, paperRef, canEdit }: {
-  format: PromoFormat; list: Layer[]; selectedId: string | null; onSelect: (id: string) => void; onEditText: () => void; api: LayersApi; paperRef: RefObject<HTMLDivElement | null>; canEdit: boolean
+/**
+ * Caixas clicáveis dos elementos. Um clique seleciona (Shift/Ctrl soma; um membro de grupo seleciona o grupo todo), arrastar move a seleção,
+ * as alças redimensionam (uma seleção de vários escala como bloco), a bolinha de cima gira. Segurando Shift e arrastando no vazio, desenha-se um retângulo de seleção.
+ * Duplo clique em um texto edita direto na peça. Ímã nas bordas e no centro (Alt desliga).
+ */
+export function LayerBoxes({ format, list, selectedIds, onSelect, editingId, setEditingId, api, paperRef, canEdit }: {
+  format: PromoFormat; list: Layer[]; selectedIds: string[]; onSelect: (ids: string[]) => void; editingId: string | null; setEditingId: (id: string | null) => void
+  api: LayersApi; paperRef: RefObject<HTMLDivElement | null>; canEdit: boolean
 }) {
   const { w: W, h: H } = PROMO_FORMATS[format]
   const g = useRef<Gesture | null>(null)
   const [guides, setGuides] = useState<{ x: number[]; y: number[] }>({ x: [], y: [] })
+  const [shiftHeld, setShiftHeld] = useState(false)
+  const [marquee, setMarquee] = useState<Bounds | null>(null)
+  const mq = useRef<{ x: number; y: number } | null>(null)
+
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => setShiftHeld(e.shiftKey)
+    const off = () => setShiftHeld(false)
+    window.addEventListener('keydown', on); window.addEventListener('keyup', on); window.addEventListener('blur', off)
+    return () => { window.removeEventListener('keydown', on); window.removeEventListener('keyup', on); window.removeEventListener('blur', off) }
+  }, [])
+
+  const rectOf = () => paperRef.current?.getBoundingClientRect() ?? null
+  const multi = selectedIds.length > 1
+  const selBounds = multi ? boundsOf(list, selectedIds) : null
 
   const down = (e: ReactPointerEvent<HTMLDivElement>, l: Layer) => {
     e.stopPropagation()
-    onSelect(l.id)
-    if (!canEdit || l.locked || e.button !== 0) return
-    const paper = paperRef.current
-    if (!paper) return
-    const r = paper.getBoundingClientRect()
+    const all = api.latest.current[format]
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey
+    let ids: string[]
+    if (additive) {
+      const grp = expandSelection(all, [l.id])
+      ids = grp.every((x) => selectedIds.includes(x)) ? selectedIds.filter((x) => !grp.includes(x)) : [...new Set([...selectedIds, ...grp])]
+    } else ids = selectedIds.includes(l.id) ? selectedIds : expandSelection(all, [l.id])
+    onSelect(ids)
+    if (!canEdit || e.button !== 0 || additive || !ids.includes(l.id)) return
+    const r = rectOf()
+    if (!r || ids.every((id) => all.find((x) => x.id === id)?.locked)) return
     const h = (e.target as HTMLElement).dataset.handle as Handle | 'rot' | undefined
-    g.current = { id: l.id, kind: h === 'rot' ? 'rotate' : h ? 'resize' : 'move', handle: h && h !== 'rot' ? h : undefined, start: l, px: e.clientX, py: e.clientY, sx: r.width / W, sy: r.height / H, left: r.left, top: r.top }
+    g.current = {
+      id: l.id, ids, kind: h === 'rot' ? 'rotate' : h ? 'resize' : 'move', handle: h && h !== 'rot' ? h : undefined, start: l, base: all, bounds: boundsOf(all, ids),
+      px: e.clientX, py: e.clientY, sx: r.width / W, sy: r.height / H, left: r.left, top: r.top,
+    }
     api.begin()
     e.currentTarget.setPointerCapture(e.pointerId)
   }
 
-  const move = (e: ReactPointerEvent<HTMLDivElement>, l: Layer) => {
+  const move = (e: ReactPointerEvent<HTMLDivElement>) => {
     const k = g.current
-    if (!k || k.id !== l.id) return
+    if (!k || k.kind === 'scale') return
     const s = k.start
     const dx = (e.clientX - k.px) / k.sx, dy = (e.clientY - k.py) / k.sy
     if (k.kind === 'move') {
-      let x = s.x + dx, y = s.y + dy
-      if (e.altKey) setGuides({ x: [], y: [] })
+      let mx = dx, my = dy
+      if (e.altKey || !k.bounds) setGuides({ x: [], y: [] })
       else {
-        const m = snap({ x, y, w: s.w, h: s.h }, W, H, list.filter((o) => o.id !== s.id), 10)
-        x += m.dx; y += m.dy
+        const m = snap({ x: k.bounds.x + dx, y: k.bounds.y + dy, w: k.bounds.w, h: k.bounds.h }, W, H, k.base.filter((o) => !k.ids.includes(o.id) && !o.hidden), 10)
+        mx += m.dx; my += m.dy
         setGuides({ x: m.guidesX, y: m.guidesY })
       }
-      api.live(format, s.id, { x: Math.round(x), y: Math.round(y) })
+      api.liveList(format, moveSelection(k.base, k.ids, mx, my))
     } else if (k.kind === 'rotate') {
       const cx = k.left + (s.x + s.w / 2) * k.sx, cy = k.top + (s.y + s.h / 2) * k.sy
       let a = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI + 90
@@ -252,21 +289,85 @@ export function LayerBoxes({ format, list, selectedId, onSelect, onEditText, api
     api.end()
   }
 
+  // alças do bloco (seleção de vários): escala tudo na mesma proporção, ancorado no canto oposto
+  const downScale = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const h = (e.target as HTMLElement).dataset.handle as Handle | undefined
+    const r = rectOf()
+    if (!h || !r || !canEdit || !selBounds) return
+    e.stopPropagation()
+    g.current = { id: '', ids: selectedIds, kind: 'scale', handle: h, start: list[0], base: api.latest.current[format], bounds: selBounds, px: e.clientX, py: e.clientY, sx: r.width / W, sy: r.height / H, left: r.left, top: r.top }
+    api.begin()
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId) // a alça captura; o bloco em si não recebe ponteiro
+  }
+  const moveScale = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const k = g.current
+    if (!k || k.kind !== 'scale' || !k.bounds || !k.handle) return
+    const B = k.bounds, [sgx, sgy] = SIGNS[k.handle]
+    const dx = (e.clientX - k.px) / k.sx, dy = (e.clientY - k.py) / k.sy
+    const f = Math.max(0.1, Math.max((B.w + sgx * dx) / B.w, (B.h + sgy * dy) / B.h))
+    const nw = B.w * f, nh = B.h * f
+    api.liveList(format, scaleSelection(k.base, k.ids, B, { x: sgx > 0 ? B.x : B.x + B.w - nw, y: sgy > 0 ? B.y : B.y + B.h - nh, w: nw, h: nh }))
+  }
+
+  // retângulo de seleção (Shift + arrastar no vazio)
+  const toDesign = (e: { clientX: number; clientY: number }) => { const r = rectOf(); return r ? { x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H } : { x: 0, y: 0 } }
+  const mqDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    mq.current = toDesign(e)
+    setMarquee({ ...mq.current, w: 0, h: 0 })
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const mqMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const a = mq.current
+    if (!a) return
+    const b = toDesign(e)
+    setMarquee({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) })
+  }
+  const mqUp = () => {
+    const m = marquee
+    mq.current = null; setMarquee(null)
+    if (!m || (m.w < 6 && m.h < 6)) return
+    const hit = list.filter((l) => { if (l.locked || l.hidden) return false; const b = boundsOf([l], [l.id])!; return b.x < m.x + m.w && b.x + b.w > m.x && b.y < m.y + m.h && b.y + b.h > m.y }).map((l) => l.id)
+    if (hit.length) onSelect(expandSelection(api.latest.current[format], [...new Set([...selectedIds, ...hit])]))
+  }
+
+  const k = (rectOf()?.width ?? W) / W // pixels da tela por pixel da peça (para o editor de texto no lugar)
   return (
     <div className="canva-lboxes">
+      {canEdit && <div className={`canva-marquee-surface${shiftHeld ? ' on' : ''}`} onPointerDown={mqDown} onPointerMove={mqMove} onPointerUp={mqUp} onPointerCancel={mqUp} />}
       {list.map((l) => {
-        const sel = selectedId === l.id
-        const editable = sel && canEdit && !l.locked
+        const sel = selectedIds.includes(l.id)
+        const editable = sel && canEdit && !l.locked && !multi
+        const editing = editingId === l.id && l.type === 'text'
         return (
-          <div key={l.id} className={`canva-lbox${sel ? ' sel' : ''}${l.locked ? ' locked' : ''}`} data-layer={l.id} data-type={l.type} title={l.locked ? 'Bloqueado' : 'Arraste para mover'}
+          <div key={l.id} className={`canva-lbox${sel ? ' sel' : ''}${multi && sel ? ' multi' : ''}${l.locked ? ' locked' : ''}${l.group ? ' grouped' : ''}`} data-layer={l.id} data-type={l.type} title={l.locked ? 'Bloqueado' : 'Arraste para mover; Shift soma à seleção'}
             style={{ left: `${(l.x / W) * 100}%`, top: `${(l.y / H) * 100}%`, width: `${(l.w / W) * 100}%`, height: `${(l.h / H) * 100}%`, transform: l.rot ? `rotate(${l.rot}deg)` : undefined }}
-            onPointerDown={(e) => down(e, l)} onPointerMove={(e) => move(e, l)} onPointerUp={up} onPointerCancel={up}
-            onDoubleClick={() => { if (l.type === 'text' && canEdit && !l.locked) onEditText() }}>
-            {editable && handlesFor(l).map((h) => <span key={h} className={`canva-handle h-${h}`} data-handle={h} aria-hidden="true" />)}
-            {editable && <span className="canva-handle h-rot" data-handle="rot" aria-hidden="true" />}
+            onPointerDown={(e) => { if (!editing) down(e, l) }} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+            onDoubleClick={() => { if (l.type === 'text' && canEdit && !l.locked) { onSelect([l.id]); setEditingId(l.id) } }}>
+            {editing && (
+              <textarea className="canva-inline" aria-label="Editar o texto na peça" value={l.text ?? ''} maxLength={300} autoFocus
+                onFocus={(e) => e.currentTarget.select()}
+                onChange={(e) => api.patch(format, l.id, { text: e.target.value }, 'text')}
+                onBlur={() => setEditingId(null)}
+                onKeyDown={(e) => { if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); setEditingId(null) } e.stopPropagation() }}
+                onPointerDown={(e) => e.stopPropagation()}
+                style={{
+                  fontFamily: FONT_CSS[l.font ?? 'text'], fontSize: (l.size ?? 64) * k, color: l.color ?? '#111', textAlign: l.align ?? 'center', fontWeight: l.bold === false ? 500 : 800, fontStyle: l.italic ? 'italic' : 'normal',
+                  lineHeight: 1.15, background: l.bg ?? 'transparent', padding: l.bg ? (l.size ?? 64) * 0.3 * k : 0,
+                  ...(l.stroke && l.strokeW ? { WebkitTextStroke: `${Math.max(1, l.strokeW * k * 0.5)}px ${l.stroke}`, paintOrder: 'stroke fill' } : {}),
+                }} />
+            )}
+            {editable && !editing && handlesFor(l).map((h) => <span key={h} className={`canva-handle h-${h}`} data-handle={h} aria-hidden="true" />)}
+            {editable && !editing && <span className="canva-handle h-rot" data-handle="rot" aria-hidden="true" />}
           </div>
         )
       })}
+      {selBounds && canEdit && (
+        <div className="canva-selbox" data-count={selectedIds.length} style={{ left: `${(selBounds.x / W) * 100}%`, top: `${(selBounds.y / H) * 100}%`, width: `${(selBounds.w / W) * 100}%`, height: `${(selBounds.h / H) * 100}%` }}
+          onPointerDown={downScale} onPointerMove={moveScale} onPointerUp={up} onPointerCancel={up}>
+          {(['nw', 'ne', 'sw', 'se'] as const).map((h) => <span key={h} className={`canva-handle h-${h}`} data-handle={h} aria-hidden="true" />)}
+        </div>
+      )}
+      {marquee && <div className="canva-marquee" style={{ left: `${(marquee.x / W) * 100}%`, top: `${(marquee.y / H) * 100}%`, width: `${(marquee.w / W) * 100}%`, height: `${(marquee.h / H) * 100}%` }} />}
       {guides.x.map((x) => <i key={`x${x}`} className="canva-guide v" style={{ left: `${(x / W) * 100}%` }} />)}
       {guides.y.map((y) => <i key={`y${y}`} className="canva-guide h" style={{ top: `${(y / H) * 100}%` }} />)}
     </div>
@@ -349,17 +450,22 @@ export function AddBar({ api, campaignId, format, page, canEdit, onAdded, onMsg,
 export const layerLabel = (l: Layer): string => (l.type === 'text' ? (l.text ?? '').split('\n')[0].slice(0, 28) || 'Texto' : l.type === 'image' ? 'Imagem' : ({ rect: 'Retângulo', round: 'Arredondado', circle: 'Círculo', burst: 'Explosão', line: 'Linha' } as const)[l.shape ?? 'rect'])
 const layerIcon = (l: Layer) => (l.type === 'text' ? <Type size={13} /> : l.type === 'image' ? <ImagePlus size={13} /> : l.shape === 'circle' ? <Circle size={13} /> : l.shape === 'burst' ? <Star size={13} /> : l.shape === 'line' ? <Minus size={13} /> : <Square size={13} />)
 
-export function LayersPanel({ api, format, page, selectedId, onSelect, canEdit }: { api: LayersApi; format: PromoFormat; page: number; selectedId: string | null; onSelect: (id: string) => void; canEdit: boolean }) {
+export function LayersPanel({ api, format, page, selectedIds, onSelect, canEdit }: { api: LayersApi; format: PromoFormat; page: number; selectedIds: string[]; onSelect: (ids: string[]) => void; canEdit: boolean }) {
   const list = api.layers[format]
+  const click = (e: React.MouseEvent, l: Layer) => {
+    const grp = expandSelection(list, [l.id])
+    if (e.shiftKey || e.ctrlKey || e.metaKey) onSelect(grp.every((x) => selectedIds.includes(x)) ? selectedIds.filter((x) => !grp.includes(x)) : [...new Set([...selectedIds, ...grp])])
+    else onSelect(grp)
+  }
   return (
     <section aria-label="Camadas">
-      <p className="muted">Elementos livres sobre a peça ({PROMO_FORMATS[format].label}): o de cima da lista fica na frente. Use a barra acima da peça para adicionar texto, imagens e formas.</p>
+      <p className="muted">Elementos livres sobre a peça ({PROMO_FORMATS[format].label}): o de cima da lista fica na frente. Clique com Shift ou Ctrl para escolher vários; na peça, Shift e arraste no vazio para desenhar a seleção. Ctrl+G agrupa.</p>
       {list.length === 0 ? <p className="empty">Nenhum elemento ainda.</p> : (
         <ul className="canva-layer-list">
           {[...list].reverse().map((l) => (
-            <li key={l.id} data-layer={l.id} className={`${selectedId === l.id ? 'sel' : ''}${l.hidden ? ' off' : ''}`} onClick={() => onSelect(l.id)}>
+            <li key={l.id} data-layer={l.id} className={`${selectedIds.includes(l.id) ? 'sel' : ''}${l.hidden ? ' off' : ''}`} onClick={(e) => click(e, l)}>
               {layerIcon(l)}
-              <span className="canva-name">{layerLabel(l)}<small>{l.page === null ? ' · todas as peças' : ` · peça ${l.page + 1}`}{l.page !== null && l.page !== page ? ' (outra)' : ''}</small></span>
+              <span className="canva-name">{layerLabel(l)}{l.group ? <em className="canva-group">grupo</em> : null}<small>{l.page === null ? ' · todas as peças' : ` · peça ${l.page + 1}`}{l.page !== null && l.page !== page ? ' (outra)' : ''}</small></span>
               {canEdit && (
                 <span className="canva-layer-actions" onClick={(e) => e.stopPropagation()}>
                   <button type="button" aria-label={l.hidden ? 'Mostrar' : 'Ocultar'} title={l.hidden ? 'Mostrar' : 'Ocultar'} onClick={() => api.patch(format, l.id, { hidden: !l.hidden })}>{l.hidden ? <EyeOff size={13} /> : <Eye size={13} />}</button>
@@ -372,6 +478,51 @@ export function LayersPanel({ api, format, page, selectedId, onSelect, canEdit }
           ))}
         </ul>
       )}
+    </section>
+  )
+}
+
+/** Inspetor de vários elementos: agrupar, alinhar entre si, distribuir, duplicar, bloquear, ocultar e excluir. */
+export function MultiInspector({ api, format, ids, canEdit, onSelect, onClose }: { api: LayersApi; format: PromoFormat; ids: string[]; canEdit: boolean; onSelect: (ids: string[]) => void; onClose: () => void }) {
+  const { w: W, h: H } = PROMO_FORMATS[format]
+  const list = api.layers[format]
+  const sel = list.filter((l) => ids.includes(l.id))
+  const oneGroup = sel.length > 1 && !!sel[0].group && sel.every((l) => l.group === sel[0].group)
+  const anyGroup = sel.some((l) => l.group)
+  const dis = !canEdit
+  const op = Math.round((sel.reduce((n, l) => n + l.opacity, 0) / Math.max(1, sel.length)) * 100)
+  return (
+    <section aria-label="Editar vários elementos">
+      <h3>{sel.length} elementos selecionados</h3>
+      <p className="muted">{oneGroup ? 'Estão agrupados: movem e redimensionam juntos.' : 'Arraste para mover todos; as alças do bloco redimensionam na mesma proporção.'}</p>
+      {canEdit && (
+        <div className="canva-toolrow" role="group" aria-label="Ações da seleção">
+          {oneGroup
+            ? <button type="button" onClick={() => api.mutate(format, (l) => ungroupLayers(l, ids))} aria-label="Desagrupar" title="Desagrupar (Ctrl+Shift+G)"><Ungroup size={14} /></button>
+            : <button type="button" onClick={() => api.mutate(format, (l) => groupLayers(l, ids))} aria-label="Agrupar" title="Agrupar (Ctrl+G)"><Group size={14} /></button>}
+          {anyGroup && !oneGroup && <button type="button" onClick={() => api.mutate(format, (l) => ungroupLayers(l, ids))} aria-label="Desagrupar" title="Desagrupar"><Ungroup size={14} /></button>}
+          <button type="button" onClick={() => { const c = duplicateSelection(api, format, ids); if (c.length) onSelect(c) }} aria-label="Duplicar seleção" title="Duplicar (Ctrl+D)"><Copy size={14} /></button>
+          <button type="button" onClick={() => api.mutate(format, (l) => l.map((x) => (ids.includes(x.id) ? { ...x, locked: !sel.every((s) => s.locked) } : x)))} aria-label="Bloquear seleção" title="Bloquear/desbloquear"><Lock size={14} /></button>
+          <button type="button" onClick={() => api.mutate(format, (l) => l.map((x) => (ids.includes(x.id) ? { ...x, hidden: true } : x)))} aria-label="Ocultar seleção" title="Ocultar"><EyeOff size={14} /></button>
+          <button type="button" onClick={() => { api.mutate(format, (l) => l.filter((x) => !ids.includes(x.id))); onSelect([]) }} aria-label="Excluir seleção" title="Excluir (Delete)"><Trash2 size={14} /></button>
+        </div>
+      )}
+      <details open>
+        <summary>Alinhar entre si</summary>
+        <div className="canva-chips" role="group" aria-label="Alinhar seleção">
+          {([['left', AlignStartHorizontal, 'Alinhar à esquerda'], ['hcenter', AlignHorizontalJustifyCenter, 'Centralizar na horizontal'], ['right', AlignEndHorizontal, 'Alinhar à direita'], ['top', AlignStartVertical, 'Alinhar ao topo'], ['vcenter', AlignVerticalJustifyCenter, 'Centralizar na vertical'], ['bottom', AlignEndVertical, 'Alinhar à base']] as const).map(([a, Icon, t]) => (
+            <button key={a} type="button" disabled={dis} aria-label={`Seleção: ${t}`} title={t} onClick={() => api.mutate(format, (l) => alignSelection(l, ids, a, W, H))}><Icon size={14} /></button>
+          ))}
+          <button type="button" disabled={dis || sel.length < 3} aria-label="Distribuir na horizontal" title="Distribuir na horizontal (3 ou mais)" onClick={() => api.mutate(format, (l) => distribute(l, ids, 'h'))}><AlignHorizontalDistributeCenter size={14} /></button>
+          <button type="button" disabled={dis || sel.length < 3} aria-label="Distribuir na vertical" title="Distribuir na vertical (3 ou mais)" onClick={() => api.mutate(format, (l) => distribute(l, ids, 'v'))}><AlignVerticalDistributeCenter size={14} /></button>
+        </div>
+      </details>
+      <details open>
+        <summary>Aparência</summary>
+        <label htmlFor="ly-multi-op">Opacidade: {op}%</label>
+        <input id="ly-multi-op" type="range" min={0} max={100} value={op} disabled={dis} onChange={(e) => api.mutate(format, (l) => l.map((x) => (ids.includes(x.id) ? { ...x, opacity: Number(e.target.value) / 100 } : x)), 'multi-op')} />
+      </details>
+      <button type="button" className="link" onClick={onClose}>Fechar</button>
     </section>
   )
 }

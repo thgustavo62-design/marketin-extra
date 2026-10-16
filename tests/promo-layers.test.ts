@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { alignToPage, layersForPage, makeLayer, normalizeLayers, reorderLayer, snap, MAX_LAYERS, type Layer } from '../src/lib/domain/promo-layers.ts'
+import { duplicateLayers, alignSelection, boundsOf, distribute, expandSelection, groupLayers, moveSelection, scaleSelection, ungroupLayers, alignToPage, layersForPage, makeLayer, normalizeLayers, reorderLayer, snap, MAX_LAYERS, type Layer } from '../src/lib/domain/promo-layers.ts'
 
 const ASSET = '3f2b6c1e-8a4d-4c7e-9f10-2b5d6e7a8c90'
 
@@ -66,4 +66,47 @@ test('novo elemento nasce dentro da peça, no meio', () => {
   const t = makeLayer('text', 'feed')
   assert.ok(t.x >= 0 && t.x + t.w <= 1080 && t.y >= 0 && t.y + t.h <= 1350)
   assert.equal(t.type, 'text'); assert.equal(t.page, null); assert.equal(t.hidden, false)
+})
+
+const L = (id: string, x: number, y: number, w: number, h: number, extra: Partial<Layer> = {}): Layer => ({ id, type: 'shape', x, y, w, h, rot: 0, opacity: 1, hidden: false, locked: false, page: null, shape: 'rect', fill: '#ffd21f', ...extra })
+
+test('seleção: a caixa que envolve considera o giro e o grupo seleciona todos os membros', () => {
+  assert.deepEqual(boundsOf([L('a1111', 0, 0, 100, 50), L('b2222', 200, 100, 100, 100)], ['a1111', 'b2222']), { x: 0, y: 0, w: 300, h: 200 })
+  const girado = boundsOf([L('c3333', 100, 100, 100, 100, { rot: 45 })], ['c3333'])!
+  assert.ok(Math.abs(girado.w - 141.42) < 0.1)
+  assert.equal(boundsOf([], ['x']), null)
+  const g = groupLayers([L('a1111', 0, 0, 10, 10), L('b2222', 20, 0, 10, 10), L('c3333', 40, 0, 10, 10)], ['a1111', 'b2222'])
+  assert.equal(g[0].group, g[1].group); assert.ok(g[0].group); assert.equal(g[2].group, undefined)
+  assert.deepEqual(expandSelection(g, ['a1111']), ['a1111', 'b2222'])
+  assert.equal(groupLayers(g, ['c3333']).length, 3) // um só não forma grupo
+  assert.ok(groupLayers([L('a1111', 0, 0, 10, 10)], ['a1111'])[0].group === undefined)
+  const u = ungroupLayers(g, ['b2222'])
+  assert.ok(u.every((l) => l.group === undefined))
+  assert.equal(normalizeLayers({ story: [{ id: 'g00001', type: 'shape', group: 'grp-1' }, { id: 'g00002', type: 'shape', group: '!!' }] }).story.map((l) => l.group).join(','), 'grp-1,')
+})
+
+test('alinhar e distribuir a seleção; mover e escalar como bloco', () => {
+  const base = [L('a1111', 10, 0, 100, 50), L('b2222', 200, 40, 50, 50), L('c3333', 400, 80, 100, 20)]
+  assert.deepEqual(alignSelection(base, ['a1111', 'b2222', 'c3333'], 'left', 1080, 1920).map((l) => l.x), [10, 10, 10])
+  assert.deepEqual(alignSelection(base, ['a1111', 'b2222', 'c3333'], 'bottom', 1080, 1920).map((l) => l.y + l.h), [100, 100, 100])
+  assert.equal(alignSelection(base, ['b2222'], 'hcenter', 1000, 1000)[1].x, 475) // um só: à peça
+  const dist = distribute(base, ['a1111', 'b2222', 'c3333'], 'h')
+  const gaps = [dist[1].x - (dist[0].x + dist[0].w), dist[2].x - (dist[1].x + dist[1].w)]
+  assert.ok(Math.abs(gaps[0] - gaps[1]) <= 1)
+  assert.equal(distribute(base, ['a1111', 'b2222'], 'h'), base) // menos de 3: não muda
+  assert.deepEqual(moveSelection(base, ['a1111'], 5, -5)[0], { ...base[0], x: 15, y: -5 })
+  assert.equal(moveSelection([L('l0000', 0, 0, 10, 10, { locked: true })], ['l0000'], 50, 50)[0].x, 0) // bloqueado não move
+  const dobro = scaleSelection([L('a1111', 0, 0, 100, 50), { ...L('t0000', 100, 0, 100, 50), type: 'text', size: 40 }], ['a1111', 't0000'], { x: 0, y: 0, w: 200, h: 50 }, { x: 0, y: 0, w: 400, h: 100 })
+  assert.deepEqual([dobro[0].x, dobro[0].w, dobro[1].x, dobro[1].w, dobro[1].size], [0, 200, 200, 200, 80])
+})
+
+test('duplicar a seleção: copias novas deslocadas; cada grupo copiado vira um grupo novo', () => {
+  const g = groupLayers([L('a1111', 0, 0, 10, 10), L('b2222', 20, 0, 10, 10), L('c3333', 40, 0, 10, 10, { locked: true })], ['a1111', 'b2222'])
+  const r = duplicateLayers(g, ['a1111', 'b2222', 'c3333'])
+  assert.equal(r.added.length, 3)
+  assert.ok(r.added.every((l, i) => l.id !== g[i].id && l.x === g[i].x + 24 && l.y === 24))
+  assert.equal(r.added[0].group, r.added[1].group)
+  assert.notEqual(r.added[0].group, g[0].group)
+  assert.equal(r.added[2].locked, false)
+  assert.deepEqual(duplicateLayers(g, ['nao-existe']).ids, [])
 })
