@@ -29,5 +29,5 @@ export async function POST(req: Request) {
   })
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 422 })
   await audit('promocao_criada', { userId: user.id, target: r.id, meta: { itens: r.report.created, fora_do_catalogo: r.report.notInCatalog.length, sem_foto: r.report.withoutPhoto.length } })
-  return NextResponse.json({ ok: true, id: r.id, report: r.report, errors: parsed.errors })
+  return NextResponse.json({ ok: true, id: r.id, report: r.report, errors: parsed.errors, sheets: parsed.sheets })
 }

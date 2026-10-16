@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { DEFAULT_THEME, detectPromoColumns, normalizeTheme, pageLayout, paginate, parsePrice, parsePromoRows, placeCells, priceParts } from '../src/lib/domain/promo.ts'
+import { DEFAULT_THEME, detectPromoColumns, normalizeTheme, pageLayout, paginate, paginateSections, parsePrice, parsePromoRows, placeCells, priceParts } from '../src/lib/domain/promo.ts'
 
 test('preço: aceita número, texto brasileiro e com R$; recusa lixo e negativo', () => {
   assert.equal(parsePrice(59.99), 59.99)
@@ -76,7 +76,7 @@ test('posição: grade cabe no painel, sem sobrepor, e a última linha incomplet
   assert.equal(p[4].x, L.cells[4].x + Math.round(L.cells[0].w / 2))
   assert.equal(p[3].x, L.cells[3].x) // linhas cheias não mexem
   // poucos produtos: só as linhas necessárias, centralizadas, sem esticar a célula
-  const few = pageLayout('a4', { cols: 4, rows: 4 }, false, 420, 0, 8)
+  const few = pageLayout('a4', { cols: 4, rows: 4 }, false, 420, 0, { count: 8 })
   assert.equal(few.cells.length, 8) // 2 linhas × 4 colunas
   assert.ok(few.cells[0].h <= Math.round(few.cells[0].w * 1.5) + 1)
   assert.ok(few.cells[0].y > 420) // abaixo do cabeçalho, bloco centralizado
@@ -92,13 +92,44 @@ test('painel: margem e "por baixo do cabeçalho" vêm do tema; margem 0 = painel
   assert.equal(t.panelMargin.a4, 0)
   assert.equal(t.panelTuck, true)
   assert.equal(normalizeTheme({}).panelTuck, false)
-  const flush = pageLayout('a4', { cols: 4, rows: 4 }, true, 440, 0, 16, 0)
+  const flush = pageLayout('a4', { cols: 4, rows: 4 }, true, 440, 0, { count: 16, marginPct: 0 })
   assert.equal(flush.panel!.x, 0)
   assert.equal(flush.panel!.w, 1414)
   assert.equal(flush.panel!.y, 440) // sem folga abaixo do cabeçalho
   assert.equal(flush.panel!.y + flush.panel!.h, 2000) // até o fim da folha
-  const tucked = pageLayout('feed', { cols: 3, rows: 2 }, true, 385, 162, 6, 3.3, true)
-  const normal = pageLayout('feed', { cols: 3, rows: 2 }, true, 385, 162, 6, 3.3, false)
+  const tucked = pageLayout('feed', { cols: 3, rows: 2 }, true, 385, 162, { count: 6, marginPct: 3.3, tuck: true })
+  const normal = pageLayout('feed', { cols: 3, rows: 2 }, true, 385, 162, { count: 6, marginPct: 3.3, tuck: false })
   assert.ok(tucked.panel!.y < normal.panel!.y && tucked.panel!.y + tucked.panel!.h === normal.panel!.y + normal.panel!.h) // sobe por baixo do cabeçalho, mesmo fim
   assert.deepEqual(tucked.cells, normal.cells) // os produtos ficam no mesmo lugar
+})
+
+test('cartões por produto: área em pixels, espaço entre cartões e última linha centralizada pelo passo da coluna', () => {
+  const L = pageLayout('story', { cols: 2, rows: 3 }, false, 437, 257, { area: { top: 374, bottom: 1693 }, marginPct: 7.6, gapPct: 2.2 })
+  assert.equal(L.panel, null)
+  assert.equal(L.cells.length, 6)
+  assert.ok(L.cells[0].y >= 374 && L.cells[4].y + L.cells[4].h <= 1693 + 1) // dentro da área pedida, ignorando cabeçalho e rodapé
+  const gapX = L.cells[1].x - (L.cells[0].x + L.cells[0].w)
+  assert.ok(gapX >= 20 && gapX <= 28, String(gapX)) // ≈ 2,2% de 1080 ≈ 24 px entre os cartões
+  const p = placeCells(L.cells, 5, 2, L.pitchX)
+  assert.equal(p[4].x, L.cells[4].x + Math.round(L.pitchX / 2))
+  const n = normalizeTheme({ cards: { story: '#ececec', feed: 'branco', a4: null }, gridArea: { story: { top: 374, bottom: 1693 }, feed: { top: 900, bottom: 910 } }, cardGap: 99, clouds: false })
+  assert.deepEqual([n.cards.story, n.cards.feed, n.cards.a4], ['#ececec', null, null])
+  assert.deepEqual(n.gridArea.story, { top: 374, bottom: 1693 })
+  assert.equal(n.gridArea.feed, null) // área menor que 200 px é descartada
+  assert.equal(n.cardGap, DEFAULT_THEME.cardGap)
+  assert.equal(n.clouds, false)
+})
+
+test('abas da planilha: cada aba começa uma peça (quando o tema pede) e o repetido vale só na primeira aba', () => {
+  const itens = [{ s: 'leite', n: 1 }, { s: 'leite', n: 2 }, { s: 'leite', n: 3 }, { s: 'fralda', n: 4 }, { s: 'perfumaria', n: 5 }, { s: 'perfumaria', n: 6 }].map((x) => ({ section: x.s, n: x.n }))
+  assert.deepEqual(paginateSections(itens, 2, true).map((p) => p.map((x) => x.n)), [[1, 2], [3], [4], [5, 6]]) // aba nova = peça nova; aba grande também se divide
+  assert.deepEqual(paginateSections(itens, 4, false).map((p) => p.map((x) => x.n)), [[1, 2, 3, 4], [5, 6]]) // sem quebra: em fila
+  assert.deepEqual(paginateSections([], 6, true), [])
+  const cols = { ean: 0, price: 1, name: null }
+  const seen = new Set<string>()
+  const a = parsePromoRows([['7897473205741', '10,00'], ['7891000100103', '5']], cols, 2, { seen, section: 'leite' })
+  const b = parsePromoRows([['7897473205741', '99'], ['7898357410015', '7']], cols, 2, { seen, section: 'fralda' })
+  assert.deepEqual(a.rows.map((r) => r.section), ['leite', 'leite'])
+  assert.deepEqual(b.rows.map((r) => r.ean), ['7898357410015']) // o repetido da outra aba não entra
+  assert.equal(b.errors.length, 1)
 })

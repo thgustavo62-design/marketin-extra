@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { audit, writerOrError } from '@/lib/auth'
 import { isUuid } from '@/lib/form'
 import { PROMO_FORMAT_KEYS, parsePrice, type PromoFormat } from '@/lib/domain/promo'
-import { addItem, createTheme, deleteCampaign, deleteTheme, deleteThemeAsset, moveItem, removeItem, saveThemeConfig, THEME_ROLES, updateCampaign, updateItem, type ThemeRole } from '@/lib/promo/store'
+import { addItem, createTheme, deleteCampaign, deleteTheme, deleteThemeAsset, moveItem, removeItem, reorderItems, saveThemeConfig, THEME_ROLES, updateCampaign, updateItem, type ThemeRole } from '@/lib/promo/store'
 
 type Out = { ok: boolean; error?: string; id?: string }
 const NO: Out = { ok: false, error: 'Pedido inválido.' }
@@ -87,6 +87,14 @@ export async function addItemAction(campaignId: string, productId: string, price
   const p = parsePrice(price)
   if (p === null) return { ok: false, error: 'Informe o preço promocional.' }
   const r = await addItem(campaignId, productId, p)
+  if (r.ok) revalidatePath(`/promocoes/${campaignId}`)
+  return r
+}
+
+export async function reorderItemsAction(campaignId: string, ids: string[]): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(campaignId) || !Array.isArray(ids) || !ids.every(isUuid)) return g.ok ? NO : { ok: false, error: g.error }
+  const r = await reorderItems(campaignId, ids)
   if (r.ok) revalidatePath(`/promocoes/${campaignId}`)
   return r
 }

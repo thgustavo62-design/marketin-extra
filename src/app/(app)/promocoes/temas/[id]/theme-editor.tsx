@@ -159,13 +159,16 @@ export function ThemeEditor({ theme, canEdit }: { theme: Theme; canEdit: boolean
         </div>
         <div className="form-actions" style={{ marginTop: 4 }}>
           <label><input type="checkbox" checked={cfg.showTag} onChange={(e) => setCfg({ ...cfg, showTag: e.target.checked })} disabled={!canEdit} /> Mostrar etiqueta</label>
+          <label><input type="checkbox" checked={cfg.clouds} onChange={(e) => setCfg({ ...cfg, clouds: e.target.checked })} disabled={!canEdit} /> Nuvens no fundo padrão</label>
+          <label><input type="checkbox" checked={cfg.panelTuck} onChange={(e) => setCfg({ ...cfg, panelTuck: e.target.checked })} disabled={!canEdit} /> Painel por baixo do cabeçalho</label>
+          <label>Espaço entre cartões <input type="number" min={0} max={6} step={0.1} value={cfg.cardGap} onChange={(e) => setCfg({ ...cfg, cardGap: Number(e.target.value) })} style={{ width: 70 }} aria-label="Espaço entre cartões" disabled={!canEdit} /> %</label>
           <label><input type="checkbox" checked={cfg.stack} onChange={(e) => setCfg({ ...cfg, stack: e.target.checked })} disabled={!canEdit} /> Foto em dobro (uma atrás da outra)</label>
         </div>
         <label>Rodapé padrão (até 3 linhas, se a arte não traz)</label>
         <div className="grid-3">{[0, 1, 2].map((i) => <input key={i} type="text" value={cfg.footerLines[i] ?? ''} maxLength={80} disabled={!canEdit} aria-label={`Linha ${i + 1} do rodapé`}
           onChange={(e) => { const l = [...cfg.footerLines]; l[i] = e.target.value; setCfg({ ...cfg, footerLines: l.filter((x, k) => x || k < i).map((x) => x ?? '') }) }} />)}</div>
 
-        <label style={{ marginTop: 10 }}>Quantos produtos por peça</label>
+        <label style={{ marginTop: 10 }}>Peça: produtos, painel, cartões e área</label>
         <ul className="files">
           {PROMO_FORMAT_KEYS.map((f) => (
             <li key={f}>
@@ -173,7 +176,14 @@ export function ThemeEditor({ theme, canEdit }: { theme: Theme; canEdit: boolean
               <input type="number" min={1} max={6} value={cfg.grid[f].cols} onChange={(e) => setGrid(f, 'cols', Number(e.target.value))} style={{ width: 70 }} aria-label={`Colunas ${PROMO_FORMATS[f].label}`} disabled={!canEdit} /> colunas ×
               <input type="number" min={1} max={8} value={cfg.grid[f].rows} onChange={(e) => setGrid(f, 'rows', Number(e.target.value))} style={{ width: 70 }} aria-label={`Linhas ${PROMO_FORMATS[f].label}`} disabled={!canEdit} /> linhas
               <input type="number" min={0} max={12} step={0.5} value={cfg.panelMargin[f]} onChange={(e) => setCfg({ ...cfg, panelMargin: { ...cfg.panelMargin, [f]: Number(e.target.value) } })} style={{ width: 70 }} aria-label={`Margem do painel ${PROMO_FORMATS[f].label}`} disabled={!canEdit} /> % de margem
-              <label style={{ marginLeft: 'auto' }}><input type="checkbox" checked={cfg.panel[f]} onChange={(e) => setCfg({ ...cfg, panel: { ...cfg.panel, [f]: e.target.checked } })} disabled={!canEdit} /> painel branco</label>
+              <label style={{ marginLeft: 'auto' }}><input type="checkbox" checked={cfg.panel[f]} onChange={(e) => setCfg({ ...cfg, panel: { ...cfg.panel, [f]: e.target.checked } })} disabled={!canEdit} /> painel único</label>
+              <label><input type="checkbox" checked={cfg.breakBySection[f]} onChange={(e) => setCfg({ ...cfg, breakBySection: { ...cfg.breakBySection, [f]: e.target.checked } })} disabled={!canEdit} aria-label={`Uma peça por aba ${PROMO_FORMATS[f].label}`} /> uma peça por aba</label>
+              <label><input type="checkbox" checked={cfg.cards[f] !== null} onChange={(e) => setCfg({ ...cfg, cards: { ...cfg.cards, [f]: e.target.checked ? '#ffffff' : null } })} disabled={!canEdit} aria-label={`Cartão por produto ${PROMO_FORMATS[f].label}`} /> cartão por produto</label>
+              {cfg.cards[f] !== null && <input type="color" value={cfg.cards[f] ?? '#ffffff'} onChange={(e) => setCfg({ ...cfg, cards: { ...cfg.cards, [f]: e.target.value } })} disabled={!canEdit} aria-label={`Cor do cartão ${PROMO_FORMATS[f].label}`} />}
+              <span className="muted">produtos de</span>
+              <input type="number" min={0} max={3000} placeholder="auto" value={cfg.gridArea[f]?.top ?? ''} onChange={(e) => setCfg({ ...cfg, gridArea: { ...cfg.gridArea, [f]: e.target.value === '' ? null : { top: Number(e.target.value), bottom: cfg.gridArea[f]?.bottom ?? PROMO_FORMATS[f].h } } })} style={{ width: 72 }} aria-label={`Início da área dos produtos ${PROMO_FORMATS[f].label}`} disabled={!canEdit} />
+              <span className="muted">até</span>
+              <input type="number" min={0} max={3000} placeholder="auto" value={cfg.gridArea[f]?.bottom ?? ''} onChange={(e) => setCfg({ ...cfg, gridArea: { ...cfg.gridArea, [f]: e.target.value === '' ? null : { top: cfg.gridArea[f]?.top ?? 0, bottom: Number(e.target.value) } } })} style={{ width: 72 }} aria-label={`Fim da área dos produtos ${PROMO_FORMATS[f].label}`} disabled={!canEdit} /> <span className="muted">px</span>
             </li>
           ))}
         </ul>

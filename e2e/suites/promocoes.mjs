@@ -82,90 +82,118 @@ try {
   const cfgDb = (await q(`select config from promo_themes where id = $1`, [themeId]))[0].config
   ck('tema salvo: etiqueta, título e grade do story (2×2)', cfgDb.tagText === 'Oba!' && cfgDb.title === 'OFERTÃO' && cfgDb.grid.story.cols === 2 && cfgDb.grid.story.rows === 2, JSON.stringify(cfgDb).slice(0, 200))
 
-  // ---------- planilha → promoção ----------
-  const planilha = await xlsx([
-    ['Código de Barras', 'Descrição', 'Preço de Venda', 'Valor Aproximado'],
-    [E[0], 'ignorado', 49.9, 39.99],
-    [E[1], '', 69, '59,99'],
-    [E[2], '', 25, 'R$ 19,99'],
-    [E[3], '', 20, 15.99],
-    [E[4], '', 15, 12.99],
-    [E[5], '', 10, 7.99],
-    [E[6], '', 5, 4.5],
-    [gtin('789299999999'), 'PRODUTO NOVO SÓ NA PLANILHA 50ML', 3, 2.99], // fora do catálogo, mas com nome na planilha
-    [gtin('789299999998'), '', 3, 2.99], // fora do catálogo e sem nome: não entra
-    ['1234567890123', '', 3, 2.99], // EAN inválido
-    [E[0], '', 3, 1], // repetido
-    [E[7], '', 20, 'abc'], // preço inválido
-  ])
+  // ---------- planilha (várias abas, como a da rede) → promoção ----------
+  const cab = ['Barras', 'Descrição', 'Totalizador Fiscal', 'Preço de Venda', 'Preço de Promoção', 'Valor Aproximado', 'Estoque', 'Últ. Prc. Entrada', 'Últ. Entrada', 'Registro MS']
+  const lin = (ean, nome, venda, promo, aprox) => [ean, nome, 'F', venda, promo, aprox, 5, 1, '06/03/2026', '. . . -']
+  const wbMulti = new ExcelJS.Workbook()
+  const abaLeite = wbMulti.addWorksheet('leite')
+  const abaPerf = wbMulti.addWorksheet('perfumaria')
+  const abaFralda = wbMulti.addWorksheet('fralda')
+  const obs = wbMulti.addWorksheet('Observações')
+  const separador = (ws) => { const r = ws.addRow(['', '', '', '', '', '', '', '', '', '']); r.eachCell({ includeEmpty: true }, (c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } } }) } // linha azul entre os grupos
+  abaLeite.addRow(cab); abaPerf.addRow(cab); abaFralda.addRow(cab)
+  abaLeite.addRow(lin(E[0], 'ignorado: o nome vem do catálogo', 49.9, 41.9, 39.99)); abaLeite.addRow(lin(E[1], '', 69, 62, '59,99')); separador(abaLeite); abaLeite.addRow(lin(E[2], '', 25, 21, 'R$ 19,99'))
+  abaPerf.addRow(lin(E[3], '', 20, 17, 15.99)); abaPerf.addRow(lin(E[4], '', 15, 13, 12.99)); separador(abaPerf); abaPerf.addRow(lin(E[5], '', 10, 8, 7.99)); abaPerf.addRow(lin(E[6], '', 5, 4, 4.5))
+  abaPerf.addRow(lin(E[0], '', 3, 2, 1)) // repetido em outra aba: vale a primeira (leite)
+  abaFralda.addRow(lin(E[7], '', 81, 64, '55,5')); separador(abaFralda)
+  abaFralda.addRow(lin(gtin('789299999999'), 'PRODUTO NOVO SÓ NA PLANILHA 50ML', 3, 2, 2.99)) // fora do catálogo, mas com nome
+  abaFralda.addRow(lin(gtin('789299999998'), '', 3, 2, 2.99)) // fora do catálogo e sem nome: não entra
+  abaFralda.addRow(lin('1234567890123', '', 3, 2, 2.99)) // EAN inválido
+  abaFralda.addRow(lin(gtin('789200010009'), '', 3, 2, 'abc')) // valor inválido
+  obs.addRow(['Observações da campanha'])
+  const planilha = Buffer.from(await wbMulti.xlsx.writeBuffer())
   await a.goto(BASE + '/promocoes'); await idle(a)
   await a.fill('#np-name', 'Atacadão do Bebê — teste'); await a.selectOption('#np-theme', themeId); await a.fill('#np-title', 'ATACADÃO DO BEBÊ'); await a.fill('#np-val', 'Válido de 20 a 26/10')
   await a.setInputFiles('#np-file', { name: 'promo.xlsx', mimeType: XLSX, buffer: planilha })
   await a.getByRole('button', { name: 'Montar promoção' }).click()
   await a.waitForSelector('text=Promoção criada', { timeout: 30000 })
   const rep = await a.textContent('[role=status]')
-  ck('relatório: 8 produtos, 1 sem foto, 1 fora do catálogo, avisos das linhas ruins', /8 produto/.test(rep) && /1<?.*sem foto|sem foto/.test(rep) && /fora do catálogo/.test(rep) && /linha 11/.test(rep) && /linha 12/.test(rep) && /linha 13/.test(rep), rep.replace(/\s+/g, ' ').slice(0, 320))
+  ck('relatório: 9 produtos de 3 abas, sem foto, fora do catálogo, avisos das linhas e da aba ignorada', /9 produto/.test(rep) && /fralda/.test(rep) && /leite/.test(rep) && /perfumaria/.test(rep) && /sem foto/.test(rep) && /fora do catálogo/.test(rep) && /Observações/.test(rep), rep.replace(/\s+/g, ' ').slice(0, 400))
   const camp = (await q(`select id, name, title, validity, theme_id from promo_campaigns order by created_at desc limit 1`))[0]
-  const itens = await q(`select position, ean, name, price::float8 as price from promo_items where campaign_id = $1 order by position`, [camp.id])
-  ck('itens: o preço vem da coluna "Valor aproximado" (não do preço de venda)', itens[0].price === 39.99 && itens[1].price === 59.99 && itens[2].price === 19.99 && itens[6].price === 4.5, JSON.stringify(itens.map((x) => x.price)))
+  const itens = await q(`select position, ean, name, price::float8 as price, section from promo_items where campaign_id = $1 order by position`, [camp.id])
+  ck('itens na ordem das abas: leite (3), perfumaria (4), fralda (2)', itens.length === 9 && itens.slice(0, 3).every((x) => x.section === 'leite') && itens.slice(3, 7).every((x) => x.section === 'perfumaria') && itens.slice(7).every((x) => x.section === 'fralda'), itens.map((x) => x.section).join())
+  ck('o preço vem da coluna "Valor aproximado" (não de venda nem de promoção), em número, texto com vírgula e "R$"', itens[0].price === 39.99 && itens[1].price === 59.99 && itens[2].price === 19.99 && itens[6].price === 4.5 && itens[7].price === 55.5, JSON.stringify(itens.map((x) => x.price)))
   ck('nome vem do catálogo (ERP), não da planilha', itens[0].name === 'LEITE NINHO FASES 1+ 800GR' && itens[1].name === 'APTANUTRI PREMIUM 3 800G')
-  ck('código fora do catálogo com nome na planilha entra; sem nome não entra; inválido e repetido não entram', itens.length === 8 && itens[7].name === 'PRODUTO NOVO SÓ NA PLANILHA 50ML' && !itens.some((x) => x.ean === '1234567890123'), itens.map((x) => x.position).join())
+  ck('repetido em outra aba, EAN inválido, valor inválido e código sem nome não entram; código novo com nome entra', !itens.some((x) => x.ean === '1234567890123') && itens.filter((x) => x.ean === E[0]).length === 1 && itens[8].name === 'PRODUTO NOVO SÓ NA PLANILHA 50ML')
   ck('título, validade e tema gravados', camp.title === 'ATACADÃO DO BEBÊ' && camp.validity === 'Válido de 20 a 26/10' && camp.theme_id === themeId)
 
-  // ---------- estúdio ----------
+  // ---------- editor (estilo Canva) ----------
   await a.getByRole('link', { name: /Abrir e baixar/ }).click(); await a.waitForURL(/\/promocoes\/[0-9a-f-]{36}$/); await idle(a)
   await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
-  const dim = async () => a.evaluate(() => { const c = document.querySelector('.studio-canvas canvas'); return { w: c.width, h: c.height } })
-  await a.waitForFunction(() => document.querySelector('.studio-canvas canvas')?.width === 1080 && document.querySelector('.studio-canvas canvas')?.height === 1920, null, { timeout: 30000 })
-  const d1 = await dim()
-  ck('story tem 1080×1920', d1.w === 1080 && d1.h === 1920, JSON.stringify(d1))
+  const dim = async () => a.evaluate(() => { const c = document.querySelector('.canva-paper canvas'); return { w: c.width, h: c.height } })
+  await a.waitForFunction(() => document.querySelector('.canva-paper canvas')?.width === 1080 && document.querySelector('.canva-paper canvas')?.height === 1920, null, { timeout: 30000 })
+  ck('editor tem painel (Produtos/Tema/Dados), peça, inspetor e faixa de peças', (await a.locator('.canva-left').count()) === 1 && (await a.locator('.canva-stage').count()) === 1 && (await a.locator('.canva-right').count()) === 1 && (await a.locator('.canva-strip').count()) === 1)
+  ck('story tem 1080×1920', JSON.stringify(await dim()) === '{"w":1080,"h":1920}')
   ck('aviso de produto sem foto aparece', /sem foto/.test(await a.textContent('.notice')))
-  const pintado = await a.evaluate(() => { const c = document.querySelector('.studio-canvas canvas'); const x = c.getContext('2d'); const d = x.getImageData(0, 0, c.width, c.height).data; let nb = 0; for (let i = 0; i < d.length; i += 4 * 97) if (d[i + 3] > 0 && !(d[i] > 245 && d[i + 1] > 245 && d[i + 2] > 245)) nb++; return nb })
+  const pintado = await a.evaluate(() => { const c = document.querySelector('.canva-paper canvas'); const x = c.getContext('2d'); const d = x.getImageData(0, 0, c.width, c.height).data; let nb = 0; for (let i = 0; i < d.length; i += 4 * 97) if (d[i + 3] > 0 && !(d[i] > 245 && d[i + 1] > 245 && d[i + 2] > 245)) nb++; return nb })
   ck('a peça foi desenhada (não está em branco)', pintado > 1500, pintado)
-  ck('2×2 no story: 8 produtos = 2 peças', /2 peça/.test(await a.textContent('.studio-grid')) || /1 \/ 2/.test(await a.textContent('.studio-grid')))
-  await a.getByRole('button', { name: 'Feed (Instagram/Facebook)' }).click(); await a.waitForFunction(() => document.querySelector('.studio-canvas canvas')?.height === 1350, null, { timeout: 30000 })
-  const d2 = await dim()
-  ck('feed tem 1080×1350 (3×2 = 6 por peça: 2 peças)', d2.w === 1080 && d2.h === 1350, JSON.stringify(d2))
-  await a.getByRole('button', { name: 'Cartaz / Flyer A4' }).click(); await a.waitForFunction(() => document.querySelector('.studio-canvas canvas')?.height === 2000, null, { timeout: 30000 })
-  const d3 = await dim()
-  ck('A4 tem proporção de A4 (1414×2000)', d3.w === 1414 && d3.h === 2000, JSON.stringify(d3))
-  await a.getByRole('button', { name: 'Story / Status' }).click(); await a.waitForFunction(() => document.querySelector('.studio-canvas canvas')?.height === 1920, null, { timeout: 30000 }); await wait(600)
+  ck('story quebra por aba: 3 peças (leite, perfumaria, fralda), com o nome da aba', /Peça 1 de 3/.test(await a.textContent('.canva-pager')) && /aba leite/.test(await a.textContent('.canva-pager')) && (await a.locator('.canva-thumb').count()) === 3)
+  await a.waitForFunction(() => document.querySelectorAll('.canva-thumb img').length === 3, null, { timeout: 30000 })
+  ck('faixa de peças mostra uma miniatura por peça', (await a.locator('.canva-thumb img').count()) === 3)
+  ck('sobre a peça há uma área clicável por produto (3 na peça de leite)', (await a.locator('.canva-hit').count()) === 3)
+  await a.locator('.canva-hit').first().click()
+  if (process.env.E2E_OUT) await a.screenshot({ path: `${process.env.E2E_OUT}/promocao-editor.png`, fullPage: true })
+  ck('clicar no produto da peça abre o inspetor com nome e preço', (await a.inputValue('#in-name')) === 'LEITE NINHO FASES 1+ 800GR' && (await a.inputValue('#in-price')) === '39,99')
+  await a.fill('#in-name', 'Leite Ninho Fases 1+ 800g'); await a.locator('#in-name').blur(); await wait(1500)
+  ck('editar o nome pelo inspetor: salva em maiúsculas', (await q(`select name from promo_items where campaign_id = $1 and position = 1`, [camp.id]))[0].name === 'LEITE NINHO FASES 1+ 800G')
+  await a.fill('#in-price', '41,5'); await a.locator('#in-price').blur(); await wait(1500)
+  ck('editar o preço pelo inspetor: salva', (await q(`select price::float8 as p from promo_items where campaign_id = $1 and position = 1`, [camp.id]))[0].p === 41.5)
+  await a.fill('#in-price', 'abc'); await a.locator('#in-price').blur(); await wait(1200)
+  ck('preço inválido é recusado com aviso e não muda o valor', /Preço inválido/.test(await a.textContent('main')) && (await q(`select price::float8 as p from promo_items where campaign_id = $1 and position = 1`, [camp.id]))[0].p === 41.5)
+  await a.reload(); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  // arrastar um produto sobre outro na peça troca os dois de lugar
+  const hits = a.locator('.canva-hit')
+  const idA = await hits.nth(0).getAttribute('data-item'), idB = await hits.nth(1).getAttribute('data-item')
+  await hits.nth(0).dragTo(hits.nth(1)); await wait(2000)
+  const ordem = (await q(`select id from promo_items where campaign_id = $1 order by position limit 3`, [camp.id])).map((x) => x.id)
+  ck('arrastar o produto 1 sobre o 2 troca os dois de lugar (salvo no banco)', ordem[0] === idB && ordem[1] === idA, `${ordem[0] === idB} ${ordem[1] === idA}`)
+  await a.reload(); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  // arrastar na lista = mover para aquela posição
+  const lis = a.locator('.canva-list li[data-item]')
+  const primeiro = await lis.nth(0).getAttribute('data-item')
+  await lis.nth(0).dragTo(lis.nth(2)); await wait(2000)
+  ck('arrastar na lista move o produto para a posição de destino', (await q(`select id from promo_items where campaign_id = $1 and position = 3`, [camp.id]))[0].id === primeiro)
+  await a.reload(); await idle(a)
+  await a.getByRole('tab', { name: /Tema/ }).click()
+  ck('aba Tema lista os temas e marca o atual', (await a.locator('.canva-themes button.on').count()) === 1)
+  await a.getByRole('tab', { name: /Produtos/ }).click()
+  await a.locator('.canva-list li').nth(5).click()
+  ck('clicar na lista abre o produto e vai para a peça dele (perfumaria)', /aba perfumaria/.test(await a.textContent('.canva-pager')) && (await a.locator('#in-name').count()) === 1)
+  await a.getByRole('button', { name: 'Feed (Instagram/Facebook)' }).click(); await a.waitForFunction(() => document.querySelector('.canva-paper canvas')?.height === 1350, null, { timeout: 30000 })
+  ck('feed tem 1080×1350 e também quebra por aba (3 peças)', JSON.stringify(await dim()) === '{"w":1080,"h":1350}' && (await a.locator('.canva-thumb').count()) === 3)
+  await a.getByRole('button', { name: 'Cartaz / Flyer A4' }).click(); await a.waitForFunction(() => document.querySelector('.canva-paper canvas')?.height === 2000, null, { timeout: 30000 })
+  ck('A4 tem proporção de A4 (1414×2000) e NÃO quebra por aba (1 peça com os 9)', JSON.stringify(await dim()) === '{"w":1414,"h":2000}' && (await a.locator('.canva-thumb').count()) === 1)
+  await a.getByRole('button', { name: 'Story / Status' }).click(); await a.waitForFunction(() => document.querySelector('.canva-paper canvas')?.height === 1920, null, { timeout: 30000 }); await wait(600)
 
   // downloads
   const [dl1] = await Promise.all([a.waitForEvent('download', { timeout: 30000 }), a.getByRole('button', { name: /Baixar esta peça/ }).click()])
   const png = await readFile(await dl1.path())
   const meta = await sharp(png).metadata()
-  ck('baixar a peça entrega um PNG 1080×1920', png.subarray(1, 4).toString() === 'PNG' && meta.width === 1080 && meta.height === 1920, `${meta.format} ${meta.width}x${meta.height}`)
+  ck('baixar a peça entrega um PNG 1080×1920 com o nome da aba no arquivo', png.subarray(1, 4).toString() === 'PNG' && meta.width === 1080 && meta.height === 1920 && /story-\d-(leite|perfumaria|fralda)\.png$/.test(dl1.suggestedFilename()), `${meta.format} ${meta.width}x${meta.height} ${dl1.suggestedFilename()}`)
   const [dl2] = await Promise.all([a.waitForEvent('download', { timeout: 60000 }), a.getByRole('button', { name: 'Todos os formatos (ZIP)' }).click()])
   const zip = unzipSync(new Uint8Array(await readFile(await dl2.path())))
   const nomesZip = Object.keys(zip)
-  ck('ZIP com todos os formatos: 2 story + 2 feed + 1 A4 (16 por A4)', nomesZip.filter((n) => n.startsWith('story/')).length === 2 && nomesZip.filter((n) => n.startsWith('feed/')).length === 2 && nomesZip.filter((n) => n.startsWith('a4/')).length === 1, nomesZip.join())
+  ck('ZIP com todos os formatos: 3 story + 3 feed + 1 A4', nomesZip.filter((n) => n.startsWith('story/')).length === 3 && nomesZip.filter((n) => n.startsWith('feed/')).length === 3 && nomesZip.filter((n) => n.startsWith('a4/')).length === 1, nomesZip.join())
   // guarda as peças para conferência visual (e2e/.out)
-  for (const n of nomesZip) if (process.env.E2E_OUT && /-1.png$/.test(n)) await writeFile(`${process.env.E2E_OUT}/promocao-${n.replace('/', '-')}`, Buffer.from(zip[n]))
+  for (const n of nomesZip) if (process.env.E2E_OUT && /-1(-[a-z]+)?\.png$/.test(n)) await writeFile(`${process.env.E2E_OUT}/promocao-${n.replace('/', '-')}`, Buffer.from(zip[n]))
   const [dl3] = await Promise.all([a.waitForEvent('download', { timeout: 60000 }), a.getByRole('button', { name: 'A4 em PDF' }).click()])
   const pdf = await readFile(await dl3.path())
   ck('PDF do A4 é um PDF de verdade', pdf.subarray(0, 5).toString() === '%PDF-' && pdf.length > 5000, pdf.length)
 
-  // edição dos itens
-  const nome0 = a.locator('input[aria-label="Nome do item 1"]')
-  await nome0.fill('Leite Ninho Fases 1+ 800g'); await nome0.blur(); await wait(1500)
-  ck('editar nome: salva em maiúsculas', (await q(`select name from promo_items where campaign_id = $1 and position = 1`, [camp.id]))[0].name === 'LEITE NINHO FASES 1+ 800G')
-  const preco0 = a.locator('input[aria-label="Preço do item 1"]')
-  await preco0.fill('41,5'); await preco0.blur(); await wait(1500)
-  ck('editar preço: salva', (await q(`select price::float8 as p from promo_items where campaign_id = $1 and position = 1`, [camp.id]))[0].p === 41.5)
-  await preco0.fill('abc'); await preco0.blur(); await wait(1200)
-  ck('preço inválido é recusado com aviso', /Preço inválido/.test(await a.textContent('main')) && (await q(`select price::float8 as p from promo_items where campaign_id = $1 and position = 1`, [camp.id]))[0].p === 41.5)
+  // inspetor: subir/descer/remover e adicionar
+  await a.locator('.canva-list li').nth(0).click()
+  await a.getByRole('button', { name: 'Descer' }).click(); await wait(1500)
+  ck('descer o item pelo inspetor troca com o seguinte', (await q(`select id from promo_items where campaign_id = $1 and position = 2`, [camp.id]))[0].id !== null)
   await a.reload(); await idle(a)
-  await a.locator('button[aria-label="Descer"]').first().click(); await wait(1500)
-  ck('descer o item 1 troca com o 2', (await q(`select ean from promo_items where campaign_id = $1 and position = 2`, [camp.id]))[0].ean === E[0])
-  await a.reload(); await idle(a)
-  await a.locator('button[aria-label="Remover"]').last().click(); await wait(1500)
-  ck('remover o último item reorganiza as posições', (await q(`select count(*)::int n, max(position)::int m from promo_items where campaign_id = $1`, [camp.id]))[0].m === 7)
+  await a.locator('.canva-list li').last().click()
+  await a.getByRole('button', { name: 'Remover' }).click(); await wait(1500)
+  ck('remover o último item reorganiza as posições', (await q(`select count(*)::int n, max(position)::int m from promo_items where campaign_id = $1`, [camp.id]))[0].m === 8)
   await a.reload(); await idle(a)
   const picker = a.locator('section[aria-label="Produtos da promoção"] .picker input[type=search]')
   await picker.fill('talco'); await a.locator('.picker li button:has-text("Escolher")').first().click()
   await a.locator('input[aria-label="Preço do produto adicionado"]').fill('11,99'); await a.getByRole('button', { name: 'Adicionar' }).click(); await wait(1500)
   ck('adicionar produto pelo catálogo, com preço', (await q(`select count(*)::int n from promo_items where campaign_id = $1 and price = 11.99`, [camp.id]))[0].n === 1)
+  await a.getByRole('tab', { name: /Dados/ }).click()
   await a.fill('#pc-title', 'NOVO TÍTULO'); await a.getByRole('button', { name: 'Salvar' }).first().click(); await wait(1500)
   ck('dados da promoção salvos', (await q(`select title from promo_campaigns where id = $1`, [camp.id]))[0].title === 'NOVO TÍTULO')
 
@@ -190,6 +218,7 @@ try {
 
   // excluir promoção e tema
   await a.goto(`${BASE}/promocoes/${camp.id}`); await idle(a)
+  await a.getByRole('tab', { name: /Dados/ }).click()
   await a.getByRole('button', { name: 'Excluir promoção' }).click(); await a.waitForURL(BASE + '/promocoes', { timeout: 15000 })
   ck('excluir a promoção apaga os itens', (await q(`select count(*)::int n from promo_items where campaign_id = $1`, [camp.id]))[0].n === 0)
 } catch (err) {

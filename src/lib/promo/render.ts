@@ -34,8 +34,22 @@ export function loadImage(url: string): Promise<HTMLImageElement | null> {
 const HEADER_DEFAULT: Record<PromoFormat, number> = { story: 380, feed: 300, a4: 420 }
 const FOOTER_DEFAULT = 110
 
-export function drawPage(canvas: HTMLCanvasElement, o: RenderOpts): void {
+/** Medidas da peça: cabeçalho, rodapé, painel e a posição de cada produto. O editor usa a mesma função para saber onde o clique caiu. */
+export function pageGeometry(o: Pick<RenderOpts, 'format' | 'theme' | 'assets'> & { count: number }): { W: number; H: number; headerH: number; footerH: number; panel: Rect | null; cells: Rect[]; cardColor: string | null } {
   const { w: W, h: H } = PROMO_FORMATS[o.format]
+  const headerH = o.assets.header ? Math.round((o.assets.header.height * W) / o.assets.header.width) : HEADER_DEFAULT[o.format]
+  const footerH = o.assets.footer ? Math.round((o.assets.footer.height * W) / o.assets.footer.width) : o.theme.footerLines.length ? FOOTER_DEFAULT + (o.theme.footerLines.length - 1) * 40 : 0
+  const grid = o.theme.grid[o.format]
+  const cardColor = o.theme.cards[o.format]
+  const layout = pageLayout(o.format, grid, o.theme.panel[o.format], headerH, footerH, {
+    count: o.count, marginPct: o.theme.panelMargin[o.format], tuck: o.theme.panelTuck, area: o.theme.gridArea[o.format], gapPct: cardColor ? o.theme.cardGap : 0,
+  })
+  return { W, H, headerH, footerH, panel: layout.panel, cells: placeCells(layout.cells, o.count, grid.cols, layout.pitchX), cardColor }
+}
+
+export function drawPage(canvas: HTMLCanvasElement, o: RenderOpts): void {
+  const geo = pageGeometry({ format: o.format, theme: o.theme, assets: o.assets, count: o.items.length })
+  const { W, H, headerH, footerH, panel, cells, cardColor } = geo
   canvas.width = W; canvas.height = H
   const ctx = canvas.getContext('2d')!
   const c = o.theme.colors
@@ -47,21 +61,24 @@ export function drawPage(canvas: HTMLCanvasElement, o: RenderOpts): void {
     const g = ctx.createLinearGradient(0, 0, 0, H)
     g.addColorStop(0, c.skyTop); g.addColorStop(1, c.skyBottom)
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
-    ctx.fillStyle = 'rgba(255,255,255,0.35)'
-    for (const [cx, cy, r] of [[0.1, 0.05, 0.2], [0.85, 0.03, 0.22], [0.5, 0.01, 0.18], [0.02, 0.5, 0.15], [0.98, 0.6, 0.16]] as const) { ctx.beginPath(); ctx.arc(W * cx, H * cy, W * r, 0, Math.PI * 2); ctx.fill() }
+    if (o.theme.clouds) {
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'
+      for (const [cx, cy, r] of [[0.1, 0.05, 0.2], [0.85, 0.03, 0.22], [0.5, 0.01, 0.18], [0.02, 0.5, 0.15], [0.98, 0.6, 0.16]] as const) { ctx.beginPath(); ctx.arc(W * cx, H * cy, W * r, 0, Math.PI * 2); ctx.fill() }
+    }
   }
 
-  // medidas do cabeçalho e do rodapé (da arte enviada ou o padrão)
-  const headerH = o.assets.header ? Math.round((o.assets.header.height * W) / o.assets.header.width) : HEADER_DEFAULT[o.format]
-  const footerH = o.assets.footer ? Math.round((o.assets.footer.height * W) / o.assets.footer.width) : o.theme.footerLines.length ? FOOTER_DEFAULT + (o.theme.footerLines.length - 1) * 40 : 0
-
-  // painel (desenhado antes do cabeçalho e do rodapé: com "painel por baixo do cabeçalho" a arte fica por cima dele)
-  const grid = o.theme.grid[o.format]
-  const layout = pageLayout(o.format, grid, o.theme.panel[o.format], headerH, footerH, o.items.length, o.theme.panelMargin[o.format], o.theme.panelTuck)
-  if (layout.panel) {
+  // painel (antes do cabeçalho e do rodapé: com "painel por baixo do cabeçalho" a arte fica por cima dele)
+  if (panel) {
     ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.22)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 6
-    ctx.fillStyle = c.panel; roundRect(ctx, layout.panel.x, layout.panel.y, layout.panel.w, layout.panel.h, layout.panel.x > 0 ? Math.round(W * 0.045) : 0); ctx.fill(); ctx.restore()
+    ctx.fillStyle = c.panel; roundRect(ctx, panel.x, panel.y, panel.w, panel.h, panel.x > 0 ? Math.round(W * 0.045) : 0); ctx.fill(); ctx.restore()
   }
+
+  // produtos (cartão opcional de cada um); o cabeçalho e o rodapé desenhados depois cobrem o que sobrepõem, como nas peças da rede
+  const cols = o.theme.grid[o.format].cols
+  o.items.forEach((it, i) => {
+    if (cardColor) { ctx.fillStyle = cardColor; roundRect(ctx, cells[i].x, cells[i].y, cells[i].w, cells[i].h, Math.round(Math.min(cells[i].w, cells[i].h) * 0.07)); ctx.fill() }
+    drawCell(ctx, cells[i], it, o.theme, cols, o.assets, { minY: o.assets.header ? headerH + 4 : 0, maxY: o.assets.footer ? H - footerH - 4 : H })
+  })
 
   // cabeçalho
   if (o.assets.header) ctx.drawImage(o.assets.header, 0, 0, W, headerH)
@@ -88,13 +105,13 @@ export function drawPage(canvas: HTMLCanvasElement, o: RenderOpts): void {
     ctx.fillStyle = c.footerText; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     o.theme.footerLines.forEach((line, i) => { ctx.font = `800 ${i === 0 ? 46 : 34}px ${DISPLAY}`; ctx.fillText(line, W / 2, H - footerH + (footerH / (o.theme.footerLines.length + 1)) * (i + 1)) })
   }
-
-  const cells = placeCells(layout.cells, o.items.length, grid.cols)
-  o.items.forEach((it, i) => drawCell(ctx, cells[i], it, o.theme, grid.cols, o.assets))
 }
 
-function drawCell(ctx: CanvasRenderingContext2D, r: Rect, it: RenderItem, theme: ThemeConfig, cols: number, assets: RenderAssets): void {
+function drawCell(ctx: CanvasRenderingContext2D, cell: Rect, it: RenderItem, theme: ThemeConfig, cols: number, assets: RenderAssets, safe: { minY: number; maxY: number }): void {
   const c = theme.colors
+  // se o cabeçalho ou o rodapé cobrem parte do cartão (a arte fica por cima), o conteúdo usa só a parte visível
+  const top = Math.max(cell.y, safe.minY), bottom = Math.min(cell.y + cell.h, safe.maxY)
+  const r: Rect = { x: cell.x, y: top, w: cell.w, h: Math.max(40, bottom - top) }
   const badgeR = Math.min(r.w * 0.24, r.h * 0.22)
   const bx = r.x + r.w - badgeR - r.w * 0.015, by = r.y + r.h - badgeR - r.h * 0.03
   const photo: Rect = { x: r.x + r.w * 0.05, y: r.y + r.h * 0.02, w: r.w * 0.9, h: r.h * 0.68 }

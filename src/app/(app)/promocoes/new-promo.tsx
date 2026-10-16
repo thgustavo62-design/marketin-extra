@@ -12,7 +12,7 @@ export function NewPromo({ themes }: { themes: { id: string; name: string }[] })
   const fileRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
-  const [done, setDone] = useState<{ id: string; report: Report; errors: { line: number; message: string }[] } | null>(null)
+  const [done, setDone] = useState<{ id: string; report: Report; errors: { line: number; message: string }[]; sheets: { name: string; items: number }[] } | null>(null)
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -24,7 +24,7 @@ export function NewPromo({ themes }: { themes: { id: string; name: string }[] })
       const res = await fetch('/api/promocoes/importar', { method: 'POST', body: fd })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) { setMsg({ kind: 'error', text: j.error ?? 'Não foi possível importar.' }); return }
-      setDone({ id: j.id, report: j.report, errors: j.errors ?? [] })
+      setDone({ id: j.id, report: j.report, errors: j.errors ?? [], sheets: j.sheets ?? [] })
       router.refresh()
     } finally { setBusy(false) }
   }
@@ -53,6 +53,7 @@ export function NewPromo({ themes }: { themes: { id: string; name: string }[] })
       {done && (
         <div role="status" style={{ marginTop: 10 }}>
           <p className="form-ok">Promoção criada com {done.report.created} produto(s). <Link href={`/promocoes/${done.id}`} className="btn">Abrir e baixar as peças</Link></p>
+          {done.sheets.length > 1 && <p className="muted">Abas lidas: {done.sheets.map((x) => `${x.name} (${x.items})`).join(' · ')}</p>}
           {done.report.withoutPhoto.length > 0 && <p className="muted"><strong>{done.report.withoutPhoto.length}</strong> sem foto no banco: {done.report.withoutPhoto.slice(0, 6).map((x) => x.name).join(' · ')}{done.report.withoutPhoto.length > 6 ? '…' : ''}</p>}
           {done.report.notInCatalog.length > 0 && <p className="muted"><strong>{done.report.notInCatalog.length}</strong> código(s) fora do catálogo: {done.report.notInCatalog.slice(0, 6).map((x) => x.ean).join(', ')}</p>}
           {done.errors.length > 0 && <ul className="files">{done.errors.slice(0, 8).map((e) => <li key={e.line}><strong>linha {e.line}</strong><span className="muted">{e.message}</span></li>)}</ul>}

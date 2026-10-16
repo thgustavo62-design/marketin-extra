@@ -110,7 +110,7 @@ export type CampaignLite = { id: string; name: string; theme_name: string | null
 export type Campaign = { id: string; name: string; theme_id: string | null; title: string | null; validity: string | null }
 export type PromoItem = {
   id: string; position: number; ean: string | null; product_id: string | null; name: string; price: number
-  photo_image_id: string | null; /** foto usada na arte (a escolhida ou a principal do produto) */ photo_id: string | null
+  section: string | null; photo_image_id: string | null; /** foto usada na arte (a escolhida ou a principal do produto) */ photo_id: string | null
   /** todas as fotos do produto, para trocar */ photos: string[]
 }
 
@@ -131,21 +131,21 @@ export async function createCampaignFromRows(o: { name: string; themeId: string 
     `select p.id, p.ean, p.description, (select i.id from product_images i where i.product_id = p.id order by i.is_primary desc, i.created_at limit 1) as photo from products p where p.active and p.ean = any($1::text[])`, [o.rows.map((r) => r.ean)])).rows
   const byEan = new Map(prods.map((p) => [p.ean as string, p]))
   const report: ImportReport = { created: 0, notInCatalog: [], withoutPhoto: [] }
-  const items: { ean: string; product_id: string | null; name: string; price: number }[] = []
+  const items: { ean: string; product_id: string | null; name: string; price: number; section: string | null }[] = []
   for (const r of o.rows) {
     const p = byEan.get(r.ean)
     if (!p && !r.name) { report.notInCatalog.push({ ean: r.ean, name: null }); continue }
     if (!p) report.notInCatalog.push({ ean: r.ean, name: r.name })
     const nm = displayName(p?.description ?? r.name!)
     if (!p?.photo) report.withoutPhoto.push({ ean: r.ean, name: nm })
-    items.push({ ean: r.ean, product_id: p?.id ?? null, name: nm, price: r.price })
+    items.push({ ean: r.ean, product_id: p?.id ?? null, name: nm, price: r.price, section: r.section })
   }
   if (!items.length) return { ok: false, error: 'Nenhum dos códigos de barras está no catálogo de produtos (e a planilha não traz o nome). Importe os produtos do ERP primeiro.' }
   const id = await withTx(async (db) => {
     const c = await db.query(`insert into promo_campaigns (name, theme_id, title, validity, created_by) values ($1, $2, $3, $4, $5) returning id`, [name, o.themeId, o.title, o.validity, o.userId])
     await db.query(
-      `insert into promo_items (campaign_id, position, ean, product_id, name, price)
-       select $1, x.pos, x.ean, x.product_id, x.name, x.price from jsonb_to_recordset($2::jsonb) as x(pos int, ean text, product_id uuid, name text, price numeric)`,
+      `insert into promo_items (campaign_id, position, ean, product_id, name, price, section)
+       select $1, x.pos, x.ean, x.product_id, x.name, x.price, x.section from jsonb_to_recordset($2::jsonb) as x(pos int, ean text, product_id uuid, name text, price numeric, section text)`,
       [c.rows[0].id, JSON.stringify(items.map((it, k) => ({ pos: k + 1, ...it })))])
     return c.rows[0].id as string
   })
@@ -157,7 +157,7 @@ export async function getCampaign(id: string): Promise<{ campaign: Campaign; the
   const c = (await pool.query(`select id, name, theme_id, title, validity from promo_campaigns where id = $1`, [id])).rows[0]
   if (!c) return null
   const rows = (await pool.query(
-    `select i.id, i.position, i.ean, i.product_id, i.name, i.price::float8 as price, i.photo_image_id,
+    `select i.id, i.position, i.ean, i.product_id, i.name, i.price::float8 as price, i.section, i.photo_image_id,
             coalesce(i.photo_image_id, (select m.id from product_images m where m.product_id = i.product_id order by m.is_primary desc, m.created_at limit 1)) as photo_id,
             coalesce((select array_agg(m.id order by m.is_primary desc, m.created_at) from product_images m where m.product_id = i.product_id), '{}') as photos
        from promo_items i where i.campaign_id = $1 order by i.position`, [id])).rows
@@ -217,6 +217,19 @@ export async function addItem(campaignId: string, productId: string, price: numb
     if (!(await db.query(`select 1 from promo_campaigns where id = $1`, [campaignId])).rowCount) return { ok: false, error: 'Promoção não encontrada.' }
     const pos = ((await db.query(`select coalesce(max(position), 0) + 1 as n from promo_items where campaign_id = $1`, [campaignId])).rows[0].n) as number
     await db.query(`insert into promo_items (campaign_id, position, ean, product_id, name, price) values ($1, $2, $3, $4, $5, $6)`, [campaignId, pos, p.ean, p.id, displayName(p.description), price])
+    return { ok: true }
+  })
+}
+
+/** Define a ordem dos produtos da promoção (a lista precisa ter exatamente os mesmos itens). Usada ao arrastar na peça ou na lista. */
+export async function reorderItems(campaignId: string, ids: string[]): Promise<{ ok: boolean; error?: string }> {
+  return withTx(async (db) => {
+    const cur = (await db.query(`select id from promo_items where campaign_id = $1 for update`, [campaignId])).rows.map((r) => r.id as string)
+    if (cur.length !== ids.length || new Set(ids).size !== ids.length || !ids.every((i) => cur.includes(i))) return { ok: false, error: 'A lista de produtos mudou. Recarregue a página e tente de novo.' }
+    // posições temporárias negativas: a regra de unicidade (campanha, posição) não pode bater no meio da troca
+    await db.query(`update promo_items set position = -position - 1 where campaign_id = $1`, [campaignId])
+    await db.query(`update promo_items i set position = u.ord from unnest($2::uuid[]) with ordinality as u(id, ord) where i.id = u.id and i.campaign_id = $1`, [campaignId, ids])
+    await db.query(`update promo_campaigns set updated_at = now() where id = $1`, [campaignId])
     return { ok: true }
   })
 }
