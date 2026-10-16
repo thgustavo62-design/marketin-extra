@@ -1,9 +1,13 @@
 // Desenho da peça de promoção em canvas (navegador): feed, story e A4. Mesmo código para a prévia e para baixar.
 import { PROMO_FORMATS, pageLayout, placeCells, priceParts, type ItemStyle, type PromoFormat, type Rect, type ThemeConfig } from '../domain/promo.ts'
+import type { Layer } from '../domain/promo-layers.ts'
 
 export type RenderAssets = { background?: HTMLImageElement | null; header?: HTMLImageElement | null; footer?: HTMLImageElement | null; badge?: HTMLImageElement | null; tag?: HTMLImageElement | null }
 export type RenderItem = { name: string; price: number; img: HTMLImageElement | null; /** tabela de tamanhos (fraldas): um quadro por tamanho com as unidades */ sizes?: { label: string; units: number | null }[]; /** preço original ("De R$"), riscado no selo */ oldPrice?: number | null; /** subtítulo abaixo do nome */ note?: string | null; style?: ItemStyle }
-export type RenderOpts = { format: PromoFormat; theme: ThemeConfig; title: string | null; validity: string | null; /** texto livre (endereço, telefone) logo acima do rodapé */ extraText?: string | null; assets: RenderAssets; items: RenderItem[] }
+export type RenderOpts = {
+  format: PromoFormat; theme: ThemeConfig; title: string | null; validity: string | null; /** texto livre (endereço, telefone) logo acima do rodapé */ extraText?: string | null; assets: RenderAssets; items: RenderItem[]
+  /** elementos livres desta peça (já filtrados pela página), do fundo para o topo; imagens em `layerImages` pelo id do arquivo */ layers?: Layer[]; layerImages?: Record<string, HTMLImageElement | null>
+}
 
 const DISPLAY = '"PromoDisplay", "Baloo 2", system-ui, sans-serif'
 const TEXT = '"PromoText", Montserrat, system-ui, sans-serif'
@@ -112,6 +116,84 @@ export function drawPage(canvas: HTMLCanvasElement, o: RenderOpts): void {
     const y = H - footerH - Math.round(fs * 0.5)
     ctx.strokeText(o.extraText, W / 2, y); ctx.fillStyle = '#ffffff'; ctx.fillText(o.extraText, W / 2, y)
   }
+
+  if (o.layers?.length) drawLayers(ctx, o.layers, o.layerImages ?? {})
+}
+
+// ---------- elementos livres (texto, imagem, formas) ----------
+const LAYER_FONT: Record<NonNullable<Layer['font']>, string> = { display: DISPLAY, text: TEXT, serif: 'Georgia, "Times New Roman", serif', mono: '"Courier New", ui-monospace, monospace' }
+
+/** Desenha os elementos livres por cima da peça, do primeiro (fundo) ao último (topo), com giro e transparência. */
+export function drawLayers(ctx: CanvasRenderingContext2D, layers: Layer[], images: Record<string, HTMLImageElement | null>): void {
+  for (const l of layers) {
+    if (l.hidden) continue
+    ctx.save()
+    ctx.globalAlpha = Math.max(0, Math.min(1, l.opacity))
+    ctx.translate(l.x + l.w / 2, l.y + l.h / 2)
+    if (l.rot) ctx.rotate((l.rot * Math.PI) / 180)
+    ctx.translate(-l.w / 2, -l.h / 2)
+    if (l.type === 'shape') drawShape(ctx, l)
+    else if (l.type === 'image') {
+      const img = l.asset ? images[l.asset] : null
+      if (img) { const s = Math.min(l.w / img.width, l.h / img.height); ctx.drawImage(img, (l.w - img.width * s) / 2, (l.h - img.height * s) / 2, img.width * s, img.height * s) }
+      else { ctx.setLineDash([10, 8]); ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 3; ctx.strokeRect(0, 0, l.w, l.h) }
+    } else drawLayerText(ctx, l)
+    ctx.restore()
+  }
+}
+
+function drawShape(ctx: CanvasRenderingContext2D, l: Layer): void {
+  const { w, h } = l
+  ctx.beginPath()
+  switch (l.shape) {
+    case 'circle': ctx.ellipse(w / 2, h / 2, w / 2, h / 2, 0, 0, Math.PI * 2); break
+    case 'round': { const r = Math.min(l.radius ?? 24, w / 2, h / 2); roundRect(ctx, 0, 0, w, h, r); break }
+    case 'burst': {
+      const spikes = 14
+      for (let i = 0; i < spikes * 2; i++) {
+        const a = (Math.PI * i) / spikes - Math.PI / 2, k = i % 2 === 0 ? 1 : 0.84
+        const x = w / 2 + Math.cos(a) * (w / 2) * k, y = h / 2 + Math.sin(a) * (h / 2) * k
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+      }
+      ctx.closePath(); break
+    }
+    case 'line': { ctx.strokeStyle = l.fill ?? '#ffd21f'; ctx.lineWidth = Math.max(2, h); ctx.lineCap = 'round'; ctx.moveTo(h / 2, h / 2); ctx.lineTo(w - h / 2, h / 2); ctx.stroke(); return }
+    default: ctx.rect(0, 0, w, h)
+  }
+  ctx.fillStyle = l.fill ?? '#ffd21f'; ctx.fill()
+  if (l.border && l.borderW) { ctx.lineJoin = 'round'; ctx.lineWidth = l.borderW; ctx.strokeStyle = l.border; ctx.stroke() }
+}
+
+/** Aplica a fonte do texto e quebra em linhas que cabem na largura da caixa. */
+function layoutLayerText(ctx: CanvasRenderingContext2D, l: Layer): { lines: string[]; size: number; pad: number; lh: number } {
+  const size = l.size ?? 64
+  const pad = l.bg ? size * 0.3 : 0
+  ctx.font = `${l.italic ? 'italic ' : ''}${l.bold === false ? 500 : 800} ${size}px ${LAYER_FONT[l.font ?? 'text']}`
+  const lines = (l.text ?? '').split('\n').flatMap((p) => wrap(ctx, p, Math.max(10, l.w - pad * 2)))
+  return { lines, size, pad, lh: size * 1.15 }
+}
+
+let measureCtx: CanvasRenderingContext2D | null = null
+/** Altura que o texto precisa na caixa do elemento: o editor ajusta a caixa ao texto, como no Canva. */
+export function measureLayerHeight(l: Layer): number {
+  measureCtx ??= document.createElement('canvas').getContext('2d')
+  if (!measureCtx) return l.h
+  const m = layoutLayerText(measureCtx, l)
+  return Math.max(16, Math.ceil(m.lines.length * m.lh + m.pad * 2))
+}
+
+function drawLayerText(ctx: CanvasRenderingContext2D, l: Layer): void {
+  const { w, h } = l
+  if (l.bg) { ctx.fillStyle = l.bg; roundRect(ctx, 0, 0, w, h, Math.min((l.size ?? 64) * 0.3, h / 2)); ctx.fill() }
+  const { lines, pad, lh } = layoutLayerText(ctx, l)
+  ctx.textBaseline = 'middle'; ctx.textAlign = l.align ?? 'center'
+  const x = l.align === 'left' ? pad : l.align === 'right' ? w - pad : w / 2
+  const y0 = h / 2 - ((lines.length - 1) * lh) / 2
+  ctx.lineJoin = 'round'
+  lines.forEach((t, i) => {
+    if (l.stroke && l.strokeW) { ctx.lineWidth = l.strokeW; ctx.strokeStyle = l.stroke; ctx.strokeText(t, x, y0 + i * lh) }
+    ctx.fillStyle = l.color ?? '#111111'; ctx.fillText(t, x, y0 + i * lh)
+  })
 }
 
 function drawCell(ctx: CanvasRenderingContext2D, cell: Rect, it: RenderItem, baseTheme: ThemeConfig, cols: number, assets: RenderAssets, safe: { minY: number; maxY: number }): void {

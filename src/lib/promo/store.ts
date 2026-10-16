@@ -4,6 +4,7 @@ import sharp from 'sharp'
 import { pool, withTx } from '../db.ts'
 import { displayName, normalizeItemStyle, normalizeOverrides, normalizeTheme, PROMO_FORMAT_KEYS, type ItemStyle, type PromoFormat, type PromoOverrides, type PromoRow, type ThemeConfig } from '../domain/promo.ts'
 import { groupItems, groupSummary, type GroupInput, type Variants } from '../domain/promo-group.ts'
+import { normalizeLayers, type Layers } from '../domain/promo-layers.ts'
 import { sniffImage } from '../catalog/images.ts'
 import { ingestImage, saveProduct } from '../catalog/store.ts'
 
@@ -124,6 +125,7 @@ export type Campaign = {
   id: string; name: string; theme_id: string | null; title: string | null; validity: string | null
   status: CampaignStatus; approved_by_name: string | null; approved_at: string | null; import_report: ImportReport | null; group_variants: boolean
   overrides: PromoOverrides
+  /** elementos livres (texto, imagem, formas) por formato */ layers: Layers
 }
 export type PromoItem = {
   id: string; position: number; ean: string | null; product_id: string | null; name: string; price: number
@@ -190,7 +192,7 @@ export async function createCampaignFromRows(o: {
 
 export async function getCampaign(id: string): Promise<{ campaign: Campaign; theme: Theme | null; items: PromoItem[] } | null> {
   const c = (await pool.query(
-    `select c.id, c.name, c.theme_id, c.title, c.validity, c.status, u.display_name as approved_by_name, c.approved_at::text as approved_at, c.import_report, c.group_variants, c.overrides
+    `select c.id, c.name, c.theme_id, c.title, c.validity, c.status, u.display_name as approved_by_name, c.approved_at::text as approved_at, c.import_report, c.group_variants, c.overrides, c.layers
        from promo_campaigns c left join users u on u.id = c.approved_by where c.id = $1`, [id])).rows[0]
   if (!c) return null
   const rows = (await pool.query(
@@ -198,7 +200,7 @@ export async function getCampaign(id: string): Promise<{ campaign: Campaign; the
             coalesce(i.photo_image_id, (select m.id from product_images m where m.product_id = i.product_id order by m.is_primary desc, m.created_at limit 1)) as photo_id,
             coalesce((select array_agg(m.id order by m.is_primary desc, m.created_at) from product_images m where m.product_id = i.product_id), '{}') as photos
        from promo_items i where i.campaign_id = $1 order by i.position`, [id])).rows
-  return { campaign: { ...c, overrides: normalizeOverrides(c.overrides) }, theme: c.theme_id ? await getTheme(c.theme_id) : null, items: rows.map((r) => ({ ...r, style: normalizeItemStyle(r.style) })) }
+  return { campaign: { ...c, overrides: normalizeOverrides(c.overrides), layers: normalizeLayers(c.layers) }, theme: c.theme_id ? await getTheme(c.theme_id) : null, items: rows.map((r) => ({ ...r, style: normalizeItemStyle(r.style) })) }
 }
 
 export async function updateCampaign(id: string, v: { name: string; title: string | null; validity: string | null; themeId: string | null }): Promise<{ ok: boolean; error?: string }> {
@@ -272,6 +274,43 @@ export async function saveOverrides(campaignId: string, o: PromoOverrides): Prom
   if (!r.rowCount) return { ok: false, error: 'Promoção não encontrada.' }
   await touch(pool, campaignId)
   return { ok: true }
+}
+
+/** Guarda os elementos livres da promoção. Imagem que não pertence à promoção é descartada; qualquer mudança tira a aprovação. */
+export async function saveLayers(campaignId: string, raw: unknown): Promise<{ ok: boolean; error?: string; layers?: Layers }> {
+  const layers = normalizeLayers(raw)
+  const used = [...new Set(PROMO_FORMAT_KEYS.flatMap((f) => layers[f].map((l) => l.asset).filter((x): x is string => !!x)))]
+  if (used.length) {
+    const ok = new Set((await pool.query(`select id from promo_assets where campaign_id = $1 and id = any($2::uuid[])`, [campaignId, used])).rows.map((r) => r.id as string))
+    for (const f of PROMO_FORMAT_KEYS) layers[f] = layers[f].filter((l) => l.type !== 'image' || (l.asset && ok.has(l.asset)))
+  }
+  const r = await pool.query(`update promo_campaigns set layers = $2::jsonb where id = $1`, [campaignId, JSON.stringify(layers)])
+  if (!r.rowCount) return { ok: false, error: 'Promoção não encontrada.' }
+  await touch(pool, campaignId)
+  return { ok: true, layers }
+}
+
+/** Imagem enviada para usar como elemento (logo, selo, adesivo): vira WEBP de até 2000 px, mantendo a transparência. A mesma imagem não entra duas vezes. */
+export async function addAsset(campaignId: string, buf: Buffer, userId: string): Promise<{ ok: true; id: string; width: number; height: number } | { ok: false; error: string }> {
+  if (buf.length === 0) return { ok: false, error: 'Arquivo vazio.' }
+  if (buf.length > 8 * 1024 * 1024) return { ok: false, error: 'A imagem passa de 8 MB.' }
+  if (!sniffImage(buf)) return { ok: false, error: 'Use uma imagem PNG, JPG ou WEBP.' }
+  if (!(await pool.query(`select 1 from promo_campaigns where id = $1`, [campaignId])).rowCount) return { ok: false, error: 'Promoção não encontrada.' }
+  try {
+    const out = await sharp(buf, { failOn: 'error', limitInputPixels: 60_000_000 }).rotate().resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true }).webp({ quality: 90, alphaQuality: 95 }).toBuffer({ resolveWithObject: true })
+    const sha = createHash('sha256').update(out.data).digest('hex')
+    const r = await pool.query(
+      `insert into promo_assets (campaign_id, data, width, height, sha256, created_by) values ($1, $2, $3, $4, $5, $6)
+       on conflict (campaign_id, sha256) do update set sha256 = excluded.sha256 returning id`, [campaignId, out.data, out.info.width, out.info.height, sha, userId])
+    return { ok: true, id: r.rows[0].id, width: out.info.width, height: out.info.height }
+  } catch {
+    return { ok: false, error: 'Não consegui ler esta imagem (arquivo corrompido ou formato não suportado).' }
+  }
+}
+
+export async function getAsset(assetId: string): Promise<{ data: Buffer; mime: string; sha: string } | null> {
+  const r = (await pool.query(`select data, mime, sha256 from promo_assets where id = $1`, [assetId])).rows[0]
+  return r ? { data: r.data, mime: r.mime, sha: r.sha256 } : null
 }
 
 /** Troca o produto do banco de imagens que fornece as fotos do encarte (a foto escolhida antes é esquecida). */

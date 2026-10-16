@@ -307,10 +307,116 @@ try {
   await tab.goto(BASE + '/editor'); await idle(tab)
   ck('o console em tela cheia lista as promoções (sem o menu lateral)', (await tab.locator('.editor-shell').count()) === 1 && (await tab.locator('.side-nav').count()) === 0 && (await tab.locator(`a[href="/editor/${camp.id}"]`).count()) === 1)
   await tab.locator(`a[href="/editor/${camp.id}"]`).click(); await tab.waitForURL(`${BASE}/editor/${camp.id}`); await idle(tab); await tab.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
-  ck('o console em outra aba abre o mesmo editor (peça, painel, inspetor) e mostra a aprovação', (await tab.locator('.canva-tab .canva-paper canvas').count()) === 1 && /Aprovada por Admin Teste/.test(await tab.textContent('.canva-approval')) && (await tab.locator('a:has-text("Abrir dentro do sistema")').count()) === 1)
+  ck('o console em outra aba abre o mesmo editor (peça, painel, inspetor) e mostra a aprovação', (await tab.locator('.canva-tab .canva-paper canvas[data-ready]').count()) === 1 && /Aprovada por Admin Teste/.test(await tab.textContent('.canva-approval')) && (await tab.locator('a:has-text("Abrir dentro do sistema")').count()) === 1)
   await tab.locator('.canva-hit').first().click()
   await tab.fill('#in-price', '38,5'); await tab.locator('#in-price').blur(); await wait(1800)
   ck('editar no console em outra aba salva e tira a aprovação (mesmo dado do editor de dentro)', (await q(`select price::float8 as p from promo_items where id = $1`, [await tab.locator('.canva-hit').first().getAttribute('data-item')]))[0].p === 38.5 && (await q(`select status from promo_campaigns where id = $1`, [camp.id]))[0].status === 'rascunho')
+
+  // ---------- elementos livres (texto, imagem, formas) como no Canva ----------
+  await a.goto(`${BASE}/promocoes/${camp.id}`); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  const lay = async () => (await q(`select layers, status from promo_campaigns where id = $1`, [camp.id]))[0]
+  const box = a.locator('.canva-lbox')
+  await a.getByRole('button', { name: 'Aprovar encartes' }).click(); await wait(1800)
+  ck('antes dos elementos a promoção está aprovada', (await lay()).status === 'aprovada')
+  ck('a barra para adicionar elementos aparece (texto, imagem, formas, desfazer, zoom)', (await a.locator('.canva-addbar button[title="Adicionar título"]').count()) === 1 && (await a.locator('.canva-addbar button[aria-label="Desfazer"]').count()) === 1 && (await a.locator('.canva-addbar button[aria-label="Aumentar zoom"]').count()) === 1)
+  await a.locator('.canva-addbar button[title="Adicionar título"]').click(); await wait(2200)
+  let L = await lay()
+  ck('adicionar um título cria o elemento, salva e tira a aprovação', (await box.count()) === 1 && L.layers.story?.length === 1 && L.layers.story[0].type === 'text' && L.status === 'rascunho', JSON.stringify(L.layers.story?.[0] ?? null).slice(0, 160))
+  ck('o elemento novo já fica selecionado e abre o inspetor do texto', (await a.locator('#ly-text').count()) === 1 && (await a.locator('.canva-lbox.sel .canva-handle').count()) >= 6)
+  await a.fill('#ly-text', 'SUPER OFERTA'); await wait(1800)
+  L = await lay()
+  ck('editar o texto salva', L.layers.story[0].text === 'SUPER OFERTA')
+  const h0 = L.layers.story[0].h
+  await a.fill('#ly-text', 'SUPER OFERTA\nSÓ HOJE NA REDE'); await wait(1800)
+  ck('o texto com duas linhas cresce a caixa sozinho', (await lay()).layers.story[0].h > h0)
+  await a.fill('#ly-size', '90'); await wait(1800)
+  ck('tamanho da letra salvo', (await lay()).layers.story[0].size === 90)
+  await a.locator('input[aria-label="Cor do texto"]').fill('#ffcc00'); await wait(1800)
+  ck('cor do texto salva', (await lay()).layers.story[0].color === '#ffcc00')
+  // arrastar com o mouse
+  L = await lay()
+  const x0 = L.layers.story[0].x, y0 = L.layers.story[0].y
+  const bb = await box.first().boundingBox()
+  await a.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await a.mouse.down()
+  await a.mouse.move(bb.x + bb.width / 2 + 40, bb.y + bb.height / 2 + 30, { steps: 6 }); await a.mouse.move(bb.x + bb.width / 2 + 90, bb.y + bb.height / 2 + 60, { steps: 6 }); await a.mouse.up(); await wait(2000)
+  L = await lay()
+  ck('arrastar o elemento com o mouse muda a posição e salva', L.layers.story[0].x > x0 + 60 && L.layers.story[0].y > y0 + 40, `${x0},${y0} -> ${L.layers.story[0].x},${L.layers.story[0].y}`)
+  // redimensionar pelo canto
+  const w0 = L.layers.story[0].w
+  const bb2 = await a.locator('.canva-lbox.sel').boundingBox()
+  await a.mouse.move(bb2.x + bb2.width, bb2.y + bb2.height); await a.mouse.down(); await a.mouse.move(bb2.x + bb2.width + 50, bb2.y + bb2.height + 30, { steps: 6 }); await a.mouse.up(); await wait(2000)
+  ck('puxar a alça do canto aumenta o elemento', (await lay()).layers.story[0].w > w0 + 40)
+  // números, giro e alinhamento
+  await a.fill('#ly-rot', '15'); await wait(1800)
+  ck('giro em graus salvo', (await lay()).layers.story[0].rot === 15)
+  await a.fill('#ly-rot', '0'); await wait(1800)
+  await a.getByRole('button', { name: 'Centralizar na horizontal' }).click(); await wait(1800)
+  L = await lay()
+  ck('centralizar na peça: x = (largura da peça − largura do elemento) / 2', L.layers.story[0].x === Math.round((1080 - L.layers.story[0].w) / 2), `${L.layers.story[0].x} ${L.layers.story[0].w}`)
+  await a.fill('#ly-op', '50'); await wait(1800)
+  ck('opacidade salva', Math.abs((await lay()).layers.story[0].opacity - 0.5) < 0.01)
+  // teclado: a lista de camadas seleciona e as setas movem
+  await a.getByRole('tab', { name: /Camadas/ }).click()
+  await a.locator('.canva-layer-list li').first().click(); await a.keyboard.press('Shift+ArrowRight'); await wait(1800)
+  ck('setas movem o elemento selecionado (Shift = 10 px)', (await lay()).layers.story[0].x === L.layers.story[0].x + 10)
+
+  // formas e imagem
+  await a.locator('.canva-addbar button[aria-label="Inserir explosão"]').click(); await wait(300)
+  await a.locator('.canva-addbar button[aria-label="Inserir círculo"]').click(); await wait(300)
+  await a.locator('input[aria-label="Enviar imagem para a peça"]').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: await foto('#c0392b') }); await wait(3500)
+  L = await lay()
+  const imgLy = L.layers.story.find((x) => x.type === 'image')
+  ck('formas e imagem enviada viram elementos (4 no total) e a imagem fica guardada na promoção', L.layers.story.length === 4 && !!imgLy && (await q(`select count(*)::int n from promo_assets where campaign_id = $1`, [camp.id]))[0].n === 1, L.layers.story.map((x) => x.type + ':' + (x.shape ?? '')).join(','))
+  const assetRes = await ac.request.get(`${BASE}/api/promocoes/asset/${imgLy.asset}`)
+  ck('a imagem enviada é servida como WEBP, só para quem está logado', assetRes.status() === 200 && /image\/webp/.test(assetRes.headers()['content-type'] ?? '') && (await fetch(`${BASE}/api/promocoes/asset/${imgLy.asset}`)).status === 401)
+  await a.locator('input[aria-label="Enviar imagem para a peça"]').setInputFiles({ name: 'logo2.png', mimeType: 'image/png', buffer: await foto('#c0392b') }); await wait(3500)
+  ck('imagem repetida não duplica o arquivo guardado', (await q(`select count(*)::int n from promo_assets where campaign_id = $1`, [camp.id]))[0].n === 1 && (await lay()).layers.story.length === 5)
+  const badUp = await ac.request.post(`${BASE}/api/promocoes/camada-imagem/${camp.id}`, { headers: { origin: BASE }, multipart: { file: { name: 'x.png', mimeType: 'image/png', buffer: Buffer.from('não é imagem') } } })
+  ck('arquivo que não é imagem é recusado no envio do elemento (422)', badUp.status() === 422)
+
+  // desfazer e refazer
+  const n1 = (await lay()).layers.story.length
+  await a.locator('.canva-addbar button[aria-label="Desfazer"]').click(); await wait(1800)
+  ck('desfazer remove o último elemento adicionado', (await lay()).layers.story.length === n1 - 1)
+  await a.locator('.canva-addbar button[aria-label="Refazer"]').click(); await wait(1800)
+  ck('refazer traz de volta', (await lay()).layers.story.length === n1)
+
+  // camadas: ordem, ocultar, bloquear
+  await a.getByRole('tab', { name: /Camadas/ }).click()
+  const idsAntes = (await lay()).layers.story.map((x) => x.id)
+  const rows = a.locator('.canva-layer-list li')
+  ck('a lista de camadas mostra todos os elementos, o último no topo', (await rows.count()) === n1 && (await rows.first().getAttribute('data-layer')) === idsAntes[idsAntes.length - 1])
+  await rows.first().locator('button[aria-label="Descer camada"]').click(); await wait(1800)
+  const idsDepois = (await lay()).layers.story.map((x) => x.id)
+  ck('"descer camada" troca a ordem dos elementos', idsDepois[idsDepois.length - 2] === idsAntes[idsAntes.length - 1] && idsDepois[idsDepois.length - 1] === idsAntes[idsAntes.length - 2])
+  await rows.nth(1).locator('button[aria-label="Ocultar"]').click(); await wait(1800)
+  ck('ocultar tira o elemento da peça mas mantém na lista', (await lay()).layers.story.filter((x) => x.hidden).length === 1 && (await box.count()) === n1 - 1)
+  await rows.nth(1).locator('button[aria-label="Mostrar"]').click(); await wait(1500)
+  await rows.first().locator('button[aria-label="Bloquear"]').click(); await wait(1800)
+  ck('bloquear: o elemento deixa de ser arrastável (o clique passa para o encarte)', (await lay()).layers.story.filter((x) => x.locked).length === 1 && (await a.locator('.canva-lbox.locked').count()) === 1)
+  await rows.first().locator('button[aria-label="Desbloquear"]').click(); await wait(1500)
+
+  // aparece em todas as peças; copiar para os outros formatos
+  await rows.nth(2).click()
+  await a.selectOption('#ly-page', 'all'); await wait(1800)
+  ck('"aparece em todas as peças" salvo (page = null)', (await lay()).layers.story.some((x) => x.page === null))
+  await a.getByRole('button', { name: 'Copiar para os outros formatos' }).click(); await wait(2000)
+  L = await lay()
+  ck('copiar para os outros formatos coloca o elemento no feed e no A4', L.layers.feed?.length === 1 && L.layers.a4?.length === 1)
+  await a.getByRole('button', { name: 'Feed (Instagram/Facebook)' }).click(); await wait(1200)
+  ck('no formato feed só aparecem os elementos do feed', (await a.locator('.canva-lbox').count()) === 1)
+  await a.getByRole('button', { name: 'Story / Status' }).click(); await wait(1200)
+
+  // o download leva os elementos
+  const baixa = async () => { const [d] = await Promise.all([a.waitForEvent('download'), a.getByRole('button', { name: /Baixar esta peça/ }).click()]); return sharp(await d.path()).raw().toBuffer() }
+  const comEl = await baixa()
+  await a.getByRole('tab', { name: /Camadas/ }).click()
+  for (let k = 0; k < 8 && (await rows.count()) > 0; k++) { await rows.first().click(); await a.getByRole('button', { name: 'Excluir elemento' }).click(); await wait(400) }
+  await wait(1800)
+  const semEl = await baixa()
+  ck('o PNG baixado inclui os elementos (diferente da peça sem eles)', Buffer.compare(comEl, semEl) !== 0 && (await lay()).layers.story.length === 0)
+  await a.locator('.canva-addbar button[aria-label="Desfazer"]').click(); await wait(1800)
+  ck('desfazer traz de volta o último elemento excluído', (await lay()).layers.story.length === 1)
 
   // política desligada: um encarte por produto
   await a.goto(BASE + '/promocoes'); await idle(a)
@@ -338,6 +444,8 @@ try {
   ck('leitor vê as promoções, sem o envio de planilha', (await v.locator('#np-file').count()) === 0 && (await v.locator('a[href^="/promocoes/"]').count()) >= 1)
   await v.goto(`${BASE}/promocoes/${camp.id}`); await idle(v); await v.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
   ck('leitor vê a peça e baixa, mas não edita', (await v.getByRole('button', { name: /Baixar esta peça/ }).count()) === 1 && (await v.locator('button[aria-label="Remover"]').count()) === 0 && (await v.getByRole('button', { name: 'Aprovar encartes' }).count()) === 0 && (await v.locator('#pc-name').count()) === 0)
+  ck('leitor vê a barra de zoom mas não pode adicionar elementos', (await v.locator('.canva-addbar button[aria-label="Aumentar zoom"]').count()) === 1 && (await v.locator('.canva-addbar button[title="Adicionar título"]').count()) === 0)
+  ck('leitor não envia imagem de elemento pela API (403)', (await vc.request.post(`${BASE}/api/promocoes/camada-imagem/${camp.id}`, { headers: { origin: BASE }, multipart: { file: { name: 'x.png', mimeType: 'image/png', buffer: await foto('#111111') } } })).status() === 403)
   ck('leitor não importa planilha pela API (403)', (await vc.request.post(BASE + '/api/promocoes/importar', { headers: { origin: BASE }, multipart: { file: { name: 'p.xlsx', mimeType: XLSX, buffer: planilha } } })).status() === 403)
   ck('leitor não envia arte de tema (403)', (await vc.request.post(`${BASE}/api/promocoes/tema/${themeId}/arte`, { headers: { origin: BASE }, multipart: { role: 'header', format: 'story', file: { name: 'a.png', mimeType: 'image/png', buffer: await arte(300, 100, '#fff') } } })).status() === 403)
 

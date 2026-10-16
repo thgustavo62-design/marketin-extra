@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { zipSync } from 'fflate'
 import { PDFDocument } from 'pdf-lib'
-import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Download, ExternalLink, GripVertical, ImagePlus, Layers, Palette, Settings2, Trash2, Type } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Download, ExternalLink, GripVertical, ImagePlus, Layers, Palette, Shapes, Settings2, Trash2, Type } from 'lucide-react'
 import { PROMO_FORMATS, PROMO_FORMAT_KEYS, TAG_PRESETS, applyOverrides, paginateSections, type ItemStyle, type PromoFormat, type PromoOverrides, type Rect, type ThemeConfig } from '@/lib/domain/promo'
+import { layersForPage } from '@/lib/domain/promo-layers'
 import type { Campaign, PromoItem, SizeEdit, ThemeAsset } from '@/lib/promo/store'
 import { canvasToBlob, drawPage, loadImage, loadPromoFonts, pageGeometry, type RenderAssets, type RenderItem } from '@/lib/promo/render'
 import { ProductPicker } from '../../produtos/product-picker'
+import { AddBar, LayerBoxes, LayerInspector, LayersCanvas, LayersPanel, duplicateLayer, useLayerKeys, useLayers } from './layers-ui'
 import { addItemAction, approveCampaignAction, deleteCampaignAction, moveItemAction, patchItemAction, removeItemAction, reorderItemsAction, saveOverridesAction, setItemProductAction, ungroupItemAction, updateCampaignAction, updateItemAction } from '../actions'
 
 type ThemeLite = { id: string; name: string }
@@ -47,7 +49,9 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   const [format, setFormat] = useState<PromoFormat>('story')
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
-  const [tab, setTab] = useState<'produtos' | 'tema' | 'dados'>('produtos')
+  const [tab, setTab] = useState<'produtos' | 'camadas' | 'tema' | 'dados'>('produtos')
+  const [selLayer, setSelLayer] = useState<string | null>(null)
+  const [zoom, setZoom] = useState(1)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, start] = useTransition()
   const [rendering, setRendering] = useState(true)
@@ -57,6 +61,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   const [overId, setOverId] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const paperRef = useRef<HTMLDivElement>(null)
   const fotoRef = useRef<HTMLInputElement>(null)
   const imgCache = useRef(new Map<string, HTMLImageElement | null>())
 
@@ -78,6 +83,14 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
     return imgCache.current.get(url) ?? null
   }, [])
 
+  const layersApi = useLayers(campaign.id, campaign.layers, canEdit, () => router.refresh())
+  const curLayers = layersApi.layers[format]
+  const selL = curLayers.find((l) => l.id === selLayer) ?? null
+  const pageLayers = useMemo(() => layersForPage(curLayers, pageIdx), [curLayers, pageIdx])
+  // sem peça aberta com este elemento, a seleção some
+  useEffect(() => { if (selLayer && !curLayers.some((l) => l.id === selLayer)) setSelLayer(null) }, [selLayer, curLayers])
+  useLayerKeys({ api: layersApi, format, selId: selLayer, select: (id) => { setSelLayer(id) }, canEdit })
+
   // o que cada encarte leva para o desenho: tabela de tamanhos e fragrâncias só quando ligadas
   const toRender = useCallback(async (it: PromoItem): Promise<RenderItem> => {
     const v = it.variants
@@ -91,7 +104,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   }, [getImg])
 
   // desenha uma peça (qualquer formato/página) num canvas e devolve a posição de cada produto
-  const renderTo = useCallback(async (canvas: HTMLCanvasElement, fmt: PromoFormat, idx: number): Promise<Geo | null> => {
+  const renderTo = useCallback(async (canvas: HTMLCanvasElement, fmt: PromoFormat, idx: number, withLayers = false): Promise<Geo | null> => {
     if (!theme || !cfg) return null
     await loadPromoFonts()
     const find = (role: string) => theme.assets.find((a) => a.role === role && a.format === fmt)
@@ -105,10 +118,13 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
     const ps = paginateSections(items, g.cols * g.rows, cfg.breakBySection[fmt])
     const pg = ps[Math.min(idx, Math.max(0, ps.length - 1))] ?? []
     const render = await Promise.all(pg.map(toRender))
-    drawPage(canvas, { format: fmt, theme: cfg, title: campaign.title, validity: campaign.validity, extraText: campaign.overrides.extraText ?? null, assets, items: render })
+    const ls = withLayers ? layersForPage(layersApi.latest.current[fmt], Math.min(idx, Math.max(0, ps.length - 1))) : []
+    const layerImages: Record<string, HTMLImageElement | null> = {}
+    for (const l of ls) if (l.asset && !(l.asset in layerImages)) layerImages[l.asset] = await getImg(`/api/promocoes/asset/${l.asset}`)
+    drawPage(canvas, { format: fmt, theme: cfg, title: campaign.title, validity: campaign.validity, extraText: campaign.overrides.extraText ?? null, assets, items: render, layers: ls, layerImages })
     const gm = pageGeometry({ format: fmt, theme: cfg, assets, count: pg.length })
     return { W: gm.W, H: gm.H, cells: gm.cells, ids: pg.map((i) => i.id) }
-  }, [theme, cfg, items, campaign.title, campaign.validity, campaign.overrides, getImg, toRender])
+  }, [theme, cfg, items, campaign.title, campaign.validity, campaign.overrides, getImg, toRender, layersApi.latest])
 
   useEffect(() => {
     const c = canvasRef.current
@@ -128,7 +144,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
       for (let i = 0; i < pages.length; i++) {
         if (cancel) return
         const big = document.createElement('canvas')
-        await renderTo(big, format, i)
+        await renderTo(big, format, i, true)
         const small = document.createElement('canvas')
         const w = 150, h = Math.round((150 * big.height) / big.width)
         small.width = w; small.height = h
@@ -138,7 +154,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
       }
     })()
     return () => { cancel = true }
-  }, [renderTo, format, pages.length, theme, items.length])
+  }, [renderTo, format, pages.length, theme, items.length, layersApi.committed])
 
   const act = (fn: () => Promise<{ ok: boolean; error?: string }>, okText?: string) =>
     start(async () => {
@@ -150,11 +166,13 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   // ---------- seleção e reordenação ----------
   const select = (id: string | null) => {
     setSelected(id)
+    if (id) setSelLayer(null)
     if (id) {
       const k = pages.findIndex((p) => p.some((i) => i.id === id))
       if (k >= 0) setPage(k)
     }
   }
+  const selectLayer = (id: string | null) => { setSelLayer(id); if (id) setSelected(null) }
   const reorder = (fromId: string, toId: string) => {
     if (fromId === toId) return
     const arr = [...items]
@@ -196,7 +214,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   }
 
   // ---------- downloads ----------
-  const pageBlob = async (fmt: PromoFormat, idx: number) => { const c = document.createElement('canvas'); await renderTo(c, fmt, idx); return canvasToBlob(c) }
+  const pageBlob = async (fmt: PromoFormat, idx: number) => { layersApi.flush(); const c = document.createElement('canvas'); await renderTo(c, fmt, idx, true); return canvasToBlob(c) }
   const save = (blob: Blob, name: string) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000) }
   const base = slug(campaign.name)
   const pagesOf = (fmt: PromoFormat) => { const g = cfg!.grid[fmt]; return paginateSections(items, g.cols * g.rows, cfg!.breakBySection[fmt]) }
@@ -284,6 +302,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
         <aside className="canva-left" aria-label="Painel">
           <div className="canva-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === 'produtos'} className={tab === 'produtos' ? 'on' : ''} onClick={() => setTab('produtos')}><Layers size={14} /> Produtos</button>
+            <button type="button" role="tab" aria-selected={tab === 'camadas'} className={tab === 'camadas' ? 'on' : ''} onClick={() => setTab('camadas')}><Shapes size={14} /> Camadas{curLayers.length ? ` (${curLayers.length})` : ''}</button>
             <button type="button" role="tab" aria-selected={tab === 'tema'} className={tab === 'tema' ? 'on' : ''} onClick={() => setTab('tema')}><Palette size={14} /> Tema</button>
             <button type="button" role="tab" aria-selected={tab === 'dados'} className={tab === 'dados' ? 'on' : ''} onClick={() => setTab('dados')}><Settings2 size={14} /> Textos</button>
           </div>
@@ -324,6 +343,8 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
               )}
             </section>
           )}
+
+          {tab === 'camadas' && <LayersPanel api={layersApi} format={format} page={pageIdx} selectedId={selLayer} onSelect={selectLayer} canEdit={canEdit} />}
 
           {tab === 'tema' && (
             <section aria-label="Temas">
@@ -368,9 +389,11 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
 
         {/* peça */}
         <main className="canva-stage" aria-label="Prévia">
+          <AddBar api={layersApi} campaignId={campaign.id} format={format} page={pageIdx} canEdit={canEdit} onAdded={(id) => { selectLayer(id); setTab('camadas') }} onMsg={setMsg} zoom={zoom} setZoom={setZoom} />
           {!theme ? <p className="empty">Escolha um tema na aba &quot;Tema&quot; para ver a peça.</p> : (
-            <div className="canva-paper" style={{ aspectRatio: `${PROMO_FORMATS[format].w} / ${PROMO_FORMATS[format].h}` }}>
+            <div ref={paperRef} className="canva-paper" style={{ aspectRatio: `${PROMO_FORMATS[format].w} / ${PROMO_FORMATS[format].h}`, ['--ar' as string]: PROMO_FORMATS[format].w / PROMO_FORMATS[format].h, ['--zoom' as string]: zoom }}>
               <canvas ref={canvasRef} aria-label={`Prévia ${PROMO_FORMATS[format].label}`} data-ready={rendering ? '0' : '1'} />
+              <LayersCanvas format={format} list={pageLayers} getImg={getImg} />
               {geo && (
                 <div className="canva-overlay">
                   {geo.cells.map((c, i) => {
@@ -386,6 +409,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
                   })}
                 </div>
               )}
+              <LayerBoxes format={format} list={pageLayers} selectedId={selLayer} onSelect={selectLayer} onEditText={() => { setTimeout(() => document.getElementById('ly-text')?.focus(), 30) }} api={layersApi} paperRef={paperRef} canEdit={canEdit} />
             </div>
           )}
           <div className="canva-pager">
@@ -397,7 +421,11 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
 
         {/* inspetor */}
         <aside className="canva-right" aria-label="Editar produto">
-          {sel ? (
+          {selL ? (
+            <LayerInspector api={layersApi} format={format} layer={selL} page={pageIdx} pageCount={Math.max(1, pages.length)} canEdit={canEdit} onClose={() => selectLayer(null)} onMsg={setMsg}
+              onDuplicate={() => { const id = duplicateLayer(layersApi, format, selL.id); if (id) selectLayer(id) }}
+              onDelete={() => { layersApi.remove(format, selL.id); selectLayer(null) }} />
+          ) : sel ? (
             <section>
               <h3>Encarte selecionado</h3>
               <p className="muted">{sel.ean ?? 'sem código de barras'}{sel.section ? ` · aba ${sel.section}` : ''}</p>
@@ -522,7 +550,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
           ) : (
             <section>
               <h3>Edição</h3>
-              <p className="muted">Clique em um encarte na peça (ou na lista) para editar nome, subtítulo, preço, etiqueta, cores, foto e variações. Arraste um encarte sobre outro para trocá-los de lugar.</p>
+              <p className="muted">Clique em um encarte na peça (ou na lista) para editar nome, subtítulo, preço, etiqueta, cores, foto e variações. Arraste um encarte sobre outro para trocá-los de lugar. Com a barra acima da peça você adiciona texto, imagens e formas livres.</p>
               <ul className="files">
                 <li><span>Peças neste formato</span><strong>{pages.length}</strong></li>
                 <li><span>Encartes nesta peça</span><strong>{pages[pageIdx]?.length ?? 0}</strong></li>

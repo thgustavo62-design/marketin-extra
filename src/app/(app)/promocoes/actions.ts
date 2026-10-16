@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { audit, writerOrError } from '@/lib/auth'
 import { isUuid } from '@/lib/form'
 import { PROMO_FORMAT_KEYS, parsePrice, type ItemStyle, type PromoFormat, type PromoOverrides } from '@/lib/domain/promo'
-import { addItem, approveCampaign, createTheme, deleteCampaign, deleteTheme, deleteThemeAsset, moveItem, patchItem, removeItem, reorderItems, saveOverrides, saveThemeConfig, setItemProduct, THEME_ROLES, ungroupItem, updateCampaign, type SizeEdit, type ThemeRole } from '@/lib/promo/store'
+import { addItem, approveCampaign, createTheme, deleteCampaign, deleteTheme, deleteThemeAsset, moveItem, patchItem, removeItem, reorderItems, saveLayers, saveOverrides, saveThemeConfig, setItemProduct, THEME_ROLES, ungroupItem, updateCampaign, type SizeEdit, type ThemeRole } from '@/lib/promo/store'
 
 type Out = { ok: boolean; error?: string; id?: string }
 const refresh = (id: string) => { revalidatePath(`/promocoes/${id}`); revalidatePath(`/editor/${id}`) }
@@ -97,6 +97,14 @@ export async function saveOverridesAction(campaignId: string, o: PromoOverrides)
   const r = await saveOverrides(campaignId, o)
   if (r.ok) refresh(campaignId)
   return r
+}
+
+export async function saveLayersAction(campaignId: string, layers: unknown): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(campaignId)) return g.ok ? NO : { ok: false, error: g.error }
+  const r = await saveLayers(campaignId, layers)
+  if (r.ok) refresh(campaignId)
+  return { ok: r.ok, error: r.error }
 }
 
 export async function removeItemAction(campaignId: string, itemId: string): Promise<Out> {
