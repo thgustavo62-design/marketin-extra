@@ -8,6 +8,10 @@ export type LayerFont = string
 export type LayerShape = 'rect' | 'round' | 'circle' | 'burst' | 'line' | 'triangle' | 'arrow' | 'star' | 'hexagon' | 'balloon' | 'tag'
 export const LAYER_SHAPES: LayerShape[] = ['rect', 'round', 'circle', 'burst', 'line', 'triangle', 'arrow', 'star', 'hexagon', 'balloon', 'tag']
 export type Dash = 'solid' | 'dashed' | 'dotted'
+export const ANCHORS = ['tl', 'tc', 'tr', 'ml', 'c', 'mr', 'bl', 'bc', 'br', 'fill'] as const
+export type Anchor = (typeof ANCHORS)[number]
+/** anchor = onde fica (canto, borda, centro ou "fill" = peça inteira); size = largura em % da peça; margin = afastamento da borda em % da largura; dx/dy = ajuste fino em px */
+export type Place = { anchor: Anchor; size: number; margin: number; dx: number; dy: number }
 export type Layer = {
   id: string
   type: LayerType
@@ -18,6 +22,9 @@ export type Layer = {
   hidden: boolean; locked: boolean
   /** elementos com o mesmo grupo se movem e se redimensionam juntos */ group?: string
   /** sombra suave atrás do elemento */ shadow?: boolean
+  /** (artes fixas do tema) em quais peças aparece: só a primeira, só a última ou todas menos a primeira (vazio = todas) */ show?: 'first' | 'last' | 'notfirst'
+  /** (artes fixas do tema) desenhada por baixo dos produtos (fundo, bonecos atrás) em vez de por cima */ under?: boolean
+  /** (artes fixas do tema) como a arte foi posicionada: canto/centro, tamanho e margem, para reabrir no mesmo lugar */ place?: Place
   /** null = aparece em todas as peças do formato; n = só na peça n (começando em 0) */
   page: number | null
   // texto
@@ -66,6 +73,9 @@ export function normalizeLayers(raw: unknown): Layers {
         hidden: l.hidden === true, locked: l.locked === true,
         ...(typeof l.group === 'string' && /^[a-z0-9-]{4,40}$/i.test(l.group) ? { group: l.group } : {}),
         ...(l.shadow === true ? { shadow: true } : {}),
+        ...(l.show === 'first' || l.show === 'last' || l.show === 'notfirst' ? { show: l.show } : {}),
+        ...(l.under === true ? { under: true } : {}),
+        ...(l.place && typeof l.place === 'object' && ANCHORS.includes((l.place as Place).anchor) ? { place: { anchor: (l.place as Place).anchor, size: num((l.place as Place).size, 1, 100, 30), margin: num((l.place as Place).margin, 0, 50, 3), dx: Math.round(num((l.place as Place).dx, -W, W, 0)), dy: Math.round(num((l.place as Place).dy, -H, H, 0)) } } : {}),
         page: l.page === null || l.page === undefined ? null : Number.isInteger(l.page) && (l.page as number) >= 0 && (l.page as number) < 200 ? (l.page as number) : null,
       }
       if (type === 'text') {
@@ -109,7 +119,8 @@ export function normalizeLayers(raw: unknown): Layers {
 export const newLayerId = () => `l${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`
 
 /** Elementos que aparecem na peça `page` (todas as peças ou só essa). */
-export const layersForPage = (list: Layer[], page: number): Layer[] => list.filter((l) => !l.hidden && (l.page === null || l.page === page))
+export const layersForPage = (list: Layer[], page: number, total = Infinity): Layer[] =>
+  list.filter((l) => !l.hidden && (l.page === null || l.page === page) && (l.show === undefined || (l.show === 'first' ? page === 0 : l.show === 'last' ? page === total - 1 : page > 0)))
 
 export type Align = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom'
 /** Alinha o elemento à peça (esquerda, centro, direita, topo, meio, base). */
@@ -316,3 +327,15 @@ export function deletePageLayers(list: Layer[], page: number): Layer[] {
 
 /** Quantas peças um design precisa para mostrar todos os elementos (o maior número de peça usado + 1). */
 export const pagesNeeded = (list: Layer[]): number => list.reduce((n, l) => (l.page !== null ? Math.max(n, l.page + 1) : n), 1)
+
+/** Onde a arte fica na peça a partir do canto/centro escolhido, do tamanho (% da largura) e da margem; a altura segue a proporção da imagem. */
+export function placeArt(p: Place, W: number, H: number, iw: number, ih: number): { x: number; y: number; w: number; h: number } {
+  if (p.anchor === 'fill') return { x: Math.round(p.dx), y: Math.round(p.dy), w: W, h: H }
+  const w = Math.max(8, (W * p.size) / 100), h = iw > 0 ? Math.max(4, (w * ih) / iw) : w
+  const m = (W * p.margin) / 100
+  const col = p.anchor[p.anchor.length - 1] === 'l' ? 'l' : p.anchor[p.anchor.length - 1] === 'r' ? 'r' : 'c'
+  const row = p.anchor === 'c' ? 'm' : p.anchor[0] === 't' ? 't' : p.anchor[0] === 'b' ? 'b' : 'm'
+  const x = col === 'l' ? m : col === 'r' ? W - w - m : (W - w) / 2
+  const y = row === 't' ? m : row === 'b' ? H - h - m : (H - h) / 2
+  return { x: Math.round(x + p.dx), y: Math.round(y + p.dy), w: Math.round(w), h: Math.round(h) }
+}

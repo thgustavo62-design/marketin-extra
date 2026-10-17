@@ -4,6 +4,7 @@ import { requireUser } from '@/lib/auth'
 import { isUuid } from '@/lib/form'
 import { canWrite } from '@/lib/perms'
 import { getTheme } from '@/lib/promo/store'
+import { FixedArts } from './fixed-arts'
 import { ThemeEditor } from './theme-editor'
 
 export default async function Tema({ params }: { params: Promise<{ id: string }> }) {
@@ -19,6 +20,7 @@ export default async function Tema({ params }: { params: Promise<{ id: string }>
         <p><Link href="/promocoes/temas">← Temas</Link></p>
       </header>
       <ThemeEditor theme={theme} canEdit={canWrite(user.role)} />
+      <FixedArts theme={theme} canEdit={canWrite(user.role)} />
     </>
   )
 }

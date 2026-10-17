@@ -287,7 +287,7 @@ export function normalizeBackground(raw: unknown): BackgroundChoice | undefined 
   return undefined
 }
 
-export type PromoOverrides = { tagText?: string; showTag?: boolean; footerLines?: string[]; extraText?: string; background?: BackgroundChoice }
+export type PromoOverrides = { tagText?: string; showTag?: boolean; footerLines?: string[]; extraText?: string; background?: BackgroundChoice; /** artes fixas do tema que esta promoção não usa (ids) */ hideFixed?: string[] }
 export function normalizeOverrides(raw: unknown): PromoOverrides {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const out: PromoOverrides = {}
@@ -297,6 +297,7 @@ export function normalizeOverrides(raw: unknown): PromoOverrides {
   if (typeof r.extraText === 'string') out.extraText = r.extraText.trim().slice(0, 140)
   const bg = normalizeBackground(r.background)
   if (bg) out.background = bg
+  if (Array.isArray(r.hideFixed)) { const ids = [...new Set(r.hideFixed.filter((x): x is string => typeof x === 'string' && /^[a-z0-9-]{4,40}$/i.test(x)))].slice(0, 40); if (ids.length) out.hideFixed = ids }
   return out
 }
 /** O que a promoção define (etiqueta, rodapé) vale no lugar do tema. */

@@ -5,6 +5,7 @@ import { pool, withTx } from '../db.ts'
 import { displayName, applyOverrides, normalizeItemStyle, normalizeOverrides, normalizeTheme, PROMO_FORMAT_KEYS, type ItemStyle, type PromoFormat, type PromoOverrides, type PromoRow, type ThemeConfig } from '../domain/promo.ts'
 import { groupItems, groupSummary, type GroupInput, type Variants } from '../domain/promo-group.ts'
 import { normalizeLayers, type Layers } from '../domain/promo-layers.ts'
+import { isArtKind, MAX_FIXED_PER_FORMAT, MAX_THEME_ARTS, type ArtKind } from '../domain/promo-fixed.ts'
 import { applyTemplateTexts, isTemplateCategory, templateFields, type TemplateField } from '../domain/promo-templates.ts'
 import { checkPromotion, pageCountsFor, summarizeCheck } from '../domain/promo-check.ts'
 import { listLibrary, type LibraryItem } from './library.ts'
@@ -14,7 +15,8 @@ import { ingestImage, saveProduct } from '../catalog/store.ts'
 export type ThemeRole = 'background' | 'header' | 'footer' | 'badge' | 'tag'
 export const THEME_ROLES: ThemeRole[] = ['background', 'header', 'footer', 'badge', 'tag']
 export type ThemeAsset = { role: ThemeRole; format: PromoFormat; width: number; height: number }
-export type Theme = { id: string; name: string; config: ThemeConfig; assets: ThemeAsset[] }
+export type ThemeArt = { id: string; name: string; kind: ArtKind; width: number; height: number }
+export type Theme = { id: string; name: string; config: ThemeConfig; assets: ThemeAsset[]; /** artes fixas (bonecos, logos, fundos…) e onde ficam em cada formato */ fixed: Layers; arts: ThemeArt[] }
 export type ThemeLite = { id: string; name: string; assets: number }
 
 export async function listThemes(): Promise<ThemeLite[]> {
@@ -22,10 +24,11 @@ export async function listThemes(): Promise<ThemeLite[]> {
 }
 
 export async function getTheme(id: string): Promise<Theme | null> {
-  const t = (await pool.query(`select id, name, config from promo_themes where id = $1`, [id])).rows[0]
+  const t = (await pool.query(`select id, name, config, fixed from promo_themes where id = $1`, [id])).rows[0]
   if (!t) return null
   const assets = (await pool.query(`select role, format, width, height from promo_theme_assets where theme_id = $1`, [id])).rows as ThemeAsset[]
-  return { id: t.id, name: t.name, config: normalizeTheme(t.config), assets }
+  const arts = (await pool.query(`select id, name, kind, width, height from promo_theme_arts where theme_id = $1 order by created_at`, [id])).rows as ThemeArt[]
+  return { id: t.id, name: t.name, config: normalizeTheme(t.config), assets, fixed: normalizeLayers(t.fixed), arts }
 }
 
 export async function createTheme(name: string, userId: string): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
@@ -561,4 +564,62 @@ export async function saveThumb(id: string, buf: Buffer): Promise<{ ok: boolean;
 export async function getThumb(id: string): Promise<{ data: Buffer; at: string } | null> {
   const r = (await pool.query(`select thumb, thumb_at::text as at from promo_campaigns where id = $1 and thumb is not null`, [id])).rows[0]
   return r ? { data: r.thumb, at: r.at } : null
+}
+
+// ---------- artes fixas do tema (bonecos, logos, fundos…) ----------
+/** Guarda uma arte no tema: WEBP de até 2000 px, com transparência. A mesma imagem não entra duas vezes no mesmo tema. */
+export async function addThemeArt(o: { themeId: string; buf: Buffer; name: string; kind: string; userId: string }): Promise<{ ok: true; id: string; duplicate: boolean } | { ok: false; error: string }> {
+  if (o.buf.length === 0) return { ok: false, error: 'Arquivo vazio.' }
+  if (o.buf.length > 8 * 1024 * 1024) return { ok: false, error: 'A imagem passa de 8 MB.' }
+  if (!sniffImage(o.buf)) return { ok: false, error: 'Use uma imagem PNG, JPG ou WEBP.' }
+  if (!(await pool.query(`select 1 from promo_themes where id = $1`, [o.themeId])).rowCount) return { ok: false, error: 'Tema não encontrado.' }
+  if (Number((await pool.query(`select count(*)::int n from promo_theme_arts where theme_id = $1`, [o.themeId])).rows[0].n) >= MAX_THEME_ARTS) return { ok: false, error: `O tema aceita até ${MAX_THEME_ARTS} artes.` }
+  const kind: ArtKind = isArtKind(o.kind) ? o.kind : 'outro'
+  const name = o.name.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Arte'
+  try {
+    const out = await sharp(o.buf, { failOn: 'error', limitInputPixels: 60_000_000 }).rotate().resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true }).webp({ quality: 90, alphaQuality: 95 }).toBuffer({ resolveWithObject: true })
+    const sha = createHash('sha256').update(out.data).digest('hex')
+    const dup = (await pool.query(`select id from promo_theme_arts where theme_id = $1 and sha256 = $2`, [o.themeId, sha])).rows[0]
+    if (dup) return { ok: true, id: dup.id, duplicate: true }
+    const r = await pool.query(`insert into promo_theme_arts (theme_id, name, kind, data, width, height, sha256, created_by) values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`, [o.themeId, name, kind, out.data, out.info.width, out.info.height, sha, o.userId])
+    return { ok: true, id: r.rows[0].id, duplicate: false }
+  } catch { return { ok: false, error: 'Não consegui ler esta imagem (arquivo corrompido ou formato não suportado).' } }
+}
+
+export async function getThemeArtImage(artId: string, mini = false): Promise<{ data: Buffer; mime: string; sha: string } | null> {
+  const r = (await pool.query(`select data, mime, sha256 from promo_theme_arts where id = $1`, [artId])).rows[0]
+  if (!r) return null
+  if (!mini) return { data: r.data, mime: r.mime, sha: r.sha256 }
+  const small = await sharp(r.data).resize({ width: 240, height: 240, fit: 'inside', withoutEnlargement: true }).webp({ quality: 75 }).toBuffer()
+  return { data: small, mime: 'image/webp', sha: `${r.sha256}-m` }
+}
+
+/** Renomeia / troca o tipo da arte. */
+export async function updateThemeArt(themeId: string, artId: string, v: { name: string; kind: string }): Promise<{ ok: boolean; error?: string }> {
+  const name = v.name.trim().replace(/\s+/g, ' ').slice(0, 60)
+  if (!name || !isArtKind(v.kind)) return { ok: false, error: 'Nome ou tipo inválido.' }
+  const r = await pool.query(`update promo_theme_arts set name = $3, kind = $4 where id = $2 and theme_id = $1`, [themeId, artId, name, v.kind])
+  return r.rowCount ? { ok: true } : { ok: false, error: 'Arte não encontrada.' }
+}
+
+/** Exclui a arte e tira das posições do tema. */
+export async function deleteThemeArt(themeId: string, artId: string): Promise<{ ok: boolean; error?: string }> {
+  return withTx(async (db) => {
+    const r = await db.query(`delete from promo_theme_arts where id = $1 and theme_id = $2`, [artId, themeId])
+    if (!r.rowCount) return { ok: false, error: 'Arte não encontrada.' }
+    const cur = normalizeLayers((await db.query(`select fixed from promo_themes where id = $1`, [themeId])).rows[0]?.fixed)
+    const next = { ...cur }
+    for (const f of PROMO_FORMAT_KEYS) next[f] = cur[f].filter((l) => l.asset !== artId)
+    await db.query(`update promo_themes set fixed = $2::jsonb where id = $1`, [themeId, JSON.stringify(next)])
+    return { ok: true }
+  })
+}
+
+/** Guarda onde cada arte fica em cada formato. Só entram imagens que são artes deste tema; limite por formato. */
+export async function saveThemeFixed(themeId: string, raw: unknown): Promise<{ ok: boolean; error?: string; fixed?: Layers }> {
+  const layers = normalizeLayers(raw)
+  const ids = new Set((await pool.query(`select id from promo_theme_arts where theme_id = $1`, [themeId])).rows.map((r) => r.id as string))
+  for (const f of PROMO_FORMAT_KEYS) layers[f] = layers[f].filter((l) => l.type === 'image' && !!l.asset && ids.has(l.asset)).slice(0, MAX_FIXED_PER_FORMAT).map((l) => ({ ...l, page: null, locked: false }))
+  const r = await pool.query(`update promo_themes set fixed = $2::jsonb where id = $1`, [themeId, JSON.stringify(layers)])
+  return r.rowCount ? { ok: true, fixed: layers } : { ok: false, error: 'Tema não encontrado.' }
 }

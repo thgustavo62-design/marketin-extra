@@ -5,7 +5,7 @@ import { audit, writerOrError } from '@/lib/auth'
 import { deleteLibraryItem, importLibraryToCampaign, updateLibraryItem } from '@/lib/promo/library'
 import { isUuid } from '@/lib/form'
 import { PROMO_FORMAT_KEYS, parsePrice, type ItemStyle, type PromoFormat, type PromoOverrides } from '@/lib/domain/promo'
-import { addItem, approveCampaign, createDesign, createDesignFromTemplate, createTemplate, createTheme, deleteTemplate, duplicateDesign, deleteCampaign, deleteTheme, deleteThemeAsset, moveItem, patchItem, removeItem, reorderItems, deleteAsset, saveLayers, saveOverrides, saveThemeConfig, setItemProduct, THEME_ROLES, ungroupItem, updateCampaign, type SizeEdit, type ThemeRole } from '@/lib/promo/store'
+import { deleteThemeArt, saveThemeFixed, updateThemeArt, addItem, approveCampaign, createDesign, createDesignFromTemplate, createTemplate, createTheme, deleteTemplate, duplicateDesign, deleteCampaign, deleteTheme, deleteThemeAsset, moveItem, patchItem, removeItem, reorderItems, deleteAsset, saveLayers, saveOverrides, saveThemeConfig, setItemProduct, THEME_ROLES, ungroupItem, updateCampaign, type SizeEdit, type ThemeRole } from '@/lib/promo/store'
 
 type Out = { ok: boolean; error?: string; id?: string }
 const refresh = (id: string) => { revalidatePath(`/promocoes/${id}`); revalidatePath(`/criacao/${id}`); revalidatePath(`/editor/${id}`) }
@@ -229,5 +229,30 @@ export async function deleteTemplateAction(id: string): Promise<Out> {
   if (!g.ok || !isUuid(id)) return g.ok ? NO : { ok: false, error: g.error }
   const r = await deleteTemplate(id, g.user)
   if (r.ok) { revalidatePath('/criacao/modelos'); await audit('modelo_excluido', { userId: g.user.id, target: id }) }
+  return r
+}
+
+// ---------- artes fixas do tema ----------
+export async function saveThemeFixedAction(themeId: string, layers: unknown): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(themeId)) return g.ok ? NO : { ok: false, error: g.error }
+  const r = await saveThemeFixed(themeId, layers)
+  if (r.ok) { revalidatePath(`/promocoes/temas/${themeId}`); revalidatePath('/promocoes'); await audit('tema_artes_fixas_salvas', { userId: g.user.id, target: themeId }) }
+  return { ok: r.ok, error: r.error }
+}
+
+export async function updateThemeArtAction(themeId: string, artId: string, name: string, kind: string): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(themeId) || !isUuid(artId)) return g.ok ? NO : { ok: false, error: g.error }
+  const r = await updateThemeArt(themeId, artId, { name, kind })
+  if (r.ok) revalidatePath(`/promocoes/temas/${themeId}`)
+  return r
+}
+
+export async function deleteThemeArtAction(themeId: string, artId: string): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(themeId) || !isUuid(artId)) return g.ok ? NO : { ok: false, error: g.error }
+  const r = await deleteThemeArt(themeId, artId)
+  if (r.ok) { revalidatePath(`/promocoes/temas/${themeId}`); revalidatePath('/promocoes') }
   return r
 }

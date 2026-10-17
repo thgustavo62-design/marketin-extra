@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { deletePageLayers, duplicatePageLayers, pagesNeeded, imagePlacement, panImage, pasteLayers, duplicateLayers, alignSelection, boundsOf, distribute, expandSelection, groupLayers, moveSelection, scaleSelection, ungroupLayers, alignToPage, layersForPage, makeLayer, normalizeLayers, reorderLayer, snap, MAX_LAYERS, type Layer } from '../src/lib/domain/promo-layers.ts'
+import { placeArt, deletePageLayers, duplicatePageLayers, pagesNeeded, imagePlacement, panImage, pasteLayers, duplicateLayers, alignSelection, boundsOf, distribute, expandSelection, groupLayers, moveSelection, scaleSelection, ungroupLayers, alignToPage, layersForPage, makeLayer, normalizeLayers, reorderLayer, snap, MAX_LAYERS, type Layer } from '../src/lib/domain/promo-layers.ts'
 
 const ASSET = '3f2b6c1e-8a4d-4c7e-9f10-2b5d6e7a8c90'
 
@@ -174,4 +174,24 @@ test('peças de um design: duplicar, excluir e quantas são necessárias', () =>
   const del = deletePageLayers(l, 1)
   assert.deepEqual(del.map((x) => [x.id, x.page]), [['a1111', 0], ['c3333', null], ['d4444', 1]])
   assert.equal(pagesNeeded(l), 3); assert.equal(pagesNeeded([]), 1); assert.equal(pagesNeeded([L('z0000', 0, 0, 1, 1, { page: null })]), 1)
+})
+
+test('artes fixas: posição por canto/centro, tamanho e margem; regra de quais peças mostram', () => {
+  // arte quadrada de 400 px, 30% da largura da peça de 1000 px, margem de 5%
+  assert.deepEqual(placeArt({ anchor: 'tl', size: 30, margin: 5, dx: 0, dy: 0 }, 1000, 2000, 400, 400), { x: 50, y: 50, w: 300, h: 300 })
+  assert.deepEqual(placeArt({ anchor: 'br', size: 30, margin: 5, dx: 0, dy: 0 }, 1000, 2000, 400, 400), { x: 650, y: 1650, w: 300, h: 300 })
+  assert.deepEqual(placeArt({ anchor: 'tc', size: 30, margin: 5, dx: 10, dy: -20 }, 1000, 2000, 400, 200), { x: 360, y: 30, w: 300, h: 150 })
+  assert.deepEqual(placeArt({ anchor: 'c', size: 50, margin: 0, dx: 0, dy: 0 }, 1000, 2000, 200, 400), { x: 250, y: 500, w: 500, h: 1000 })
+  assert.deepEqual(placeArt({ anchor: 'ml', size: 20, margin: 2, dx: 0, dy: 0 }, 1000, 2000, 100, 100), { x: 20, y: 900, w: 200, h: 200 })
+  assert.deepEqual(placeArt({ anchor: 'fill', size: 10, margin: 9, dx: 0, dy: 0 }, 1000, 2000, 5, 5), { x: 0, y: 0, w: 1000, h: 2000 })
+  const U = '3f2b6c1e-8a4d-4c7e-9f10-2b5d6e7a8c90'
+  const L = (id: string, show?: 'first' | 'last' | 'notfirst'): Layer => ({ id, type: 'image', x: 0, y: 0, w: 10, h: 10, rot: 0, opacity: 1, hidden: false, locked: false, page: null, asset: U, ...(show ? { show } : {}) })
+  const list = [L('todas0'), L('prim00', 'first'), L('ultm00', 'last'), L('nprim0', 'notfirst')]
+  assert.deepEqual(layersForPage(list, 0, 3).map((l) => l.id), ['todas0', 'prim00'])
+  assert.deepEqual(layersForPage(list, 1, 3).map((l) => l.id), ['todas0', 'nprim0'])
+  assert.deepEqual(layersForPage(list, 2, 3).map((l) => l.id), ['todas0', 'ultm00', 'nprim0'])
+  assert.deepEqual(layersForPage(list, 0, 1).map((l) => l.id), ['todas0', 'prim00', 'ultm00']) // peça única é primeira e última
+  const n = normalizeLayers({ story: [{ id: 'fx0001', type: 'image', asset: U, show: 'last', under: true, place: { anchor: 'br', size: 500, margin: -3, dx: 99999, dy: 2.4 } }, { id: 'fx0002', type: 'image', asset: U, show: 'sempre', place: { anchor: 'xx' } }] }).story
+  assert.deepEqual([n[0].show, n[0].under, n[0].place], ['last', true, { anchor: 'br', size: 100, margin: 0, dx: 1080, dy: 2 }])
+  assert.deepEqual([n[1].show, n[1].under, n[1].place], [undefined, undefined, undefined])
 })

@@ -5,17 +5,19 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { zipSync } from 'fflate'
 import { PDFDocument } from 'pdf-lib'
-import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Download, ExternalLink, GripVertical, ImagePlus, BadgeCheck, Image as ImageIcon, Images, Layers, Palette, Shapes, Settings2, Trash2, Type } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Download, ExternalLink, GripVertical, ImagePlus, BadgeCheck, Sticker, Image as ImageIcon, Images, Layers, Palette, Shapes, Settings2, Trash2, Type } from 'lucide-react'
 import { PROMO_FORMATS, PROMO_FORMAT_KEYS, BLANK_THEME, TAG_PRESETS, applyOverrides, paginateSections, type BackgroundChoice, type ItemStyle, type PromoFormat, type PromoOverrides, type Rect, type ThemeConfig } from '@/lib/domain/promo'
 import { deletePageLayers, duplicatePageLayers, expandSelection, layersForPage, pagesNeeded } from '@/lib/domain/promo-layers'
 import { TEMPLATE_CATEGORIES } from '@/lib/domain/promo-templates'
 import { checkPromotion, pageCountsFor, summarizeCheck, type CheckIssue } from '@/lib/domain/promo-check'
-import type { Campaign, PromoItem, SizeEdit, ThemeAsset } from '@/lib/promo/store'
+import type { Campaign, PromoItem, SizeEdit, ThemeArt, ThemeAsset } from '@/lib/promo/store'
+import type { Layers as LayerSet } from '@/lib/domain/promo-layers'
 import { canvasToBlob, drawPage, loadFonts, loadImage, loadPromoFonts, pageGeometry, type RenderAssets, type RenderBackground, type RenderItem } from '@/lib/promo/render'
 import { ProductPicker } from '../../produtos/product-picker'
 import { BackgroundGallery } from './background-gallery'
 import { CheckPanel } from './check-panel'
 import { BrandPanel } from './brand-panel'
+import { ThemeArtsPanel } from './theme-arts-panel'
 import { LibraryPicker } from './library-picker'
 import { AddBar, LayerBoxes, addImageLayer, LayerInspector, LayersCanvas, LayersPanel, MultiInspector, addTextLayer, duplicateSelection, useLayerKeys, useLayers } from './layers-ui'
 import { QuickEdit } from './quick-edit'
@@ -25,7 +27,7 @@ import { createTemplateAction, addItemAction, approveCampaignAction, deleteAsset
 type ThemeLite = { id: string; name: string }
 type Props = {
   campaign: Campaign
-  theme: { id: string; name: string; config: ThemeConfig; assets: ThemeAsset[] } | null
+  theme: { id: string; name: string; config: ThemeConfig; assets: ThemeAsset[]; fixed?: LayerSet; arts?: ThemeArt[] } | null
   themes: ThemeLite[]
   items: PromoItem[]
   canEdit: boolean
@@ -63,7 +65,7 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
   const [format, setFormat] = useState<PromoFormat>(campaign.design_format ?? 'story')
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
-  const [tab, setTab] = useState<'produtos' | 'camadas' | 'fundo' | 'biblioteca' | 'marca' | 'tema' | 'dados'>(campaign.kind === 'design' ? 'camadas' : 'produtos')
+  const [tab, setTab] = useState<'produtos' | 'camadas' | 'fundo' | 'biblioteca' | 'marca' | 'artes' | 'tema' | 'dados'>(campaign.kind === 'design' ? 'camadas' : 'produtos')
   const [selIds, setSelIds] = useState<string[]>([])
   const [editingLayer, setEditingLayer] = useState<string | null>(null)
   const [quickId, setQuickId] = useState<string | null>(null)
@@ -170,9 +172,16 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
     const render = await Promise.all(pg.map(toRender))
     const ls = withLayers ? layersForPage(layersApi.latest.current[fmt], Math.min(idx, Math.max(0, ps.length - 1))) : []
     await loadFonts(ls.map((l) => l.font))
+    // artes fixas do tema (as que esta promoção não desligou), na peça certa (primeira/última/todas)
+    const pageNo = Math.min(idx, Math.max(0, ps.length - 1))
+    const hide = campaign.overrides.hideFixed ?? []
+    const fx = isDesign ? [] : layersForPage((theme.fixed?.[fmt] ?? []).filter((l) => !hide.includes(l.id)), pageNo, ps.length)
+    const fixedImages: Record<string, HTMLImageElement | null> = {}
+    for (const l of fx) if (l.asset && !(l.asset in fixedImages)) fixedImages[l.asset] = await getImg(`/api/promocoes/tema-arte/${l.asset}`)
+    const fixed = fx.length ? { under: fx.filter((l) => l.under), over: fx.filter((l) => !l.under), images: fixedImages } : undefined
     const layerImages: Record<string, HTMLImageElement | null> = {}
     for (const l of ls) if (l.asset && !(l.asset in layerImages)) layerImages[l.asset] = await getImg(`/api/promocoes/asset/${l.asset}`)
-    drawPage(canvas, { format: fmt, theme: cfg, title: campaign.title, validity: campaign.validity, extraText: campaign.overrides.extraText ?? null, assets, items: render, layers: ls, layerImages, bg })
+    drawPage(canvas, { format: fmt, theme: cfg, title: campaign.title, validity: campaign.validity, extraText: campaign.overrides.extraText ?? null, assets, items: render, layers: ls, layerImages, bg, fixed })
     const gm = pageGeometry({ format: fmt, theme: cfg, assets, count: pg.length })
     return { W: gm.W, H: gm.H, cells: gm.cells, ids: pg.map((i) => i.id) }
   }, [theme, cfg, items, campaign.title, campaign.validity, campaign.overrides, campaign.themeBackgrounds, getImg, toRender, layersApi.latest, isDesign, designPages])
@@ -326,6 +335,15 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
   const delPage = () => {
     if (designPages <= 1 || !confirm(`Excluir a peça ${pageIdx + 1} e tudo que há nela?`)) return
     layersApi.mutate(format, (l) => deletePageLayers(l, pageIdx)); setDesignPages(designPages - 1); setPage(Math.max(0, pageIdx - 1)); setSelIds([])
+  }
+
+  // ---------- artes fixas do tema ----------
+  const toggleFixed = (id: string, show: boolean) => {
+    const hide = new Set(campaign.overrides.hideFixed ?? [])
+    if (show) hide.delete(id); else hide.add(id)
+    const next = { ...campaign.overrides }
+    if (hide.size) next.hideFixed = [...hide]; else delete next.hideFixed
+    act(() => saveOverridesAction(campaign.id, next))
   }
 
   // ---------- kit de marca ----------
@@ -492,6 +510,7 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
             <button type="button" role="tab" aria-selected={tab === 'camadas'} className={tab === 'camadas' ? 'on' : ''} onClick={() => setTab('camadas')}><Shapes size={14} /> Camadas{curLayers.length ? ` (${curLayers.length})` : ''}</button>
             <button type="button" role="tab" aria-selected={tab === 'biblioteca'} className={tab === 'biblioteca' ? 'on' : ''} onClick={() => setTab('biblioteca')}><Images size={14} /> Biblioteca</button>
             <button type="button" role="tab" aria-selected={tab === 'marca'} className={tab === 'marca' ? 'on' : ''} onClick={() => setTab('marca')}><BadgeCheck size={14} /> Marca</button>
+            {!isDesign && <button type="button" role="tab" aria-selected={tab === 'artes'} className={tab === 'artes' ? 'on' : ''} onClick={() => setTab('artes')}><Sticker size={14} /> Artes do tema{(theme?.fixed?.[format]?.length ?? 0) ? ` (${theme!.fixed![format].length})` : ''}</button>}
             <button type="button" role="tab" aria-selected={tab === 'fundo'} className={tab === 'fundo' ? 'on' : ''} onClick={() => setTab('fundo')}><ImageIcon size={14} /> Fundo</button>
             {!isDesign && <button type="button" role="tab" aria-selected={tab === 'tema'} className={tab === 'tema' ? 'on' : ''} onClick={() => setTab('tema')}><Palette size={14} /> Tema</button>}
             <button type="button" role="tab" aria-selected={tab === 'dados'} className={tab === 'dados' ? 'on' : ''} onClick={() => setTab('dados')}><Settings2 size={14} /> Textos</button>
@@ -535,6 +554,8 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
           )}
 
           {tab === 'camadas' && <LayersPanel api={layersApi} format={format} page={pageIdx} selectedIds={selIds} onSelect={selectLayers} canEdit={canEdit} />}
+
+          {tab === 'artes' && !isDesign && <ThemeArtsPanel themeId={campaign.theme_id} themeName={theme?.name ?? null} format={format} fixed={theme?.fixed?.[format] ?? []} arts={theme?.arts ?? []} hidden={campaign.overrides.hideFixed ?? []} canEdit={canEdit} busy={busy} onToggle={toggleFixed} />}
 
           {tab === 'marca' && <BrandPanel brands={brands} canEdit={canEdit} busy={libBusy || busy} hasSelection={!!selL} onLogo={(l) => void fromLibrary(l, 'element')} onColor={applyBrandColor} onBgColor={(hex) => chooseBg({ kind: 'color', color: hex })} onFont={applyBrandFont} onText={addBrandText} />}
 

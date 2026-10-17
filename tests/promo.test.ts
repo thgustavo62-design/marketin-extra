@@ -164,3 +164,9 @@ test('fundo da peça: aceita só escolha válida (pronto, cores, imagem, tema) e
   assert.deepEqual(normalizeOverrides({ background: { kind: 'preset', id: 'roxo' }, tagText: 'Oba' }), { tagText: 'Oba', background: { kind: 'preset', id: 'roxo' } })
   assert.ok(BACKGROUND_PRESETS.length >= 12 && new Set(BACKGROUND_PRESETS.map((p) => p.id)).size === BACKGROUND_PRESETS.length)
 })
+
+test('promoção: artes fixas desligadas guardam só ids válidos, sem repetir', async () => {
+  const { normalizeOverrides } = await import('../src/lib/domain/promo.ts')
+  assert.deepEqual(normalizeOverrides({ hideFixed: ['lab12cd34', 'lab12cd34', '??', 5, 'xy'] }).hideFixed, ['lab12cd34'])
+  assert.equal(normalizeOverrides({ hideFixed: [] }).hideFixed, undefined)
+})

@@ -10,6 +10,7 @@ export type RenderItem = { name: string; price: number; img: HTMLImageElement | 
 export type RenderOpts = {
   format: PromoFormat; theme: ThemeConfig; title: string | null; validity: string | null; /** texto livre (endereço, telefone) logo acima do rodapé */ extraText?: string | null; assets: RenderAssets; items: RenderItem[]
   /** fundo da promoção (vale no lugar do fundo do tema) */ bg?: RenderBackground | null
+  /** artes fixas do tema (bonecos, logos, fundos…) já filtradas para esta peça: por baixo dos produtos e por cima de tudo */ fixed?: { under: Layer[]; over: Layer[]; images: Record<string, HTMLImageElement | null> }
   /** elementos livres desta peça (já filtrados pela página), do fundo para o topo; imagens em `layerImages` pelo id do arquivo */ layers?: Layer[]; layerImages?: Record<string, HTMLImageElement | null>
 }
 
@@ -103,6 +104,9 @@ export function drawPage(canvas: HTMLCanvasElement, o: RenderOpts): void {
     ctx.fillStyle = c.panel; roundRect(ctx, panel.x, panel.y, panel.w, panel.h, panel.x > 0 ? Math.round(W * 0.045) : 0); ctx.fill(); ctx.restore()
   }
 
+  // artes fixas do tema que ficam por baixo dos produtos (fundos, bonecos atrás)
+  if (o.fixed?.under.length) drawLayers(ctx, o.fixed.under, o.fixed.images)
+
   // produtos (cartão opcional de cada um); o cabeçalho e o rodapé desenhados depois cobrem o que sobrepõem, como nas peças da rede
   const cols = o.theme.grid[o.format].cols
   o.items.forEach((it, i) => {
@@ -143,6 +147,8 @@ export function drawPage(canvas: HTMLCanvasElement, o: RenderOpts): void {
     ctx.strokeText(o.extraText, W / 2, y); ctx.fillStyle = '#ffffff'; ctx.fillText(o.extraText, W / 2, y)
   }
 
+  // artes fixas do tema por cima (logos, bonecos na frente) e, por último, os elementos livres da promoção
+  if (o.fixed?.over.length) drawLayers(ctx, o.fixed.over, o.fixed.images)
   if (o.layers?.length) drawLayers(ctx, o.layers, o.layerImages ?? {})
 }
 

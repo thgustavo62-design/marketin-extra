@@ -819,6 +819,76 @@ try {
   ck('"Foto inteira" volta ao encaixe padrão e às 4 alças de canto', (await lyi()).fit === undefined && (await a.locator('.canva-lbox.sel .canva-handle').count()) === 5)
   await q(`update promo_campaigns set layers = null where id = $1`, [camp.id])
 
+  // ---------- artes fixas do tema (bonecos, logos, fundos em lugar definido de toda promoção) ----------
+  await q(`update promo_campaigns set layers = null, overrides = overrides - 'hideFixed' where id = $1`, [camp.id])
+  await a.goto(`${BASE}/promocoes/temas/${themeId}`); await idle(a)
+  ck('a página do tema tem a seção "Artes fixas do tema" com envio', (await a.locator('section[aria-label="Artes fixas do tema"]').count()) === 1 && (await a.locator('input[aria-label="Enviar artes do tema"]').count()) === 1)
+  const cor = (w, h, c) => sharp({ create: { width: w, height: h, channels: 4, background: c } }).png().toBuffer()
+  await a.selectOption('#fa-kind', 'boneco')
+  await a.locator('input[aria-label="Enviar artes do tema"]').setInputFiles({ name: 'mascote.png', mimeType: 'image/png', buffer: await cor(400, 400, { r: 255, g: 0, b: 255, alpha: 1 }) }); await wait(3000)
+  await a.selectOption('#fa-kind', 'logo')
+  await a.locator('input[aria-label="Enviar artes do tema"]').setInputFiles({ name: 'logo rede.png', mimeType: 'image/png', buffer: await cor(600, 200, { r: 0, g: 200, b: 0, alpha: 1 }) }); await wait(3000)
+  const artes = await q(`select id, name, kind from promo_theme_arts where theme_id = $1 order by created_at`, [themeId])
+  ck('as artes enviadas entram no tema com nome do arquivo e o tipo escolhido', artes.length === 2 && artes[0].name === 'mascote' && artes[0].kind === 'boneco' && artes[1].name === 'logo rede' && artes[1].kind === 'logo', JSON.stringify(artes))
+  await a.reload(); await idle(a)
+  ck('as artes aparecem na lista do tema', (await a.locator('.fixed-art').count()) === 2)
+  await a.locator('button[aria-label="Colocar mascote na peça"]').click(); await a.locator('button[aria-label="Colocar logo rede na peça"]').click(); await wait(500)
+  ck('"Colocar" cria a posição sugerida por tipo (boneco no canto de baixo à direita, logo no centro de cima)', (await a.locator('.placement').count()) === 2 && (await a.locator('button[aria-label="mascote: Canto de baixo à direita"]').getAttribute('aria-pressed')) === 'true' && (await a.locator('button[aria-label="logo rede: Centro de cima"]').getAttribute('aria-pressed')) === 'true')
+  await a.locator('button[aria-label="mascote: Canto de cima à esquerda"]').click()
+  await a.selectOption('select[aria-label="Em quais peças logo rede aparece"]', 'last')
+  await a.getByRole('button', { name: 'Salvar posições' }).click(); await wait(2200)
+  const fx = (await q(`select fixed from promo_themes where id = $1`, [themeId]))[0].fixed.story
+  const mas = fx.find((x) => x.asset === artes[0].id), lg = fx.find((x) => x.asset === artes[1].id)
+  ck('as posições ficam salvas no tema (mascote no canto de cima à esquerda; logo só na última peça)', fx.length === 2 && mas.place.anchor === 'tl' && mas.x === 11 && mas.y === 11 && mas.w === 367 && lg.show === 'last' && lg.place.anchor === 'tc', JSON.stringify([mas, lg]).slice(0, 220))
+  const pxl = (sel, x, y) => a.evaluate(([sel, x, y]) => { const c = document.querySelector(sel); const d = c.getContext('2d').getImageData(x, y, 1, 1).data; return [d[0], d[1], d[2], d[3]] }, [sel, x, y])
+  await wait(800)
+  let m1 = await pxl('canvas[aria-label^="Prévia com as artes fixas"]', 100, 100)
+  ck('a prévia do tema desenha o mascote no lugar escolhido', m1[0] > 240 && m1[1] < 30 && m1[2] > 240, JSON.stringify(m1))
+  const lgx = lg.x + Math.round(lg.w / 2), lgy = lg.y + Math.round(lg.h / 2)
+  const verde = (c) => c[1] > 150 && c[0] < 60 && c[2] < 60
+  await a.getByRole('button', { name: 'Primeira' }).click(); await wait(1200)
+  const l1 = await pxl('canvas[aria-label^="Prévia com as artes fixas"]', lgx, lgy)
+  await a.getByRole('button', { name: 'Última' }).click(); await wait(1200)
+  const l3 = await pxl('canvas[aria-label^="Prévia com as artes fixas"]', lgx, lgy)
+  ck('a regra "só na última peça" vale na prévia (some na primeira, aparece na última)', !verde(l1) && verde(l3), JSON.stringify([l1, l3]))
+
+  // na promoção: entram sozinhas, por peça, e dá para desligar
+  await a.goto(`${BASE}/promocoes/${camp.id}`); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  await a.getByRole('tab', { name: /Artes do tema/ }).click()
+  ck('a aba "Artes do tema" da promoção lista as 2 artes do tema, ligadas', (await a.locator('.theme-arts-list li').count()) === 2 && (await a.locator('input[aria-label="Usar mascote nesta promoção"]').isChecked()))
+  const base = '.canva-paper canvas:first-of-type'
+  const mp = await pxl(base, 100, 100)
+  ck('o mascote do tema aparece na peça da promoção, sem ninguém colocar', mp[0] > 240 && mp[1] < 30 && mp[2] > 240, JSON.stringify(mp))
+  const mp0 = await pxl(base, lgx, lgy)
+  ck('o logo "só na última" não aparece na primeira peça da promoção', !verde(mp0))
+  await a.locator('.canva-pager button').last().click(); await wait(800)
+  while (!(await a.locator('.canva-pager button').last().isDisabled())) { await a.locator('.canva-pager button').last().click(); await wait(500) }
+  await wait(1200)
+  const ml = await pxl(base, lgx, lgy)
+  ck('na última peça da promoção o logo aparece', verde(ml), JSON.stringify(ml))
+  await a.locator('.canva-pager button').first().click(); await wait(300)
+  while (!(await a.locator('.canva-pager button').first().isDisabled())) { await a.locator('.canva-pager button').first().click(); await wait(400) }
+  await a.locator('input[aria-label="Usar mascote nesta promoção"]').uncheck(); await wait(2500)
+  ck('desligar o mascote nesta promoção salva e ele some da peça (o tema continua com ele)', ((await q(`select overrides from promo_campaigns where id = $1`, [camp.id]))[0].overrides.hideFixed ?? []).includes(mas.id) && await (async () => { const c = await pxl(base, 100, 100); return !(c[0] > 240 && c[1] < 30 && c[2] > 240) })())
+  await a.locator('input[aria-label="Usar mascote nesta promoção"]').check(); await wait(2500)
+  ck('religar traz o mascote de volta', (await pxl(base, 100, 100))[2] > 240 && !((await q(`select overrides from promo_campaigns where id = $1`, [camp.id]))[0].overrides.hideFixed ?? []).includes(mas.id))
+  // vai para a exportação: o PNG baixado tem o mascote
+  const [dlx] = await Promise.all([a.waitForEvent('download', { timeout: 30000 }), a.getByRole('button', { name: /Baixar esta peça/ }).click()])
+  const raw = await sharp(await readFile(await dlx.path())).raw().toBuffer({ resolveWithObject: true })
+  const o = (100 * raw.info.width + 100) * raw.info.channels
+  ck('o PNG exportado leva a arte fixa do tema', raw.data[o] > 240 && raw.data[o + 1] < 30 && raw.data[o + 2] > 240, `${raw.data[o]},${raw.data[o + 1]},${raw.data[o + 2]}`)
+
+  // permissões e exclusão
+  const { p: vv, c: vvc } = await mk(); await login(vv, 'e2e_vw')
+  await vv.goto(`${BASE}/promocoes/temas/${themeId}`); await idle(vv)
+  ck('leitor vê as artes do tema, sem enviar, colocar nem salvar', (await vv.locator('input[aria-label="Enviar artes do tema"]').count()) === 0 && (await vv.getByRole('button', { name: /^Colocar/ }).count()) === 0 && (await vv.getByRole('button', { name: 'Salvar posições' }).count()) === 0)
+  ck('leitor não envia arte do tema pela API (403)', (await vvc.request.post(`${BASE}/api/promocoes/tema/${themeId}/artes`, { headers: { origin: BASE }, multipart: { kind: 'logo', file: { name: 'x.png', mimeType: 'image/png', buffer: await cor(20, 20, { r: 0, g: 0, b: 0, alpha: 1 }) } } })).status() === 403)
+  ck('a arte do tema só é servida para quem está logado', (await fetch(`${BASE}/api/promocoes/tema-arte/${artes[0].id}`)).status === 401 && (await ac.request.get(`${BASE}/api/promocoes/tema-arte/${artes[0].id}?mini=1`)).status() === 200)
+  await vv.close()
+  await a.goto(`${BASE}/promocoes/temas/${themeId}`); await idle(a)
+  await a.locator('button[aria-label="Excluir a arte logo rede"]').click(); await wait(2200)
+  ck('excluir uma arte tira ela do tema e das posições', (await q(`select count(*)::int n from promo_theme_arts where theme_id = $1`, [themeId]))[0].n === 1 && (await q(`select fixed from promo_themes where id = $1`, [themeId]))[0].fixed.story.length === 1)
+
   // política desligada: um encarte por produto
   await a.goto(BASE + '/promocoes'); await idle(a)
   await a.fill('#np-name', 'Sem agrupar'); await a.selectOption('#np-theme', themeId); await a.locator('input[name=group]').uncheck()
@@ -828,6 +898,9 @@ try {
   ck('com a política desligada cada produto é um encarte (16) e o resumo diz "sem agrupar"', (await q(`select count(*)::int n from promo_items where campaign_id = $1`, [sem.id]))[0].n === 16 && sem.import_report.grouped === false)
   await idle(a)
   ck('o resumo mostra "sem agrupar variações"', /sem agrupar variações/.test(await a.textContent('.canva-report summary')))
+  await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 }); await wait(1500)
+  const mAuto = await a.evaluate(() => { const d = document.querySelector('.canva-paper canvas').getContext('2d').getImageData(100, 100, 1, 1).data; return [d[0], d[1], d[2]] })
+  ck('uma promoção criada depois (criação automática pela planilha) já sai com a arte fixa do tema no lugar certo', mAuto[0] > 240 && mAuto[1] < 30 && mAuto[2] > 240, JSON.stringify(mAuto))
 
   // ---------- erros da planilha ----------
   const post = (buf, name = 'p.xlsx') => ac.request.post(BASE + '/api/promocoes/importar', { headers: { origin: BASE }, multipart: { name: 'Teste de erro', file: { name, mimeType: XLSX, buffer: buf } } })

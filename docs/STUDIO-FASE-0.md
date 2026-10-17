@@ -98,6 +98,13 @@ Cobertas pelo e2e `e2e/suites/promocoes.mjs` (196 verificações) e `apresentaco
 - Criação › Kit de marca (`/criacao/marcas`): escolhe a filial e cadastra logos (envio em lote), cores com nome, até 6 fontes do catálogo e até 12 textos prontos; respeita o acesso por filial no servidor.
 - Editor, aba **Marca**: escolhe a filial e, com um clique, coloca o logo, aplica a cor ao texto/forma selecionado (ou como fundo), troca a fonte do texto selecionado (ou cria um texto) e adiciona textos prontos. Uma filial nunca mostra o kit da outra.
 
+### 5.6 Fase 6 (artes fixas do tema)
+- Migração 032: `promo_theme_arts` (imagens do tema, por tipo: fundo, boneco, logo, selo, outro) e `promo_themes.fixed` (posições por formato, no mesmo modelo dos elementos livres).
+- Página do tema › **Artes fixas**: envia as artes, "Colocar" cria a posição sugerida por tipo e a pessoa ajusta: canto/centro (grade 3×3) ou peça inteira, tamanho (% da largura), afastamento da borda, ajuste X/Y, em quais peças aparece (todas, primeira, última, todas menos a primeira), por cima ou por baixo dos produtos, opacidade e sombra. A prévia simula primeira/meio/última peça.
+- **Valem em toda promoção do tema**, inclusive as já criadas e as criadas pela planilha, na prévia e na exportação (render único). Cada promoção desliga as que não quer na aba **Artes do tema** do editor (`overrides.hideFixed`).
+- Regras puras: `placeArt` e `layersForPage(list, page, total)` (`promo-layers.ts`).
+- Atenção: mudar uma arte fixa muda as promoções já aprovadas que usam o tema (como já acontece com as artes de cabeçalho/rodapé).
+
 ## 6. Riscos conhecidos
 - Desfazer não cobre edições de encarte (nome, preço, foto, ordem): são gravadas imediatamente.
 - Colar usa memória do navegador (não funciona entre abas).
