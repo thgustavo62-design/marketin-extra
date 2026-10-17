@@ -47,7 +47,7 @@ Legenda: ✅ feito e testado · 🟡 parcial · ❌ não existe
 | Preço tipado, cartão de produto, grade automática | 🟡 | Preço é dado tipado (reais/centavos) e a grade vem do tema; não há motor de composição por quantidade nem "criar nova página quando não couber" além da paginação por grade |
 | Variante de layout por formato (posições próprias) | 🟡 | Grade por formato no tema; elementos livres por formato; não há herança de conteúdo entre variantes |
 | Templates editáveis, kits de marca, componentes | ❌ | Hoje: temas (artes de cabeçalho/rodapé/fundo + cores/grade) |
-| Documentos livres (sem promoção), "Meus designs", páginas independentes | ❌ | Exige modelo novo (`studio_documents`) |
+| Documentos livres (sem promoção), "Meus designs", várias peças | 🟡 (fase 3) | Feito como `kind = 'design'` em `promo_campaigns` (mesmo editor, camadas, imagens, aprovação). Falta: miniatura real na lista, formato misto numa arte, versões e modelos |
 | Versões/snapshots e restauração | ❌ | Só o estado atual; aprovação guarda quem/quando |
 | Auditoria de alteração de preço/aprovação | 🟡 | Aprovação registrada; preço editado não gera log próprio |
 | Exportação 300 DPI e PDF vetorial | ❌ | |
@@ -81,6 +81,12 @@ Cobertas pelo e2e `e2e/suites/promocoes.mjs` (196 verificações) e `apresentaco
 - Regras puras em `imagePlacement`/`panImage` (`promo-layers.ts`), testadas; render em `drawImageLayer`.
 - O e2e passou a ter limite de 900 s (a suíte de promoções leva ~6 min).
 
+### 5.3 Fase 3 (Meus designs)
+- **Decisão:** em vez de uma tabela `studio_documents` paralela, o design livre reaproveita `promo_campaigns` (colunas `kind`, `design_format`, `design_pages`, migração 029). Assim herda sem duplicar: elementos, camadas, biblioteca, fundos, imagens, revisão otimista, aprovação e exportação. A tabela própria só compensa quando houver versões e modelos.
+- Menu **Criação › Meus designs** (`/criacao`): criar (Story, Feed ou A4), abrir, duplicar (com cópia das imagens) e excluir. Editor igual ao das promoções, sem produtos/tema; fundo branco inicial.
+- **Peças:** + Nova peça, Duplicar peça, Excluir peça (o número fica salvo junto com os elementos). Exporta PNG, ZIP (com manifesto) e PDF no A4.
+- Promoções e designs são listas separadas; `/promocoes/<design>` redireciona para `/criacao/<design>`; o console em outra aba lista os dois.
+
 ## 6. Riscos conhecidos
 - Desfazer não cobre edições de encarte (nome, preço, foto, ordem): são gravadas imediatamente.
 - Colar usa memória do navegador (não funciona entre abas).
@@ -89,7 +95,7 @@ Cobertas pelo e2e `e2e/suites/promocoes.mjs` (196 verificações) e `apresentaco
 ## 7. Ordem proposta para as próximas fases (precisa de decisão do responsável)
 1. ~~Guias e réguas, seletor de fontes e mais formas/gradientes~~ **(feito na fase 1; ver seção 5.1)**.
 2. ~~Recorte/moldura de imagem e ajustes simples~~ **(feito na fase 2; ver 5.2)**.
-3. **Modelo de documento genérico** (`studio_documents` + versões) com adaptador do legado e flag: habilita "Meus designs" e arte livre.
+3. ~~Documento livre ("Meus designs")~~ **(primeiro corte feito na fase 3; ver 5.3)**. Versões/restauração e tabela própria continuam pendentes.
 4. **Templates e kit de marca por filial** (sobre o item 3).
 5. **Composição automática por quantidade e variantes de layout por formato**; exportação em 300 DPI / PDF vetorial.
 6. Versões/restauração e auditoria de preço.

@@ -6,8 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { zipSync } from 'fflate'
 import { PDFDocument } from 'pdf-lib'
 import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Download, ExternalLink, GripVertical, ImagePlus, Image as ImageIcon, Images, Layers, Palette, Shapes, Settings2, Trash2, Type } from 'lucide-react'
-import { PROMO_FORMATS, PROMO_FORMAT_KEYS, TAG_PRESETS, applyOverrides, paginateSections, type BackgroundChoice, type ItemStyle, type PromoFormat, type PromoOverrides, type Rect, type ThemeConfig } from '@/lib/domain/promo'
-import { expandSelection, layersForPage } from '@/lib/domain/promo-layers'
+import { PROMO_FORMATS, PROMO_FORMAT_KEYS, BLANK_THEME, TAG_PRESETS, applyOverrides, paginateSections, type BackgroundChoice, type ItemStyle, type PromoFormat, type PromoOverrides, type Rect, type ThemeConfig } from '@/lib/domain/promo'
+import { deletePageLayers, duplicatePageLayers, expandSelection, layersForPage, pagesNeeded } from '@/lib/domain/promo-layers'
 import { checkPromotion, pageCountsFor, summarizeCheck, type CheckIssue } from '@/lib/domain/promo-check'
 import type { Campaign, PromoItem, SizeEdit, ThemeAsset } from '@/lib/promo/store'
 import { canvasToBlob, drawPage, loadFonts, loadImage, loadPromoFonts, pageGeometry, type RenderAssets, type RenderBackground, type RenderItem } from '@/lib/promo/render'
@@ -49,14 +49,18 @@ function ColorField({ label, value, fallback, disabled, onCommit }: { label: str
   )
 }
 
-export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, mode = 'embedded' }: Props) {
+export function PromoStudio({ campaign, theme: themeProp, themes, items: initial, canEdit, mode = 'embedded' }: Props) {
   const router = useRouter()
+  const isDesign = campaign.kind === 'design'
+  // design livre: tema em branco (sem cabeçalho, rodapé nem painel); promoção: o tema escolhido
+  const theme = useMemo(() => (isDesign ? { id: '', name: 'Design', config: BLANK_THEME, assets: [] as ThemeAsset[] } : themeProp), [isDesign, themeProp])
+  const [designPages, setDesignPages] = useState(campaign.design_pages)
   const [items, setItems] = useState(initial)
   useEffect(() => setItems(initial), [initial])
-  const [format, setFormat] = useState<PromoFormat>('story')
+  const [format, setFormat] = useState<PromoFormat>(campaign.design_format ?? 'story')
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
-  const [tab, setTab] = useState<'produtos' | 'camadas' | 'fundo' | 'biblioteca' | 'tema' | 'dados'>('produtos')
+  const [tab, setTab] = useState<'produtos' | 'camadas' | 'fundo' | 'biblioteca' | 'tema' | 'dados'>(campaign.kind === 'design' ? 'camadas' : 'produtos')
   const [selIds, setSelIds] = useState<string[]>([])
   const [editingLayer, setEditingLayer] = useState<string | null>(null)
   const [quickId, setQuickId] = useState<string | null>(null)
@@ -85,7 +89,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   const cfg = useMemo(() => (baseCfg ? applyOverrides(baseCfg, campaign.overrides) : undefined), [baseCfg, campaign.overrides])
   const grid = cfg?.grid[format] ?? { cols: 2, rows: 3 }
   const perPage = grid.cols * grid.rows
-  const pages = useMemo(() => paginateSections(items, perPage, cfg?.breakBySection[format] ?? false), [items, perPage, cfg, format])
+  const pages = useMemo(() => (isDesign ? Array.from({ length: designPages }, () => [] as PromoItem[]) : paginateSections(items, perPage, cfg?.breakBySection[format] ?? false)), [isDesign, designPages, items, perPage, cfg, format])
   const pageIdx = Math.min(page, Math.max(0, pages.length - 1))
   const semFoto = items.filter((i) => !i.photo_id).length
   const sel = items.find((i) => i.id === selected) ?? null
@@ -100,7 +104,9 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   }, [])
 
   const guidesApi = useGuides(campaign.id)
-  const layersApi = useLayers(campaign.id, campaign.layers, canEdit, () => router.refresh(), campaign.layers_rev)
+  const designPagesRef = useRef(designPages)
+  designPagesRef.current = designPages
+  const layersApi = useLayers(campaign.id, campaign.layers, canEdit, () => router.refresh(), campaign.layers_rev, () => (isDesign ? designPagesRef.current : undefined))
   const curLayers = layersApi.layers[format]
   const selL = selIds.length === 1 ? (curLayers.find((l) => l.id === selIds[0]) ?? null) : null
   const pageLayers = useMemo(() => layersForPage(curLayers, pageIdx), [curLayers, pageIdx])
@@ -111,7 +117,8 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   const assetSizes = useMemo(() => Object.fromEntries(campaign.assets.map((a) => [a.id, { w: a.width, h: a.height }])), [campaign.assets])
   useLayerKeys({ api: layersApi, format, page: pageIdx, selIds, select: (ids) => { setSelIds(ids); if (ids.length) { setSelected(null); setQuickId(null) } }, canEdit, pageIds: () => pageLayers.filter((l) => !l.locked).map((l) => l.id) })
 
-  const issues = useMemo(() => checkPromotion({ items, layers: layersApi.layers, validity: campaign.validity, pageCount: pageCountsFor(items, cfg ?? null) }), [items, layersApi.layers, campaign.validity, cfg])
+  useEffect(() => { if (isDesign) { const need = pagesNeeded(layersApi.layers[format]); if (need > designPages) setDesignPages(Math.min(30, need)) } }, [isDesign, layersApi.layers, format, designPages])
+  const issues = useMemo(() => checkPromotion({ items, layers: layersApi.layers, validity: campaign.validity, pageCount: isDesign ? { [format]: designPages } : pageCountsFor(items, cfg ?? null) }), [items, layersApi.layers, campaign.validity, cfg, isDesign, format, designPages])
   const checkSum = summarizeCheck(issues)
   const gotoIssue = (i: CheckIssue) => {
     if (i.itemId) { setTab('produtos'); select(i.itemId); return }
@@ -153,7 +160,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
       if (img) bg = { kind: 'image', img }
     }
     const g = cfg.grid[fmt]
-    const ps = paginateSections(items, g.cols * g.rows, cfg.breakBySection[fmt])
+    const ps = isDesign ? Array.from({ length: designPages }, () => [] as PromoItem[]) : paginateSections(items, g.cols * g.rows, cfg.breakBySection[fmt])
     const pg = ps[Math.min(idx, Math.max(0, ps.length - 1))] ?? []
     const render = await Promise.all(pg.map(toRender))
     const ls = withLayers ? layersForPage(layersApi.latest.current[fmt], Math.min(idx, Math.max(0, ps.length - 1))) : []
@@ -163,7 +170,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
     drawPage(canvas, { format: fmt, theme: cfg, title: campaign.title, validity: campaign.validity, extraText: campaign.overrides.extraText ?? null, assets, items: render, layers: ls, layerImages, bg })
     const gm = pageGeometry({ format: fmt, theme: cfg, assets, count: pg.length })
     return { W: gm.W, H: gm.H, cells: gm.cells, ids: pg.map((i) => i.id) }
-  }, [theme, cfg, items, campaign.title, campaign.validity, campaign.overrides, campaign.themeBackgrounds, getImg, toRender, layersApi.latest])
+  }, [theme, cfg, items, campaign.title, campaign.validity, campaign.overrides, campaign.themeBackgrounds, getImg, toRender, layersApi.latest, isDesign, designPages])
 
   useEffect(() => {
     const c = canvasRef.current
@@ -176,7 +183,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
 
   // miniaturas das peças do formato (faixa de baixo)
   useEffect(() => {
-    if (!theme || !items.length) { setThumbs([]); return }
+    if (!theme || (!items.length && !isDesign)) { setThumbs([]); return }
     let cancel = false
     ;(async () => {
       const out: string[] = []
@@ -193,7 +200,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
       }
     })()
     return () => { cancel = true }
-  }, [renderTo, format, pages.length, theme, items.length, layersApi.committed])
+  }, [renderTo, format, pages.length, theme, items.length, layersApi.committed, isDesign])
 
   const act = (fn: () => Promise<{ ok: boolean; error?: string }>, okText?: string) =>
     start(async () => {
@@ -285,11 +292,19 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
     } finally { setLibBusy(false) }
   }
 
+  // ---------- peças de um design ----------
+  const addPage = () => { if (designPages >= 30) return; setDesignPages(designPages + 1); setPage(designPages); layersApi.markDirty() }
+  const dupPage = () => { if (designPages >= 30) return; layersApi.mutate(format, (l) => duplicatePageLayers(l, pageIdx)); setDesignPages(designPages + 1); setPage(pageIdx + 1) }
+  const delPage = () => {
+    if (designPages <= 1 || !confirm(`Excluir a peça ${pageIdx + 1} e tudo que há nela?`)) return
+    layersApi.mutate(format, (l) => deletePageLayers(l, pageIdx)); setDesignPages(designPages - 1); setPage(Math.max(0, pageIdx - 1)); setSelIds([])
+  }
+
   // ---------- downloads ----------
   const pageBlob = async (fmt: PromoFormat, idx: number) => { layersApi.flush(); const c = document.createElement('canvas'); await renderTo(c, fmt, idx, true); return canvasToBlob(c) }
   const save = (blob: Blob, name: string) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000) }
   const base = slug(campaign.name)
-  const pagesOf = (fmt: PromoFormat) => { const g = cfg!.grid[fmt]; return paginateSections(items, g.cols * g.rows, cfg!.breakBySection[fmt]) }
+  const pagesOf = (fmt: PromoFormat) => { if (isDesign) return fmt === format ? pages : []; const g = cfg!.grid[fmt]; return paginateSections(items, g.cols * g.rows, cfg!.breakBySection[fmt]) }
   const fileName = (fmt: PromoFormat, i: number) => { const sec = pagesOf(fmt)[i]?.[0]?.section; return `${base}-${fmt}-${i + 1}${sec ? `-${slug(sec)}` : ''}.png` }
 
   async function downloadPage() { setMsg(null); save(await pageBlob(format, pageIdx), fileName(format, pageIdx)) }
@@ -381,9 +396,9 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
             ? `Aprovada por ${campaign.approved_by_name ?? '—'}${campaign.approved_at ? ` em ${new Date(campaign.approved_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : ''}. Qualquer alteração volta para edição.`
             : 'Confira os encartes, ajuste o que precisar e aprove. Qualquer alteração depois de aprovar exige aprovar de novo.'}
         </span>
-        {canEdit && campaign.status !== 'aprovada' && <button type="button" className="primary" style={{ width: 'auto', margin: 0, minHeight: 34 }} disabled={busy || !items.length || checkSum.bloqueio > 0} title={checkSum.bloqueio ? 'Corrija os pontos marcados em "Verificar arte" antes de aprovar' : undefined} onClick={() => act(() => approveCampaignAction(campaign.id), 'Encartes aprovados.')}>Aprovar encartes</button>}
+        {canEdit && campaign.status !== 'aprovada' && <button type="button" className="primary" style={{ width: 'auto', margin: 0, minHeight: 34 }} disabled={busy || (!items.length && !isDesign) || checkSum.bloqueio > 0} title={checkSum.bloqueio ? 'Corrija os pontos marcados em "Verificar arte" antes de aprovar' : undefined} onClick={() => act(() => approveCampaignAction(campaign.id), 'Encartes aprovados.')}>{isDesign ? 'Aprovar design' : 'Aprovar encartes'}</button>}
         {mode === 'embedded' && <a className="btn" href={editorHref} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 'auto' }}><ExternalLink size={14} /> Abrir console em outra aba</a>}
-        {mode === 'tab' && <Link className="btn" href={`/promocoes/${campaign.id}`} style={{ marginLeft: 'auto' }}>Abrir dentro do sistema</Link>}
+        {mode === 'tab' && <Link className="btn" href={isDesign ? `/criacao/${campaign.id}` : `/promocoes/${campaign.id}`} style={{ marginLeft: 'auto' }}>Abrir dentro do sistema</Link>}
       </div>
       {campaign.import_report && (
         <details className="canva-report" open={campaign.status !== 'aprovada' && (campaign.import_report.withoutPhoto.length > 0 || campaign.import_report.rowErrors.length > 0)}>
@@ -414,14 +429,15 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
       {/* barra superior */}
       <div className="canva-top">
         <div className="tabs">
-          {PROMO_FORMAT_KEYS.map((f) => <button key={f} type="button" className={`tab${format === f ? ' active' : ''}`} onClick={() => { setFormat(f); setPage(0) }}>{PROMO_FORMATS[f].label}</button>)}
+          {isDesign && <span className="badge">{PROMO_FORMATS[format].label} · {PROMO_FORMATS[format].hint}</span>}
+          {!isDesign && PROMO_FORMAT_KEYS.map((f) => <button key={f} type="button" className={`tab${format === f ? ' active' : ''}`} onClick={() => { setFormat(f); setPage(0) }}>{PROMO_FORMATS[f].label}</button>)}
         </div>
         <div className="canva-actions">
           <button type="button" className={`secondary canva-check-btn${checkSum.bloqueio ? ' bad' : checkSum.revisao ? ' warn' : ''}`} onClick={() => setCheckOpen((v) => !v)} aria-expanded={checkOpen} disabled={!theme}>Verificar arte{issues.length ? ` (${issues.length})` : ' ✓'}</button>
-          <button type="button" className="primary" onClick={downloadPage} disabled={!items.length || !theme}><Download size={14} /> Baixar esta peça (PNG)</button>
-          <button type="button" className="secondary" onClick={() => downloadZip([format])} disabled={!items.length || !theme}>Todas do formato (ZIP)</button>
-          <button type="button" className="secondary" onClick={() => downloadZip(PROMO_FORMAT_KEYS)} disabled={!items.length || !theme}>Todos os formatos (ZIP)</button>
-          <button type="button" className="secondary" onClick={downloadPdf} disabled={!items.length || !theme}>A4 em PDF</button>
+          <button type="button" className="primary" onClick={downloadPage} disabled={(!items.length && !isDesign) || !theme}><Download size={14} /> Baixar esta peça (PNG)</button>
+          <button type="button" className="secondary" onClick={() => downloadZip([format])} disabled={(!items.length && !isDesign) || !theme}>{isDesign ? 'Todas as peças (ZIP)' : 'Todas do formato (ZIP)'}</button>
+          {!isDesign && <button type="button" className="secondary" onClick={() => downloadZip(PROMO_FORMAT_KEYS)} disabled={!items.length || !theme}>Todos os formatos (ZIP)</button>}
+          {(!isDesign || format === 'a4') && <button type="button" className="secondary" onClick={downloadPdf} disabled={(!items.length && !isDesign) || !theme}>A4 em PDF</button>}
         </div>
       </div>
 
@@ -429,11 +445,11 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
         {/* painel da esquerda */}
         <aside className="canva-left" aria-label="Painel">
           <div className="canva-tabs" role="tablist">
-            <button type="button" role="tab" aria-selected={tab === 'produtos'} className={tab === 'produtos' ? 'on' : ''} onClick={() => setTab('produtos')}><Layers size={14} /> Produtos</button>
+            {!isDesign && <button type="button" role="tab" aria-selected={tab === 'produtos'} className={tab === 'produtos' ? 'on' : ''} onClick={() => setTab('produtos')}><Layers size={14} /> Produtos</button>}
             <button type="button" role="tab" aria-selected={tab === 'camadas'} className={tab === 'camadas' ? 'on' : ''} onClick={() => setTab('camadas')}><Shapes size={14} /> Camadas{curLayers.length ? ` (${curLayers.length})` : ''}</button>
             <button type="button" role="tab" aria-selected={tab === 'biblioteca'} className={tab === 'biblioteca' ? 'on' : ''} onClick={() => setTab('biblioteca')}><Images size={14} /> Biblioteca</button>
             <button type="button" role="tab" aria-selected={tab === 'fundo'} className={tab === 'fundo' ? 'on' : ''} onClick={() => setTab('fundo')}><ImageIcon size={14} /> Fundo</button>
-            <button type="button" role="tab" aria-selected={tab === 'tema'} className={tab === 'tema' ? 'on' : ''} onClick={() => setTab('tema')}><Palette size={14} /> Tema</button>
+            {!isDesign && <button type="button" role="tab" aria-selected={tab === 'tema'} className={tab === 'tema' ? 'on' : ''} onClick={() => setTab('tema')}><Palette size={14} /> Tema</button>}
             <button type="button" role="tab" aria-selected={tab === 'dados'} className={tab === 'dados' ? 'on' : ''} onClick={() => setTab('dados')}><Settings2 size={14} /> Textos</button>
           </div>
 
@@ -496,7 +512,16 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
             </section>
           )}
 
-          {tab === 'dados' && canEdit && (
+          {tab === 'dados' && canEdit && isDesign && (
+            <section aria-label="Dados do design" className="stack-form">
+              <label htmlFor="pc-name">Nome do design</label><input id="pc-name" type="text" value={conf.name} onChange={(e) => setConf({ ...conf, name: e.target.value })} maxLength={120} />
+              <div className="form-actions">
+                <button type="button" className="primary" style={{ width: 'auto' }} disabled={busy} onClick={() => act(() => updateCampaignAction(campaign.id, { name: conf.name, title: '', validity: '', themeId: '' }), 'Salvo.')}>Salvar</button>
+                <button type="button" className="danger" disabled={busy} onClick={() => { if (confirm('Excluir este design e todas as peças?')) start(async () => { await deleteCampaignAction(campaign.id); router.push('/criacao') }) }}>Excluir design</button>
+              </div>
+            </section>
+          )}
+          {tab === 'dados' && canEdit && !isDesign && (
             <section aria-label="Textos da promoção" className="stack-form">
               <label htmlFor="pc-name">Nome interno</label><input id="pc-name" type="text" value={conf.name} onChange={(e) => setConf({ ...conf, name: e.target.value })} maxLength={120} />
               <label htmlFor="pc-title">Título na peça (se o tema não traz na arte)</label><input id="pc-title" type="text" value={conf.title} onChange={(e) => setConf({ ...conf, title: e.target.value })} maxLength={60} />
@@ -557,9 +582,16 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
             </div>
             </div>
           )}
+          {isDesign && canEdit && (
+            <div className="canva-pagetools" role="group" aria-label="Peças do design">
+              <button type="button" className="mini-btn" onClick={addPage} disabled={designPages >= 30}>+ Nova peça</button>
+              <button type="button" className="mini-btn" onClick={dupPage} disabled={designPages >= 30}>Duplicar peça</button>
+              <button type="button" className="mini-btn danger" onClick={delPage} disabled={designPages <= 1}>Excluir peça</button>
+            </div>
+          )}
           <div className="canva-pager">
             <button type="button" className="mini-btn" disabled={pageIdx === 0} onClick={() => setPage(pageIdx - 1)}>←</button>
-            <span className="muted">Peça {pageIdx + 1} de {Math.max(1, pages.length)} · {PROMO_FORMATS[format].hint} · {grid.cols}×{grid.rows}{pages[pageIdx]?.[0]?.section ? ` · aba ${pages[pageIdx][0].section}` : ''}</span>
+            <span className="muted">Peça {pageIdx + 1} de {Math.max(1, pages.length)} · {PROMO_FORMATS[format].hint}{isDesign ? '' : ` · ${grid.cols}×${grid.rows}`}{pages[pageIdx]?.[0]?.section ? ` · aba ${pages[pageIdx][0].section}` : ''}</span>
             <button type="button" className="mini-btn" disabled={pageIdx >= pages.length - 1} onClick={() => setPage(pageIdx + 1)}>→</button>
           </div>
         </main>

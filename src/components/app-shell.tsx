@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
   BarChart3, Bell, BookOpen, ClipboardCheck, Columns3, CalendarDays, Camera, ChevronLeft, ChevronRight, FileBarChart, FileText, FileUp, Flag, LayoutDashboard,
-  FolderOpen, Link2, PackageSearch, Presentation, Sparkles, LogOut, Megaphone, Menu, Radar, Settings, Store, Target, X,
+  FolderOpen, Link2, PackageSearch, PenTool, Presentation, Sparkles, LogOut, Megaphone, Menu, Radar, Settings, Store, Target, X,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -23,6 +23,7 @@ const GROUPS: Group[] = [
       { href: '/planejamento/importar-plano', label: 'Importar plano (PDF)', icon: FileUp, write: true },
     ],
   },
+  { title: 'Criação', items: [{ href: '/criacao', label: 'Meus designs', icon: PenTool }] },
   {
     title: 'Produção',
     items: [

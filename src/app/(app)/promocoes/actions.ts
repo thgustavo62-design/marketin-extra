@@ -5,10 +5,10 @@ import { audit, writerOrError } from '@/lib/auth'
 import { deleteLibraryItem, importLibraryToCampaign, updateLibraryItem } from '@/lib/promo/library'
 import { isUuid } from '@/lib/form'
 import { PROMO_FORMAT_KEYS, parsePrice, type ItemStyle, type PromoFormat, type PromoOverrides } from '@/lib/domain/promo'
-import { addItem, approveCampaign, createTheme, deleteCampaign, deleteTheme, deleteThemeAsset, moveItem, patchItem, removeItem, reorderItems, deleteAsset, saveLayers, saveOverrides, saveThemeConfig, setItemProduct, THEME_ROLES, ungroupItem, updateCampaign, type SizeEdit, type ThemeRole } from '@/lib/promo/store'
+import { addItem, approveCampaign, createDesign, createTheme, duplicateDesign, deleteCampaign, deleteTheme, deleteThemeAsset, moveItem, patchItem, removeItem, reorderItems, deleteAsset, saveLayers, saveOverrides, saveThemeConfig, setItemProduct, THEME_ROLES, ungroupItem, updateCampaign, type SizeEdit, type ThemeRole } from '@/lib/promo/store'
 
 type Out = { ok: boolean; error?: string; id?: string }
-const refresh = (id: string) => { revalidatePath(`/promocoes/${id}`); revalidatePath(`/editor/${id}`) }
+const refresh = (id: string) => { revalidatePath(`/promocoes/${id}`); revalidatePath(`/criacao/${id}`); revalidatePath(`/editor/${id}`) }
 const NO: Out = { ok: false, error: 'Pedido inválido.' }
 
 export async function createThemeAction(name: string): Promise<Out> {
@@ -100,10 +100,10 @@ export async function saveOverridesAction(campaignId: string, o: PromoOverrides)
   return r
 }
 
-export async function saveLayersAction(campaignId: string, layers: unknown, expectedRev?: number): Promise<Out & { conflict?: boolean; rev?: number }> {
+export async function saveLayersAction(campaignId: string, layers: unknown, expectedRev?: number, designPages?: number): Promise<Out & { conflict?: boolean; rev?: number }> {
   const g = await writerOrError()
   if (!g.ok || !isUuid(campaignId)) return g.ok ? NO : { ok: false, error: g.error }
-  const r = await saveLayers(campaignId, layers, expectedRev)
+  const r = await saveLayers(campaignId, layers, expectedRev, designPages)
   if (r.ok) refresh(campaignId)
   return { ok: r.ok, error: r.error, conflict: r.conflict, rev: r.rev }
 }
@@ -188,4 +188,21 @@ export async function useLibraryImageAction(campaignId: string, libraryId: strin
   if (!g.ok || !isUuid(campaignId) || !isUuid(libraryId)) return g.ok ? NO : { ok: false, error: g.error }
   const r = await importLibraryToCampaign(campaignId, libraryId, g.user.id)
   return r.ok ? { ok: true, id: r.id, width: r.width, height: r.height } : { ok: false, error: r.error }
+}
+
+// ---------- meus designs ----------
+export async function createDesignAction(name: string, format: string): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok) return { ok: false, error: g.error }
+  const r = await createDesign({ name, format, userId: g.user.id })
+  if (r.ok) { revalidatePath('/criacao'); await audit('design_criado', { userId: g.user.id, target: r.id }) }
+  return r.ok ? { ok: true, id: r.id } : { ok: false, error: r.error }
+}
+
+export async function duplicateDesignAction(id: string): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(id)) return g.ok ? NO : { ok: false, error: g.error }
+  const r = await duplicateDesign(id, g.user.id)
+  if (r.ok) revalidatePath('/criacao')
+  return r.ok ? { ok: true, id: r.id } : { ok: false, error: r.error }
 }

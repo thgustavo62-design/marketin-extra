@@ -296,3 +296,23 @@ export function panImage(l: Pick<Layer, 'w' | 'h' | 'fit' | 'zoom' | 'px' | 'py'
   const clamp = (v: number) => Math.min(1, Math.max(0, v))
   return { px: sx < -0.5 ? clamp((l.px ?? 0.5) + ddx / sx) : 0.5, py: sy < -0.5 ? clamp((l.py ?? 0.5) + ddy / sy) : 0.5 }
 }
+
+/** Duplica a peça `page`: as cópias ficam na peça seguinte e as peças depois dela andam uma casa. Elementos de "todas as peças" não mudam. */
+export function duplicatePageLayers(list: Layer[], page: number): Layer[] {
+  const groups = new Map<string, string>()
+  const copies = list.filter((l) => l.page === page).map((l) => {
+    const c: Layer = { ...l, id: newLayerId(), page: page + 1 }
+    if (l.group) { if (!groups.has(l.group)) groups.set(l.group, newLayerId()); c.group = groups.get(l.group) }
+    return c
+  })
+  const shifted = list.map((l) => (l.page !== null && l.page > page ? { ...l, page: l.page + 1 } : l))
+  return [...shifted, ...copies]
+}
+
+/** Exclui a peça `page`: seus elementos saem e as peças seguintes voltam uma casa. */
+export function deletePageLayers(list: Layer[], page: number): Layer[] {
+  return list.filter((l) => l.page !== page).map((l) => (l.page !== null && l.page > page ? { ...l, page: l.page - 1 } : l))
+}
+
+/** Quantas peças um design precisa para mostrar todos os elementos (o maior número de peça usado + 1). */
+export const pagesNeeded = (list: Layer[]): number => list.reduce((n, l) => (l.page !== null ? Math.max(n, l.page + 1) : n), 1)

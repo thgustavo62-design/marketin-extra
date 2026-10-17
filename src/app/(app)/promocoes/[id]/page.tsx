@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { requireUser } from '@/lib/auth'
 import { isUuid } from '@/lib/form'
 import { canWrite } from '@/lib/perms'
@@ -12,6 +12,7 @@ export default async function Promocao({ params }: { params: Promise<{ id: strin
   if (!isUuid(id)) notFound()
   const [data, themes] = await Promise.all([getCampaign(id), listThemes()])
   if (!data) notFound()
+  if (data.campaign.kind === 'design') redirect(`/criacao/${id}`)
   const { campaign, theme, items } = data
   return (
     <>

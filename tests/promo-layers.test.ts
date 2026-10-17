@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { imagePlacement, panImage, pasteLayers, duplicateLayers, alignSelection, boundsOf, distribute, expandSelection, groupLayers, moveSelection, scaleSelection, ungroupLayers, alignToPage, layersForPage, makeLayer, normalizeLayers, reorderLayer, snap, MAX_LAYERS, type Layer } from '../src/lib/domain/promo-layers.ts'
+import { deletePageLayers, duplicatePageLayers, pagesNeeded, imagePlacement, panImage, pasteLayers, duplicateLayers, alignSelection, boundsOf, distribute, expandSelection, groupLayers, moveSelection, scaleSelection, ungroupLayers, alignToPage, layersForPage, makeLayer, normalizeLayers, reorderLayer, snap, MAX_LAYERS, type Layer } from '../src/lib/domain/promo-layers.ts'
 
 const ASSET = '3f2b6c1e-8a4d-4c7e-9f10-2b5d6e7a8c90'
 
@@ -164,4 +164,14 @@ test('imagem: moldura, ajustes e borda são validados; valores neutros não são
   ] }).story
   assert.deepEqual([a.fit, a.zoom, a.px, a.py, a.mask, a.flipX, a.bright, a.contrast, a.saturate, a.blur, a.gray, a.border, a.borderW, a.dash], ['cover', 4, 1, 0, 'circle', true, 100, -20, undefined, 30, true, '#ff0000', 6, 'dotted'])
   assert.deepEqual([b.fit, b.zoom, b.px, b.mask, b.flipX, b.bright], [undefined, undefined, undefined, undefined, undefined, undefined])
+})
+
+test('peças de um design: duplicar, excluir e quantas são necessárias', () => {
+  const l = [L('a1111', 0, 0, 10, 10, { page: 0 }), L('b2222', 0, 0, 10, 10, { page: 1 }), L('c3333', 0, 0, 10, 10, { page: null }), L('d4444', 0, 0, 10, 10, { page: 2 })]
+  const dup = duplicatePageLayers(l, 0)
+  assert.deepEqual(dup.map((x) => [x.id, x.page]).filter(([id]) => ['a1111', 'b2222', 'c3333', 'd4444'].includes(id as string)), [['a1111', 0], ['b2222', 2], ['c3333', null], ['d4444', 3]])
+  assert.equal(dup.length, 5); assert.equal(dup[4].page, 1); assert.ok(dup[4].id !== 'a1111')
+  const del = deletePageLayers(l, 1)
+  assert.deepEqual(del.map((x) => [x.id, x.page]), [['a1111', 0], ['c3333', null], ['d4444', 1]])
+  assert.equal(pagesNeeded(l), 3); assert.equal(pagesNeeded([]), 1); assert.equal(pagesNeeded([L('z0000', 0, 0, 1, 1, { page: null })]), 1)
 })

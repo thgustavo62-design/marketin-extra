@@ -303,3 +303,6 @@ export function normalizeOverrides(raw: unknown): PromoOverrides {
 export function applyOverrides(theme: ThemeConfig, o: PromoOverrides): ThemeConfig {
   return { ...theme, tagText: o.tagText ?? theme.tagText, showTag: o.showTag ?? theme.showTag, footerLines: o.footerLines ?? theme.footerLines }
 }
+
+/** Tema de um design livre: sem título, rodapé, painel nem nuvens (a peça começa em branco; o fundo vem da galeria). */
+export const BLANK_THEME: ThemeConfig = { ...DEFAULT_THEME, title: '', footerLines: [], clouds: false, showTag: false, panel: { story: false, feed: false, a4: false } }

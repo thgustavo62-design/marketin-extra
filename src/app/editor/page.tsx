@@ -1,15 +1,15 @@
 import Link from 'next/link'
 import { requireUser } from '@/lib/auth'
-import { listCampaigns } from '@/lib/promo/store'
+import { listCampaigns, listDesigns } from '@/lib/promo/store'
 
 export default async function Editor() {
   await requireUser()
-  const campaigns = await listCampaigns()
+  const [campaigns, designs] = await Promise.all([listCampaigns(), listDesigns()])
   return (
     <>
       <header className="page-head">
         <h1>Console de edição</h1>
-        <p>Escolha a promoção para editar os encartes em tela cheia. <Link href="/promocoes">Voltar ao sistema</Link></p>
+        <p>Escolha a promoção ou o design para editar em tela cheia. <Link href="/promocoes">Voltar ao sistema</Link></p>
       </header>
       {campaigns.length === 0 ? <p className="empty">Nenhuma promoção ainda. Crie a primeira em Promoções, enviando a planilha.</p> : (
         <div className="cards">
@@ -20,6 +20,19 @@ export default async function Editor() {
             </Link>
           ))}
         </div>
+      )}
+      {designs.length > 0 && (
+        <>
+          <h2 style={{ marginTop: 22 }}>Meus designs</h2>
+          <div className="cards">
+            {designs.map((d) => (
+              <Link key={d.id} href={`/editor/${d.id}`} className="card" style={{ color: 'inherit' }}>
+                <h3>{d.name}</h3>
+                <p className="muted"><span className="badge">{d.format}</span> {d.pages} peça(s) · {d.status === 'aprovada' ? 'Aprovado' : 'Em edição'}</p>
+              </Link>
+            ))}
+          </div>
+        </>
       )}
     </>
   )

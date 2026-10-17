@@ -129,6 +129,7 @@ export type Campaign = {
   overrides: PromoOverrides
   /** elementos livres (texto, imagem, formas) por formato */ layers: Layers
   /** revisão dos elementos livres (controle de edição simultânea) */ layers_rev: number
+  /** 'promocao' (planilha) ou 'design' (arte livre) */ kind: 'promocao' | 'design'; design_format: PromoFormat | null; design_pages: number
   /** imagens enviadas para esta promoção (elementos e fundos) */ assets: CampaignAsset[]
   /** imagens da biblioteca (ícones, logos, selos…) para colocar na peça */ library: LibraryItem[]
   /** temas que têm imagem de fundo, para escolher o fundo de outro tema */ themeBackgrounds: { id: string; name: string; formats: PromoFormat[] }[]
@@ -143,7 +144,41 @@ export type PromoItem = {
 export async function listCampaigns(): Promise<CampaignLite[]> {
   return (await pool.query(
     `select c.id, c.name, t.name as theme_name, (select count(*)::int from promo_items i where i.campaign_id = c.id) as items, c.status, c.created_at::text as created_at
-       from promo_campaigns c left join promo_themes t on t.id = c.theme_id order by c.created_at desc limit 100`)).rows
+       from promo_campaigns c left join promo_themes t on t.id = c.theme_id where c.kind = 'promocao' order by c.created_at desc limit 100`)).rows
+}
+
+export type DesignLite = { id: string; name: string; format: PromoFormat; pages: number; status: CampaignStatus; updated_at: string; created_by_name: string | null }
+export async function listDesigns(): Promise<DesignLite[]> {
+  return (await pool.query(
+    `select c.id, c.name, c.design_format as format, c.design_pages as pages, c.status, c.updated_at::text as updated_at, u.display_name as created_by_name
+       from promo_campaigns c left join users u on u.id = c.created_by where c.kind = 'design' order by c.updated_at desc limit 200`)).rows
+}
+
+/** Cria uma arte livre (sem planilha): formato fixo, uma peça, fundo branco. */
+export async function createDesign(o: { name: string; format: string; userId: string }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const name = o.name.trim().replace(/\s+/g, ' ')
+  if (name.length < 2 || name.length > 120) return { ok: false, error: 'O nome do design deve ter de 2 a 120 caracteres.' }
+  if (!PROMO_FORMAT_KEYS.includes(o.format as PromoFormat)) return { ok: false, error: 'Escolha o formato: Story, Feed ou A4.' }
+  const r = await pool.query(
+    `insert into promo_campaigns (name, kind, design_format, created_by, overrides) values ($1, 'design', $2, $3, $4::jsonb) returning id`,
+    [name, o.format, o.userId, JSON.stringify({ background: { kind: 'color', color: '#ffffff' } })])
+  return { ok: true, id: r.rows[0].id }
+}
+
+/** Duplica um design com as peças, os elementos e as imagens (cada imagem ganha uma cópia própria no novo design). */
+export async function duplicateDesign(id: string, userId: string): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  return withTx(async (db) => {
+    const c = (await db.query(`select name, design_format, design_pages, overrides, layers from promo_campaigns where id = $1 and kind = 'design'`, [id])).rows[0]
+    if (!c) return { ok: false as const, error: 'Design não encontrado.' }
+    const name = `${c.name} (cópia)`.slice(0, 120)
+    const n = (await db.query(`insert into promo_campaigns (name, kind, design_format, design_pages, created_by) values ($1, 'design', $2, $3, $4) returning id`, [name, c.design_format, c.design_pages, userId])).rows[0].id as string
+    await db.query(`insert into promo_assets (campaign_id, data, mime, width, height, sha256, created_by) select $2, data, mime, width, height, sha256, $3 from promo_assets where campaign_id = $1`, [id, n, userId])
+    const map = (await db.query(`select o.id as old, w.id as new from promo_assets o join promo_assets w on w.sha256 = o.sha256 and w.campaign_id = $2 where o.campaign_id = $1`, [id, n])).rows as { old: string; new: string }[]
+    let layers = JSON.stringify(c.layers ?? null), overrides = JSON.stringify(c.overrides ?? null)
+    for (const m of map) { layers = layers.split(m.old).join(m.new); overrides = overrides.split(m.old).join(m.new) }
+    await db.query(`update promo_campaigns set layers = $2::jsonb, overrides = $3::jsonb where id = $1`, [n, layers, overrides])
+    return { ok: true as const, id: n }
+  })
 }
 
 /** Qualquer mudança nos encartes tira a aprovação: quem mexeu precisa aprovar de novo. */
@@ -199,7 +234,7 @@ export async function createCampaignFromRows(o: {
 
 export async function getCampaign(id: string): Promise<{ campaign: Campaign; theme: Theme | null; items: PromoItem[] } | null> {
   const c = (await pool.query(
-    `select c.id, c.name, c.theme_id, c.title, c.validity, c.status, u.display_name as approved_by_name, c.approved_at::text as approved_at, c.import_report, c.group_variants, c.overrides, c.layers, c.layers_rev
+    `select c.id, c.name, c.theme_id, c.title, c.validity, c.status, u.display_name as approved_by_name, c.approved_at::text as approved_at, c.import_report, c.group_variants, c.overrides, c.layers, c.layers_rev, c.kind, c.design_format, c.design_pages
        from promo_campaigns c left join users u on u.id = c.approved_by where c.id = $1`, [id])).rows[0]
   if (!c) return null
   const rows = (await pool.query(
@@ -237,7 +272,7 @@ export async function approveCampaign(id: string, userId: string): Promise<{ ok:
     const bl = issues.filter((i) => i.severity === 'bloqueio')
     if (bl.length) return { ok: false, error: `Corrija antes de aprovar (${summarizeCheck(issues).bloqueio}): ${bl.slice(0, 3).map((i) => i.message).join(' ')}${bl.length > 3 ? ' …' : ''}` }
   }
-  const r = await pool.query(`update promo_campaigns set status = 'aprovada', approved_by = $2, approved_at = now(), updated_at = now() where id = $1 and exists (select 1 from promo_items where campaign_id = $1)`, [id, userId])
+  const r = await pool.query(`update promo_campaigns set status = 'aprovada', approved_by = $2, approved_at = now(), updated_at = now() where id = $1 and (kind = 'design' or exists (select 1 from promo_items where campaign_id = $1))`, [id, userId])
   return r.rowCount ? { ok: true } : { ok: false, error: 'Promoção não encontrada ou sem encartes.' }
 }
 
@@ -299,14 +334,14 @@ export async function saveOverrides(campaignId: string, o: PromoOverrides): Prom
 }
 
 /** Guarda os elementos livres da promoção. Imagem que não pertence à promoção é descartada; qualquer mudança tira a aprovação. */
-export async function saveLayers(campaignId: string, raw: unknown, expectedRev?: number): Promise<{ ok: boolean; error?: string; layers?: Layers; rev?: number; conflict?: boolean }> {
+export async function saveLayers(campaignId: string, raw: unknown, expectedRev?: number, designPages?: number): Promise<{ ok: boolean; error?: string; layers?: Layers; rev?: number; conflict?: boolean }> {
   const layers = normalizeLayers(raw)
   const used = [...new Set(PROMO_FORMAT_KEYS.flatMap((f) => layers[f].map((l) => l.asset).filter((x): x is string => !!x)))]
   if (used.length) {
     const ok = new Set((await pool.query(`select id from promo_assets where campaign_id = $1 and id = any($2::uuid[])`, [campaignId, used])).rows.map((r) => r.id as string))
     for (const f of PROMO_FORMAT_KEYS) layers[f] = layers[f].filter((l) => l.type !== 'image' || (l.asset && ok.has(l.asset)))
   }
-  const r = await pool.query(`update promo_campaigns set layers = $2::jsonb, layers_rev = layers_rev + 1 where id = $1 and ($3::int is null or layers_rev = $3) returning layers_rev`, [campaignId, JSON.stringify(layers), expectedRev ?? null])
+  const r = await pool.query(`update promo_campaigns set layers = $2::jsonb, layers_rev = layers_rev + 1, design_pages = case when kind = 'design' and $4::int is not null then least(30, greatest(1, $4::int)) else design_pages end where id = $1 and ($3::int is null or layers_rev = $3) returning layers_rev`, [campaignId, JSON.stringify(layers), expectedRev ?? null, designPages ?? null])
   if (!r.rowCount) {
     if (!(await pool.query(`select 1 from promo_campaigns where id = $1`, [campaignId])).rowCount) return { ok: false, error: 'Promoção não encontrada.' }
     return { ok: false, conflict: true, error: 'Os elementos desta promoção foram alterados em outra aba ou por outra pessoa. Suas mudanças não foram salvas.' }

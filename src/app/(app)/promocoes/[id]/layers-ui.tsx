@@ -17,7 +17,7 @@ const FIT_KEYS: (keyof Layer)[] = ['text', 'size', 'font', 'bold', 'italic', 'w'
 /** Texto sempre com a caixa na altura certa para o que está escrito. */
 export function fitLayer(l: Layer): Layer { return l.type === 'text' ? { ...l, h: measureLayerHeight(l) } : l }
 
-export function useLayers(campaignId: string, initial: Layers, canEdit: boolean, onSaved: () => void, initialRev = 0) {
+export function useLayers(campaignId: string, initial: Layers, canEdit: boolean, onSaved: () => void, initialRev = 0, getPages?: () => number | undefined) {
   const [layers, setLayers] = useState<Layers>(initial)
   const [committed, setCommitted] = useState<Layers>(initial)
   const [state, setState] = useState<SaveState>('saved')
@@ -34,6 +34,8 @@ export function useLayers(campaignId: string, initial: Layers, canEdit: boolean,
   const conflict = useRef(false)
   const savedCb = useRef(onSaved)
   savedCb.current = onSaved
+  const pagesCb = useRef(getPages)
+  pagesCb.current = getPages
 
   const sync = () => setHist({ undo: past.current.length, redo: future.current.length })
 
@@ -45,7 +47,7 @@ export function useLayers(campaignId: string, initial: Layers, canEdit: boolean,
     setCommitted(snapshot); setState('saving')
     chain.current = chain.current.then(async () => {
       if (conflict.current) { dirty.current = true; return }
-      const r = await saveLayersAction(campaignId, snapshot, rev.current).catch(() => ({ ok: false, error: 'Sem conexão: não foi possível salvar os elementos.', conflict: false, rev: undefined as number | undefined }))
+      const r = await saveLayersAction(campaignId, snapshot, rev.current, pagesCb.current?.()).catch(() => ({ ok: false, error: 'Sem conexão: não foi possível salvar os elementos.', conflict: false, rev: undefined as number | undefined }))
       if (r.conflict) { conflict.current = true; dirty.current = true; setError(r.error ?? null); setState('conflict') }
       else if (!r.ok) { dirty.current = true; setError(r.error ?? 'Não foi possível salvar os elementos.'); setState('error') }
       else { if (typeof r.rev === 'number') rev.current = r.rev; setError(null); setState(dirty.current ? 'dirty' : 'saved'); savedCb.current() }
@@ -92,6 +94,8 @@ export function useLayers(campaignId: string, initial: Layers, canEdit: boolean,
       conflict.current = false; dirty.current = true
       void saveLayersAction(campaignId, latest.current).then((r) => { if (r.ok) { if (typeof r.rev === 'number') rev.current = r.rev; dirty.current = false; setState('saved'); setError(null); savedCb.current() } else { conflict.current = r.conflict === true; setError(r.error ?? 'Não foi possível salvar.'); setState('error') } })
     },
+    /** pede salvamento sem mudar elementos (por exemplo, ao mudar o número de peças de um design) */
+    markDirty: () => { if (canEdit) schedule() },
     /** aplica uma mudança na lista inteira do formato (várias de uma vez: agrupar, alinhar, excluir…) */
     mutate: (fmt: PromoFormat, fn: (list: Layer[]) => Layer[], key?: string) => apply({ ...latest.current, [fmt]: fn(latest.current[fmt]) }, { key }),
     /** durante o arrasto de vários: troca a lista sem registrar no histórico nem salvar */

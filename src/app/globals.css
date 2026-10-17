@@ -895,3 +895,5 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 /* recorte da foto na moldura */
 .canva-lbox.crop { outline: 2px dashed #f07a2e; cursor: grab; }
 .canva-lbox.crop::after { content: 'Arraste a foto'; position: absolute; left: 50%; top: 6px; transform: translateX(-50%); font-size: 11px; font-weight: 700; background: #f07a2e; color: #fff; padding: 2px 8px; border-radius: 999px; pointer-events: none; white-space: nowrap; }
+
+.canva-pagetools { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
