@@ -5,6 +5,7 @@ import { pool, withTx } from '../db.ts'
 import { displayName, applyOverrides, normalizeItemStyle, normalizeOverrides, normalizeTheme, PROMO_FORMAT_KEYS, type ItemStyle, type PromoFormat, type PromoOverrides, type PromoRow, type ThemeConfig } from '../domain/promo.ts'
 import { groupItems, groupSummary, type GroupInput, type Variants } from '../domain/promo-group.ts'
 import { normalizeLayers, type Layers } from '../domain/promo-layers.ts'
+import { autoSnapshot, logItemChange, money, snapshotVersion } from './history.ts'
 import { isArtKind, MAX_FIXED_PER_FORMAT, MAX_THEME_ARTS, type ArtKind } from '../domain/promo-fixed.ts'
 import { applyTemplateTexts, isTemplateCategory, templateFields, type TemplateField } from '../domain/promo-templates.ts'
 import { checkPromotion, pageCountsFor, summarizeCheck } from '../domain/promo-check.ts'
@@ -324,6 +325,7 @@ export async function approveCampaign(id: string, userId: string): Promise<{ ok:
     if (bl.length) return { ok: false, error: `Corrija antes de aprovar (${summarizeCheck(issues).bloqueio}): ${bl.slice(0, 3).map((i) => i.message).join(' ')}${bl.length > 3 ? ' …' : ''}` }
   }
   const r = await pool.query(`update promo_campaigns set status = 'aprovada', approved_by = $2, approved_at = now(), updated_at = now() where id = $1 and (kind = 'design' or exists (select 1 from promo_items where campaign_id = $1))`, [id, userId])
+  if (r.rowCount) await snapshotVersion(pool, id, 'aprovacao', 'Aprovado', userId)
   return r.rowCount ? { ok: true } : { ok: false, error: 'Promoção não encontrada ou sem encartes.' }
 }
 
@@ -338,9 +340,9 @@ export type ItemPatch = {
 }
 
 /** Altera só o que veio no pedido. Qualquer mudança tira a aprovação. */
-export async function patchItem(itemId: string, p: ItemPatch): Promise<{ ok: boolean; error?: string }> {
+export async function patchItem(itemId: string, p: ItemPatch, userId: string | null = null): Promise<{ ok: boolean; error?: string }> {
   return withTx(async (db) => {
-    const cur = (await db.query(`select campaign_id, name, price::float8 as price, variants, old_price::float8 as old_price, note, style from promo_items where id = $1 for update`, [itemId])).rows[0]
+    const cur = (await db.query(`select campaign_id, name, price::float8 as price, variants, old_price::float8 as old_price, note, style, photo_image_id from promo_items where id = $1 for update`, [itemId])).rows[0]
     if (!cur) return { ok: false, error: 'Item não encontrado.' }
     const name = p.name === undefined ? cur.name as string : displayName(p.name)
     if (!name || name.length > 160) return { ok: false, error: 'O nome deve ter de 1 a 160 caracteres.' }
@@ -367,6 +369,13 @@ export async function patchItem(itemId: string, p: ItemPatch): Promise<{ ok: boo
       `update promo_items i set name = $2, price = $3, old_price = $4, note = $5, style = $6::jsonb, variants = $7::jsonb where i.id = $1`,
       [itemId, name, price, oldPrice, note, Object.keys(style).length ? JSON.stringify(style) : null, variants ? JSON.stringify(variants) : null])
     if (photo !== undefined) await db.query(`update promo_items i set photo_image_id = case when $2::uuid is not null and exists (select 1 from product_images m where m.id = $2 and m.product_id = i.product_id) then $2 else null end where i.id = $1`, [itemId, photo])
+    // registro de alterações: quem mudou o quê (nome, preço, preço original, subtítulo, foto)
+    const log = (field: string, oldV: string | null, newV: string | null) => logItemChange(db, { campaignId: cur.campaign_id, itemId, itemName: name, userId, field, oldV, newV })
+    if (name !== cur.name) await log('nome', cur.name, name)
+    if (price !== cur.price) await log('preço', money(cur.price), money(price))
+    if (oldPrice !== (cur.old_price ?? null)) await log('preço original', money(cur.old_price), money(oldPrice))
+    if (note !== (cur.note ?? null)) await log('subtítulo', cur.note ?? null, note)
+    if (photo !== undefined && photo !== (cur.photo_image_id ?? null)) await log('foto', cur.photo_image_id ? 'outra foto' : 'sem foto escolhida', photo ? 'foto escolhida trocada' : 'foto padrão do produto')
     await touch(db, cur.campaign_id)
     return { ok: true }
   })
@@ -385,7 +394,7 @@ export async function saveOverrides(campaignId: string, o: PromoOverrides): Prom
 }
 
 /** Guarda os elementos livres da promoção. Imagem que não pertence à promoção é descartada; qualquer mudança tira a aprovação. */
-export async function saveLayers(campaignId: string, raw: unknown, expectedRev?: number, designPages?: number): Promise<{ ok: boolean; error?: string; layers?: Layers; rev?: number; conflict?: boolean }> {
+export async function saveLayers(campaignId: string, raw: unknown, expectedRev?: number, designPages?: number, userId: string | null = null): Promise<{ ok: boolean; error?: string; layers?: Layers; rev?: number; conflict?: boolean }> {
   const layers = normalizeLayers(raw)
   const used = [...new Set(PROMO_FORMAT_KEYS.flatMap((f) => layers[f].map((l) => l.asset).filter((x): x is string => !!x)))]
   if (used.length) {
@@ -398,6 +407,7 @@ export async function saveLayers(campaignId: string, raw: unknown, expectedRev?:
     return { ok: false, conflict: true, error: 'Os elementos desta promoção foram alterados em outra aba ou por outra pessoa. Suas mudanças não foram salvas.' }
   }
   await touch(pool, campaignId)
+  await autoSnapshot(pool, campaignId, userId)
   return { ok: true, layers, rev: r.rows[0].layers_rev }
 }
 
@@ -441,11 +451,13 @@ export async function deleteAsset(campaignId: string, assetId: string): Promise<
 }
 
 /** Troca o produto do banco de imagens que fornece as fotos do encarte (a foto escolhida antes é esquecida). */
-export async function setItemProduct(itemId: string, productId: string): Promise<{ ok: boolean; error?: string }> {
+export async function setItemProduct(itemId: string, productId: string, userId: string | null = null): Promise<{ ok: boolean; error?: string }> {
   return withTx(async (db) => {
     if (!(await db.query(`select 1 from products where id = $1 and active`, [productId])).rowCount) return { ok: false, error: 'Produto não encontrado.' }
-    const r = await db.query(`update promo_items set product_id = $2, photo_image_id = null where id = $1 returning campaign_id`, [itemId, productId])
+    const r = await db.query(`update promo_items set product_id = $2, photo_image_id = null where id = $1 returning campaign_id, name`, [itemId, productId])
     if (!r.rowCount) return { ok: false, error: 'Item não encontrado.' }
+    const pd = (await db.query(`select description from products where id = $1`, [productId])).rows[0]
+    await logItemChange(db, { campaignId: r.rows[0].campaign_id, itemId, itemName: r.rows[0].name, userId, field: 'produto da foto', oldV: null, newV: pd?.description ?? null })
     await touch(db, r.rows[0].campaign_id)
     return { ok: true }
   })
@@ -474,14 +486,17 @@ export async function attachItemPhoto(itemId: string, buf: Buffer, fileName: str
   if (!imageId) imageId = (await pool.query(`select id from product_images where product_id = $1 order by is_primary desc, created_at limit 1`, [productId])).rows[0]?.id ?? null // já existia no produto
   if (!imageId) return { ok: false, error: 'Não consegui guardar a imagem.' }
   await pool.query(`update promo_items set photo_image_id = $2 where id = $1`, [itemId, imageId])
+  await logItemChange(pool, { campaignId: it.campaign_id, itemId, itemName: it.name, userId, field: 'foto enviada', oldV: null, newV: fileName.slice(0, 80) })
   await touch(pool, it.campaign_id)
   return { ok: true, imageId }
 }
 
-export async function removeItem(itemId: string): Promise<void> {
+export async function removeItem(itemId: string, userId: string | null = null): Promise<void> {
   await withTx(async (db) => {
-    const it = (await db.query(`delete from promo_items where id = $1 returning campaign_id, position`, [itemId])).rows[0]
-    if (it) { await db.query(`update promo_items set position = position - 1 where campaign_id = $1 and position > $2`, [it.campaign_id, it.position]); await touch(db, it.campaign_id) }
+    const it = (await db.query(`delete from promo_items where id = $1 returning campaign_id, position, name, price::float8 as price`, [itemId])).rows[0]
+    if (it) {
+      await logItemChange(db, { campaignId: it.campaign_id, itemId: null, itemName: it.name, userId, field: 'encarte removido', oldV: money(it.price), newV: null })
+      await db.query(`update promo_items set position = position - 1 where campaign_id = $1 and position > $2`, [it.campaign_id, it.position]); await touch(db, it.campaign_id) }
   })
 }
 
@@ -500,14 +515,15 @@ export async function moveItem(itemId: string, dir: -1 | 1): Promise<void> {
   })
 }
 
-export async function addItem(campaignId: string, productId: string, price: number): Promise<{ ok: boolean; error?: string }> {
+export async function addItem(campaignId: string, productId: string, price: number, userId: string | null = null): Promise<{ ok: boolean; error?: string }> {
   if (!(price >= 0 && price < 100000)) return { ok: false, error: 'Preço inválido.' }
   return withTx(async (db) => {
     const p = (await db.query(`select id, ean, description from products where id = $1 and active`, [productId])).rows[0]
     if (!p) return { ok: false, error: 'Produto não encontrado.' }
     if (!(await db.query(`select 1 from promo_campaigns where id = $1`, [campaignId])).rowCount) return { ok: false, error: 'Promoção não encontrada.' }
     const pos = ((await db.query(`select coalesce(max(position), 0) + 1 as n from promo_items where campaign_id = $1`, [campaignId])).rows[0].n) as number
-    await db.query(`insert into promo_items (campaign_id, position, ean, product_id, name, price) values ($1, $2, $3, $4, $5, $6)`, [campaignId, pos, p.ean, p.id, displayName(p.description), price])
+    const ins = await db.query(`insert into promo_items (campaign_id, position, ean, product_id, name, price) values ($1, $2, $3, $4, $5, $6) returning id`, [campaignId, pos, p.ean, p.id, displayName(p.description), price])
+    await logItemChange(db, { campaignId, itemId: ins.rows[0].id, itemName: displayName(p.description), userId, field: 'encarte adicionado', oldV: null, newV: money(price) })
     await touch(db, campaignId)
     return { ok: true }
   })
@@ -527,7 +543,7 @@ export async function reorderItems(campaignId: string, ids: string[]): Promise<{
 }
 
 /** Desfaz um encarte agrupado: cada produto do grupo volta a ser um encarte próprio, logo depois do original. */
-export async function ungroupItem(itemId: string): Promise<{ ok: boolean; error?: string }> {
+export async function ungroupItem(itemId: string, userId: string | null = null): Promise<{ ok: boolean; error?: string }> {
   return withTx(async (db) => {
     const it = (await db.query(`select campaign_id, position, price, section, variants from promo_items where id = $1 for update`, [itemId])).rows[0]
     if (!it || !it.variants) return { ok: false, error: 'Este encarte não é um grupo.' }
@@ -540,6 +556,7 @@ export async function ungroupItem(itemId: string): Promise<{ ok: boolean; error?
     // abre espaço (posições temporárias negativas para não bater na unicidade) e insere os outros membros logo depois
     await db.query(`update promo_items set position = -position - 1 where campaign_id = $1 and position > $2`, [it.campaign_id, it.position])
     await db.query(`update promo_items set position = -position - 1 + $3 where campaign_id = $1 and position < 0 and -position - 1 > $2`, [it.campaign_id, it.position, extra])
+    await logItemChange(db, { campaignId: it.campaign_id, itemId, itemName: members[0].name, userId, field: 'encarte desagrupado', oldV: `${members.length} produtos num encarte`, newV: `${members.length} encartes` })
     await db.query(`update promo_items set name = $2, ean = $3, product_id = $4, variants = null, photo_image_id = null where id = $1`, [itemId, displayName(members[0].name), members[0].ean, pid.get(members[0].ean) ?? null])
     for (let k = 1; k < members.length; k++) {
       await db.query(`insert into promo_items (campaign_id, position, ean, product_id, name, price, section) values ($1, $2, $3, $4, $5, $6, $7)`, [it.campaign_id, it.position + k, members[k].ean, pid.get(members[k].ean) ?? null, displayName(members[k].name), it.price, it.section])

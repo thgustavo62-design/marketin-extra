@@ -16,6 +16,7 @@ import { canvasToBlob, drawPage, loadFonts, loadImage, loadPromoFonts, pageGeome
 import { ProductPicker } from '../../produtos/product-picker'
 import { BackgroundGallery } from './background-gallery'
 import { CheckPanel } from './check-panel'
+import { HistoryPanel } from './history-panel'
 import { BrandPanel } from './brand-panel'
 import { ThemeArtsPanel } from './theme-arts-panel'
 import { LibraryPicker } from './library-picker'
@@ -70,6 +71,7 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
   const [editingLayer, setEditingLayer] = useState<string | null>(null)
   const [quickId, setQuickId] = useState<string | null>(null)
   const [checkOpen, setCheckOpen] = useState(false)
+  const [histOpen, setHistOpen] = useState(false)
   const [cropId, setCropId] = useState<string | null>(null)
   const [tplName, setTplName] = useState('')
   const [tplCat, setTplCat] = useState('promocao')
@@ -478,6 +480,7 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
         </details>
       )}
 
+      {histOpen && <HistoryPanel campaignId={campaign.id} isDesign={isDesign} canEdit={canEdit} flush={() => layersApi.flushNow()} onClose={() => setHistOpen(false)} />}
       {checkOpen && <CheckPanel issues={issues} onGoto={gotoIssue} onClose={() => setCheckOpen(false)} />}
       {layersApi.state === 'conflict' && (
         <div className="notice canva-conflict" role="alert">
@@ -494,6 +497,7 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
           {!isDesign && PROMO_FORMAT_KEYS.map((f) => <button key={f} type="button" className={`tab${format === f ? ' active' : ''}`} onClick={() => { setFormat(f); setPage(0) }}>{PROMO_FORMATS[f].label}</button>)}
         </div>
         <div className="canva-actions">
+          <button type="button" className="secondary" onClick={() => setHistOpen((v) => !v)} aria-expanded={histOpen} disabled={!theme}>Histórico</button>
           <button type="button" className={`secondary canva-check-btn${checkSum.bloqueio ? ' bad' : checkSum.revisao ? ' warn' : ''}`} onClick={() => setCheckOpen((v) => !v)} aria-expanded={checkOpen} disabled={!theme}>Verificar arte{issues.length ? ` (${issues.length})` : ' ✓'}</button>
           <button type="button" className="primary" onClick={downloadPage} disabled={(!items.length && !isDesign) || !theme}><Download size={14} /> Baixar esta peça (PNG)</button>
           <button type="button" className="secondary" onClick={() => downloadZip([format])} disabled={(!items.length && !isDesign) || !theme}>{isDesign ? 'Todas as peças (ZIP)' : 'Todas do formato (ZIP)'}</button>

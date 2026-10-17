@@ -94,6 +94,8 @@ export function useLayers(campaignId: string, initial: Layers, canEdit: boolean,
       conflict.current = false; dirty.current = true
       void saveLayersAction(campaignId, latest.current).then((r) => { if (r.ok) { if (typeof r.rev === 'number') rev.current = r.rev; dirty.current = false; setState('saved'); setError(null); savedCb.current() } else { conflict.current = r.conflict === true; setError(r.error ?? 'Não foi possível salvar.'); setState('error') } })
     },
+    /** grava agora o que está pendente e espera terminar */
+    flushNow: (): Promise<void> => { flush(); return chain.current },
     /** pede salvamento sem mudar elementos (por exemplo, ao mudar o número de peças de um design) */
     markDirty: () => { if (canEdit) schedule() },
     /** aplica uma mudança na lista inteira do formato (várias de uma vez: agrupar, alinhar, excluir…) */

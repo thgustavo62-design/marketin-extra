@@ -1051,3 +1051,9 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .theme-arts-list .canva-name small { display: block; margin-left: 0; }
 .canva-report { font-size: 12.5px; }
 .canva-report summary { font-size: 12.5px; }
+
+/* histórico */
+.history-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; max-height: 340px; overflow: auto; }
+.history-list li { display: flex; align-items: center; gap: 10px; background: var(--box); border-radius: 9px; padding: 6px 10px; }
+.history-list .canva-name small { display: block; margin-left: 0; color: var(--muted); font-weight: 500; }
+.history-list .badge { flex: none; min-width: 84px; text-align: center; }

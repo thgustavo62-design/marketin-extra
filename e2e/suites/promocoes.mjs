@@ -895,6 +895,27 @@ try {
   await a.locator('button[aria-label="Excluir a arte logo rede"]').click(); await wait(2200)
   ck('excluir uma arte tira ela do tema e das posições', (await q(`select count(*)::int n from promo_theme_arts where theme_id = $1`, [themeId]))[0].n === 1 && (await q(`select fixed from promo_themes where id = $1`, [themeId]))[0].fixed.story.length === 1)
 
+  // ---------- registro de alterações dos encartes ----------
+  await q(`update promo_campaigns set layers = null where id = $1`, [camp.id])
+  await a.goto(`${BASE}/promocoes/${camp.id}`); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  await q(`delete from promo_item_audit where campaign_id = $1`, [camp.id])
+  await a.locator('.canva-list li').nth(1).click(); await wait(500)
+  const it1n = await a.locator('#in-price').inputValue()
+  await a.fill('#in-price', '55,5'); await a.locator('#in-price').blur(); await wait(2200)
+  await a.fill('#in-note', 'Leve 3'); await a.locator('#in-note').blur(); await wait(2200)
+  const aud = await q(`select field, old_value, new_value, user_id from promo_item_audit where campaign_id = $1 order by id`, [camp.id])
+  ck('mudar preço e subtítulo de um encarte fica registrado (campo, valor antigo e novo, quem)', aud.some((r) => r.field === 'preço' && r.new_value === 'R$ 55,50' && /^R\$ /.test(r.old_value ?? '') && !!r.user_id) && aud.some((r) => r.field === 'subtítulo' && r.new_value === 'Leve 3'), JSON.stringify(aud))
+  await a.fill('#in-price', '55,5'); await a.locator('#in-price').blur(); await wait(1500)
+  ck('gravar o mesmo valor de novo não gera registro', (await q(`select count(*)::int n from promo_item_audit where campaign_id = $1 and field = 'preço'`, [camp.id]))[0].n === 1)
+  await a.getByRole('button', { name: 'Histórico', exact: true }).click(); await wait(800)
+  await a.getByRole('tab', { name: /Alterações nos encartes/ }).click(); await wait(500)
+  ck('o painel lista as alterações com quem mudou e de quanto para quanto', (await a.locator('li[data-audit="preço"]').count()) === 1 && /R\$ 55,50/.test(await a.textContent('li[data-audit="preço"]')) && /Admin Teste/.test(await a.textContent('li[data-audit="preço"]')))
+  await a.getByRole('button', { name: 'Histórico', exact: true }).click()
+  const antesRm = (await q(`select count(*)::int n from promo_items where campaign_id = $1`, [camp.id]))[0].n
+  await a.locator('.canva-list li').last().click(); await wait(400)
+  await a.locator('button[aria-label="Remover"]').click(); await wait(2500)
+  ck('remover um encarte também fica registrado', (await q(`select count(*)::int n from promo_items where campaign_id = $1`, [camp.id]))[0].n === antesRm - 1 && (await q(`select count(*)::int n from promo_item_audit where campaign_id = $1 and field = 'encarte removido'`, [camp.id]))[0].n === 1)
+
   // política desligada: um encarte por produto
   await a.goto(BASE + '/promocoes'); await idle(a)
   await a.fill('#np-name', 'Sem agrupar'); await a.selectOption('#np-theme', themeId); await a.locator('input[name=group]').uncheck()

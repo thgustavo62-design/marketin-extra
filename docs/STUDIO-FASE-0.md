@@ -50,8 +50,8 @@ Legenda: ✅ feito e testado · 🟡 parcial · ❌ não existe
 | Kits de marca por filial | 🟡 (fase 5) | Logos, cores, fontes aprovadas e textos prontos por filial, aba "Marca" no editor. Faltam: sobreposição por unidade, contatos/QR por unidade, componentes reutilizáveis, bloqueio de elementos oficiais |
 | Componentes reutilizáveis | ❌ | |
 | Documentos livres (sem promoção), "Meus designs", várias peças | 🟡 (fase 3) | Feito como `kind = 'design'` em `promo_campaigns` (mesmo editor, camadas, imagens, aprovação). Falta: miniatura real na lista, formato misto numa arte, versões e modelos |
-| Versões/snapshots e restauração | ❌ | Só o estado atual; aprovação guarda quem/quando |
-| Auditoria de alteração de preço/aprovação | 🟡 | Aprovação registrada; preço editado não gera log próprio |
+| Versões/snapshots e restauração | ✅ (fase 7) | Versões dos elementos, fundo, textos e nº de peças; não guardam os encartes |
+| Auditoria de alteração de preço/aprovação | ✅ (fase 7) | Quem mudou nome, preço, preço original, subtítulo, foto, adicionou/removeu/desagrupou encarte |
 | Exportação 300 DPI e PDF vetorial | ❌ | |
 | Motion/vídeo, multiplayer, IA | ❌ | Fora do escopo da especificação (P2/futuro) |
 
@@ -107,6 +107,11 @@ Cobertas pelo e2e `e2e/suites/promocoes.mjs` (196 verificações) e `apresentaco
 
 ### 5.7 Visual do editor (v2)
 - Só estilo (`globals.css`, bloco "Editor v2"): trilho de ferramentas vertical escuro com ícones, painel ao lado, palco neutro pontilhado com a peça em sombra de papel, barra de adicionar flutuante, inspetor em cartões recolhíveis, alças redondas, faixa de aprovação em uma linha, editor em largura total (`:has(.canva)`), peça ajustada à altura da tela, resumo da importação recolhido por padrão. Nomes, papéis e comportamento dos controles não mudaram.
+
+### 5.8 Fase 7 (histórico)
+- Migração 033: `promo_item_audit` (registro de alterações dos encartes) e `promo_versions` (retratos).
+- Botão **Histórico** no editor: *Versões da arte* (salvar versão com nome, restaurar; automática a cada 20 min de edição e a cada aprovação; guarda as 60 mais novas; restaurar guarda antes o estado atual, volta a promoção para "em edição" e avisa quem tem a tela aberta) e *Alterações nos encartes* (só promoções).
+- Versão guarda elementos livres, fundo/textos (`overrides`) e nº de peças do design. Não guarda nome/preço/foto dos encartes (use o registro). Imagem excluída depois de uma versão não volta ao restaurar.
 
 ## 6. Riscos conhecidos
 - Desfazer não cobre edições de encarte (nome, preço, foto, ordem): são gravadas imediatamente.

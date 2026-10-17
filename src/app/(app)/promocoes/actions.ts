@@ -1,7 +1,8 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { audit, writerOrError } from '@/lib/auth'
+import { audit, requireUser, writerOrError } from '@/lib/auth'
+import { createManualVersion, listAudit, listVersions, restoreVersion, type AuditRow, type VersionRow } from '@/lib/promo/history'
 import { deleteLibraryItem, importLibraryToCampaign, updateLibraryItem } from '@/lib/promo/library'
 import { isUuid } from '@/lib/form'
 import { PROMO_FORMAT_KEYS, parsePrice, type ItemStyle, type PromoFormat, type PromoOverrides } from '@/lib/domain/promo'
@@ -64,7 +65,7 @@ export async function updateItemAction(campaignId: string, itemId: string, name:
   if (!g.ok || !isUuid(itemId) || !isUuid(campaignId)) return g.ok ? NO : { ok: false, error: g.error }
   const p = parsePrice(price)
   if (p === null) return { ok: false, error: 'Preço inválido.' }
-  const r = await patchItem(itemId, { name: String(name), price: p, photoImageId: photoId && isUuid(photoId) ? photoId : null, sizes: Array.isArray(sizes) ? sizes.slice(0, 12).map((x) => ({ label: String(x?.label ?? ''), units: x?.units === null || x?.units === undefined ? null : Number(x.units) })) : undefined })
+  const r = await patchItem(itemId, { name: String(name), price: p, photoImageId: photoId && isUuid(photoId) ? photoId : null, sizes: Array.isArray(sizes) ? sizes.slice(0, 12).map((x) => ({ label: String(x?.label ?? ''), units: x?.units === null || x?.units === undefined ? null : Number(x.units) })) : undefined }, g.user.id)
   if (r.ok) refresh(campaignId)
   return r
 }
@@ -79,7 +80,7 @@ export async function patchItemAction(campaignId: string, itemId: string, patch:
     oldPrice = raw === '' ? null : parsePrice(raw)
     if (oldPrice === null && raw !== '') return { ok: false, error: 'Preço original inválido.' }
   }
-  const r = await patchItem(itemId, { oldPrice, note: patch.note === undefined ? undefined : patch.note === null ? null : String(patch.note), style: patch.style, showVariants: typeof patch.showVariants === 'boolean' ? patch.showVariants : undefined })
+  const r = await patchItem(itemId, { oldPrice, note: patch.note === undefined ? undefined : patch.note === null ? null : String(patch.note), style: patch.style, showVariants: typeof patch.showVariants === 'boolean' ? patch.showVariants : undefined }, g.user.id)
   if (r.ok) refresh(campaignId)
   return r
 }
@@ -87,7 +88,7 @@ export async function patchItemAction(campaignId: string, itemId: string, patch:
 export async function setItemProductAction(campaignId: string, itemId: string, productId: string): Promise<Out> {
   const g = await writerOrError()
   if (!g.ok || !isUuid(itemId) || !isUuid(campaignId) || !isUuid(productId)) return g.ok ? NO : { ok: false, error: g.error }
-  const r = await setItemProduct(itemId, productId)
+  const r = await setItemProduct(itemId, productId, g.user.id)
   if (r.ok) refresh(campaignId)
   return r
 }
@@ -103,7 +104,7 @@ export async function saveOverridesAction(campaignId: string, o: PromoOverrides)
 export async function saveLayersAction(campaignId: string, layers: unknown, expectedRev?: number, designPages?: number): Promise<Out & { conflict?: boolean; rev?: number }> {
   const g = await writerOrError()
   if (!g.ok || !isUuid(campaignId)) return g.ok ? NO : { ok: false, error: g.error }
-  const r = await saveLayers(campaignId, layers, expectedRev, designPages)
+  const r = await saveLayers(campaignId, layers, expectedRev, designPages, g.user.id)
   if (r.ok) refresh(campaignId)
   return { ok: r.ok, error: r.error, conflict: r.conflict, rev: r.rev }
 }
@@ -111,7 +112,7 @@ export async function saveLayersAction(campaignId: string, layers: unknown, expe
 export async function removeItemAction(campaignId: string, itemId: string): Promise<Out> {
   const g = await writerOrError()
   if (!g.ok || !isUuid(itemId)) return g.ok ? NO : { ok: false, error: g.error }
-  await removeItem(itemId); refresh(campaignId)
+  await removeItem(itemId, g.user.id); refresh(campaignId)
   return { ok: true }
 }
 
@@ -127,7 +128,7 @@ export async function addItemAction(campaignId: string, productId: string, price
   if (!g.ok || !isUuid(campaignId) || !isUuid(productId)) return g.ok ? NO : { ok: false, error: g.error }
   const p = parsePrice(price)
   if (p === null) return { ok: false, error: 'Informe o preço promocional.' }
-  const r = await addItem(campaignId, productId, p)
+  const r = await addItem(campaignId, productId, p, g.user.id)
   if (r.ok) refresh(campaignId)
   return r
 }
@@ -151,7 +152,7 @@ export async function approveCampaignAction(campaignId: string): Promise<Out> {
 export async function ungroupItemAction(campaignId: string, itemId: string): Promise<Out> {
   const g = await writerOrError()
   if (!g.ok || !isUuid(campaignId) || !isUuid(itemId)) return g.ok ? NO : { ok: false, error: g.error }
-  const r = await ungroupItem(itemId)
+  const r = await ungroupItem(itemId, g.user.id)
   if (r.ok) refresh(campaignId)
   return r
 }
@@ -254,5 +255,28 @@ export async function deleteThemeArtAction(themeId: string, artId: string): Prom
   if (!g.ok || !isUuid(themeId) || !isUuid(artId)) return g.ok ? NO : { ok: false, error: g.error }
   const r = await deleteThemeArt(themeId, artId)
   if (r.ok) { revalidatePath(`/promocoes/temas/${themeId}`); revalidatePath('/promocoes') }
+  return r
+}
+
+// ---------- histórico: registro de alterações e versões ----------
+export async function listHistoryAction(campaignId: string): Promise<{ audit: AuditRow[]; versions: VersionRow[] } | null> {
+  const user = await requireUser()
+  if (!isUuid(campaignId)) return null
+  void user
+  const [audit, versions] = await Promise.all([listAudit(campaignId), listVersions(campaignId)])
+  return { audit, versions }
+}
+
+export async function createVersionAction(campaignId: string, label: string): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(campaignId)) return g.ok ? NO : { ok: false, error: g.error }
+  return createManualVersion(campaignId, String(label ?? ''), g.user.id)
+}
+
+export async function restoreVersionAction(campaignId: string, versionId: string): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(campaignId) || !isUuid(versionId)) return g.ok ? NO : { ok: false, error: g.error }
+  const r = await restoreVersion(campaignId, versionId, g.user.id)
+  if (r.ok) { refresh(campaignId); await audit('versao_restaurada', { userId: g.user.id, target: campaignId, meta: { versionId } }) }
   return r
 }

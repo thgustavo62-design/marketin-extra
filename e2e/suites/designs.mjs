@@ -233,6 +233,34 @@ try {
   ck('excluir o logo tira da filial e da biblioteca', (await q(`select count(*)::int n from promo_library where brand_id = $1`, [bA.id]))[0].n === 0)
   await q(`delete from brand_kits where brand_id = $1`, [bA.id])
 
+  // ---------- histórico: versões e restauração ----------
+  await a.goto(`${BASE}/criacao/${id}`); await idle(a); await ready(a)
+  const nVer = async (kind) => (await q(`select count(*)::int n from promo_versions where campaign_id = $1${kind ? ` and kind = '${kind}'` : ''}`, [id]))[0].n
+  const nEl = async () => ((await q(`select layers from promo_campaigns where id = $1`, [id]))[0].layers?.story ?? []).length
+  ck('as edições já geraram uma versão automática (no máximo uma a cada 20 minutos)', (await nVer('auto')) === 1)
+  await a.getByRole('button', { name: 'Histórico', exact: true }).click()
+  ck('o histórico de um design mostra só as versões da arte', (await a.getByRole('tab', { name: /Versões da arte/ }).count()) === 1 && (await a.getByRole('tab', { name: /Alterações nos encartes/ }).count()) === 0)
+  const el0 = await nEl()
+  await a.fill('#ver-label', 'Antes do círculo'); await a.getByRole('button', { name: 'Salvar versão agora' }).click(); await wait(2200)
+  const manual = (await q(`select id, label, kind from promo_versions where campaign_id = $1 and kind = 'manual'`, [id]))[0]
+  ck('"Salvar versão agora" guarda um retrato com o nome dado', manual?.label === 'Antes do círculo' && (await a.locator('li[data-kind="manual"]').count()) === 1)
+  await a.locator('.canva-addbar button[aria-label="Inserir círculo"]').click(); await wait(2500)
+  ck('(preparo) o design ganhou um elemento depois da versão', (await nEl()) === el0 + 1)
+  const antesReload = await nVer()
+  await a.locator(`li[data-version="${manual.id}"] button`).click()
+  await a.waitForLoadState('load'); await idle(a); await ready(a); await wait(1500)
+  ck('restaurar volta os elementos para o retrato escolhido', (await nEl()) === el0 && (await a.locator('.canva-lbox').count()) >= 0)
+  ck('antes de restaurar, o estado atual é guardado (dá para desfazer a restauração)', (await nVer('antes-de-restaurar')) === 1 && (await nVer()) === antesReload + 1)
+  ck('restaurar tira a aprovação (volta a "em edição")', (await q(`select status from promo_campaigns where id = $1`, [id]))[0].status === 'rascunho')
+  const apr0 = await nVer('aprovacao')
+  await a.getByRole('button', { name: 'Aprovar design' }).click(); await wait(2000)
+  ck('aprovar também guarda uma versão ("Aprovação")', (await nVer('aprovacao')) === apr0 + 1 && apr0 >= 1)
+  const { p: vh } = await mk(); await login(vh, 'e2e_vw')
+  await vh.goto(`${BASE}/criacao/${id}`); await idle(vh); await ready(vh)
+  await vh.getByRole('button', { name: 'Histórico', exact: true }).click(); await wait(800)
+  ck('leitor vê o histórico, mas não salva nem restaura', (await vh.locator('li[data-version]').count()) >= 3 && (await vh.getByRole('button', { name: 'Salvar versão agora' }).count()) === 0 && (await vh.getByRole('button', { name: /Restaurar/ }).count()) === 0)
+  await vh.close()
+
   // ---------- excluir ----------
   await a.goto(BASE + '/criacao'); await idle(a)
   const antes = await a.locator('.design-card').count()
