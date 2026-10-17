@@ -11,7 +11,7 @@ export default async function EditorPromocao({ params }: { params: Promise<{ id:
   const { id } = await params
   if (!isUuid(id)) notFound()
   const [data, themes] = await Promise.all([getCampaign(id), listThemes()])
-  if (!data) notFound()
+  if (!data || data.campaign.kind === 'template') notFound()
   return (
     <>
       <header className="page-head" style={{ marginBottom: 8 }}>

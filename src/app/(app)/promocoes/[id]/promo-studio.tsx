@@ -8,6 +8,7 @@ import { PDFDocument } from 'pdf-lib'
 import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Download, ExternalLink, GripVertical, ImagePlus, Image as ImageIcon, Images, Layers, Palette, Shapes, Settings2, Trash2, Type } from 'lucide-react'
 import { PROMO_FORMATS, PROMO_FORMAT_KEYS, BLANK_THEME, TAG_PRESETS, applyOverrides, paginateSections, type BackgroundChoice, type ItemStyle, type PromoFormat, type PromoOverrides, type Rect, type ThemeConfig } from '@/lib/domain/promo'
 import { deletePageLayers, duplicatePageLayers, expandSelection, layersForPage, pagesNeeded } from '@/lib/domain/promo-layers'
+import { TEMPLATE_CATEGORIES } from '@/lib/domain/promo-templates'
 import { checkPromotion, pageCountsFor, summarizeCheck, type CheckIssue } from '@/lib/domain/promo-check'
 import type { Campaign, PromoItem, SizeEdit, ThemeAsset } from '@/lib/promo/store'
 import { canvasToBlob, drawPage, loadFonts, loadImage, loadPromoFonts, pageGeometry, type RenderAssets, type RenderBackground, type RenderItem } from '@/lib/promo/render'
@@ -18,7 +19,7 @@ import { LibraryPicker } from './library-picker'
 import { AddBar, LayerBoxes, addImageLayer, LayerInspector, LayersCanvas, LayersPanel, MultiInspector, duplicateSelection, useLayerKeys, useLayers } from './layers-ui'
 import { QuickEdit } from './quick-edit'
 import { RulersAndGuides, useGuides } from './guides-ui'
-import { addItemAction, approveCampaignAction, deleteAssetAction, deleteCampaignAction, useLibraryImageAction, moveItemAction, patchItemAction, removeItemAction, reorderItemsAction, saveOverridesAction, setItemProductAction, ungroupItemAction, updateCampaignAction, updateItemAction } from '../actions'
+import { createTemplateAction, addItemAction, approveCampaignAction, deleteAssetAction, deleteCampaignAction, useLibraryImageAction, moveItemAction, patchItemAction, removeItemAction, reorderItemsAction, saveOverridesAction, setItemProductAction, ungroupItemAction, updateCampaignAction, updateItemAction } from '../actions'
 
 type ThemeLite = { id: string; name: string }
 type Props = {
@@ -66,6 +67,8 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
   const [quickId, setQuickId] = useState<string | null>(null)
   const [checkOpen, setCheckOpen] = useState(false)
   const [cropId, setCropId] = useState<string | null>(null)
+  const [tplName, setTplName] = useState('')
+  const [tplCat, setTplCat] = useState('promocao')
   const [zoom, setZoom] = useState(1)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, start] = useTransition()
@@ -201,6 +204,29 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
     })()
     return () => { cancel = true }
   }, [renderTo, format, pages.length, theme, items.length, layersApi.committed, isDesign])
+
+  // miniatura da primeira peça para as listas (enviada alguns segundos depois da última mudança; só se a imagem mudou)
+  const lastThumb = useRef<string>('')
+  useEffect(() => {
+    if (!canEdit || !theme || (!items.length && !isDesign)) return
+    const fmt: PromoFormat = isDesign ? (campaign.design_format ?? 'story') : 'story'
+    const t = setTimeout(async () => {
+      try {
+        const big = document.createElement('canvas')
+        await renderTo(big, fmt, 0, true)
+        const small = document.createElement('canvas')
+        small.width = 360; small.height = Math.round((360 * big.height) / big.width)
+        small.getContext('2d')!.drawImage(big, 0, 0, small.width, small.height)
+        const sig = small.toDataURL('image/webp', 0.6)
+        if (sig === lastThumb.current) return
+        const blob: Blob | null = await new Promise((res) => small.toBlob(res, 'image/webp', 0.72))
+        if (!blob) return
+        const r = await fetch(`/api/promocoes/miniatura/${campaign.id}`, { method: 'POST', body: blob })
+        if (r.ok) lastThumb.current = sig
+      } catch { /* miniatura é só um enfeite: falhar não atrapalha */ }
+    }, 4000)
+    return () => clearTimeout(t)
+  }, [renderTo, canEdit, theme, items.length, isDesign, campaign.id, campaign.design_format, layersApi.committed])
 
   const act = (fn: () => Promise<{ ok: boolean; error?: string }>, okText?: string) =>
     start(async () => {
@@ -518,6 +544,15 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
               <div className="form-actions">
                 <button type="button" className="primary" style={{ width: 'auto' }} disabled={busy} onClick={() => act(() => updateCampaignAction(campaign.id, { name: conf.name, title: '', validity: '', themeId: '' }), 'Salvo.')}>Salvar</button>
                 <button type="button" className="danger" disabled={busy} onClick={() => { if (confirm('Excluir este design e todas as peças?')) start(async () => { await deleteCampaignAction(campaign.id); router.push('/criacao') }) }}>Excluir design</button>
+              </div>
+              <h4 style={{ margin: '14px 0 4px' }}>Salvar como modelo</h4>
+              <p className="muted">Guarda uma cópia deste design para reutilizar em Criação › Modelos (as próximas edições deste design não mudam o modelo).</p>
+              <label htmlFor="tpl-save-name">Nome do modelo</label>
+              <input id="tpl-save-name" type="text" value={tplName} maxLength={120} placeholder={conf.name} onChange={(e) => setTplName(e.target.value)} />
+              <label htmlFor="tpl-save-cat">Categoria</label>
+              <select id="tpl-save-cat" value={tplCat} onChange={(e) => setTplCat(e.target.value)}>{TEMPLATE_CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select>
+              <div className="form-actions">
+                <button type="button" className="secondary" disabled={busy} onClick={() => { layersApi.flush(); act(() => createTemplateAction(campaign.id, tplName || conf.name, tplCat), 'Modelo salvo: veja em Criação › Modelos.') }}>Salvar como modelo</button>
               </div>
             </section>
           )}

@@ -5,7 +5,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { deleteCampaignAction, duplicateDesignAction } from '../promocoes/actions'
 
-type D = { id: string; name: string; status: string; pages: number; format: string; formatLabel: string; hint: string; updated: string; by: string | null }
+type D = { thumbAt: string | null; id: string; name: string; status: string; pages: number; format: string; formatLabel: string; hint: string; updated: string; by: string | null }
 
 export function DesignCard({ design: d, canEdit }: { design: D; canEdit: boolean }) {
   const router = useRouter()
@@ -13,6 +13,12 @@ export function DesignCard({ design: d, canEdit }: { design: D; canEdit: boolean
   const [err, setErr] = useState('')
   return (
     <article className="card design-card" data-id={d.id}>
+      <Link href={`/criacao/${d.id}`} className="thumb-link" aria-label={`Abrir ${d.name}`}>
+        {d.thumbAt
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img className="design-thumb" src={`/api/promocoes/miniatura/${d.id}?v=${encodeURIComponent(d.thumbAt)}`} alt="" loading="lazy" />
+          : <span className="design-thumb empty">sem miniatura ainda</span>}
+      </Link>
       <h3><Link href={`/criacao/${d.id}`}>{d.name}</Link></h3>
       <p className="muted">
         <span className="badge">{d.formatLabel.split(' ')[0]}</span>

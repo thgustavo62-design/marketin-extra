@@ -5,7 +5,7 @@ import { audit, writerOrError } from '@/lib/auth'
 import { deleteLibraryItem, importLibraryToCampaign, updateLibraryItem } from '@/lib/promo/library'
 import { isUuid } from '@/lib/form'
 import { PROMO_FORMAT_KEYS, parsePrice, type ItemStyle, type PromoFormat, type PromoOverrides } from '@/lib/domain/promo'
-import { addItem, approveCampaign, createDesign, createTheme, duplicateDesign, deleteCampaign, deleteTheme, deleteThemeAsset, moveItem, patchItem, removeItem, reorderItems, deleteAsset, saveLayers, saveOverrides, saveThemeConfig, setItemProduct, THEME_ROLES, ungroupItem, updateCampaign, type SizeEdit, type ThemeRole } from '@/lib/promo/store'
+import { addItem, approveCampaign, createDesign, createDesignFromTemplate, createTemplate, createTheme, deleteTemplate, duplicateDesign, deleteCampaign, deleteTheme, deleteThemeAsset, moveItem, patchItem, removeItem, reorderItems, deleteAsset, saveLayers, saveOverrides, saveThemeConfig, setItemProduct, THEME_ROLES, ungroupItem, updateCampaign, type SizeEdit, type ThemeRole } from '@/lib/promo/store'
 
 type Out = { ok: boolean; error?: string; id?: string }
 const refresh = (id: string) => { revalidatePath(`/promocoes/${id}`); revalidatePath(`/criacao/${id}`); revalidatePath(`/editor/${id}`) }
@@ -205,4 +205,29 @@ export async function duplicateDesignAction(id: string): Promise<Out> {
   const r = await duplicateDesign(id, g.user.id)
   if (r.ok) revalidatePath('/criacao')
   return r.ok ? { ok: true, id: r.id } : { ok: false, error: r.error }
+}
+
+// ---------- modelos ----------
+export async function createTemplateAction(designId: string, name: string, category: string): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(designId)) return g.ok ? NO : { ok: false, error: g.error }
+  const r = await createTemplate({ designId, name, category, userId: g.user.id })
+  if (r.ok) { revalidatePath('/criacao/modelos'); await audit('modelo_criado', { userId: g.user.id, target: r.id }) }
+  return r.ok ? { ok: true, id: r.id } : { ok: false, error: r.error }
+}
+
+export async function createDesignFromTemplateAction(templateId: string, name: string, texts: Record<string, string>): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(templateId)) return g.ok ? NO : { ok: false, error: g.error }
+  const r = await createDesignFromTemplate({ templateId, name, texts, userId: g.user.id })
+  if (r.ok) revalidatePath('/criacao')
+  return r.ok ? { ok: true, id: r.id } : { ok: false, error: r.error }
+}
+
+export async function deleteTemplateAction(id: string): Promise<Out> {
+  const g = await writerOrError()
+  if (!g.ok || !isUuid(id)) return g.ok ? NO : { ok: false, error: g.error }
+  const r = await deleteTemplate(id, g.user)
+  if (r.ok) { revalidatePath('/criacao/modelos'); await audit('modelo_excluido', { userId: g.user.id, target: id }) }
+  return r
 }

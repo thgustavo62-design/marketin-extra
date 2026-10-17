@@ -124,6 +124,64 @@ try {
   await v.goto(`${BASE}/criacao/${id}`); await idle(v); await ready(v)
   ck('leitor abre o design mas não vê as ferramentas de adicionar nem de peças', (await v.locator('.canva-addbar button[title="Adicionar título"]').count()) === 0 && (await v.getByRole('button', { name: '+ Nova peça' }).count()) === 0)
 
+  // ---------- miniaturas ----------
+  await a.goto(`${BASE}/criacao/${id}`); await idle(a); await ready(a)
+  await a.locator('.canva-addbar button[aria-label="Inserir círculo"]').click()
+  let thumb = null
+  for (let t = 0; t < 20 && !thumb; t++) { await wait(1000); thumb = (await q(`select thumb_at, length(thumb)::int as n from promo_campaigns where id = $1 and thumb is not null`, [id]))[0] }
+  ck('o editor gera e envia a miniatura da primeira peça (sem mexer no status)', !!thumb && thumb.n > 200 && thumb.n < 400 * 1024, JSON.stringify(thumb))
+  const tr = await ac.request.get(`${BASE}/api/promocoes/miniatura/${id}`)
+  const tm = await sharp(await tr.body()).metadata()
+  ck('a miniatura é servida como WEBP de até 360 px, só para quem está logado', tr.status() === 200 && /webp/.test(tr.headers()['content-type'] ?? '') && tm.width <= 360 && tm.width > 100 && (await fetch(`${BASE}/api/promocoes/miniatura/${id}`)).status === 401, `${tm.width}x${tm.height}`)
+  ck('arquivo que não é imagem é recusado como miniatura (422)', (await ac.request.post(`${BASE}/api/promocoes/miniatura/${id}`, { headers: { origin: BASE }, data: Buffer.from('nao e imagem de verdade, so texto aqui') })).status() === 422)
+  await a.goto(BASE + '/criacao'); await idle(a)
+  ck('a lista de designs mostra a miniatura no cartão', (await a.locator(`.design-card[data-id="${id}"] img.design-thumb`).count()) === 1)
+
+  // ---------- modelos ----------
+  await a.goto(`${BASE}/criacao/${id}`); await idle(a); await ready(a)
+  await a.getByRole('tab', { name: /Textos/ }).click()
+  await a.fill('#tpl-save-name', 'Modelo Limpeza'); await a.selectOption('#tpl-save-cat', 'limpeza')
+  await a.getByRole('button', { name: 'Salvar como modelo' }).click(); await wait(2500)
+  const tpl = (await q(`select id, kind, template_category, design_pages, layers from promo_campaigns where name = 'Modelo Limpeza'`))[0]
+  const orig2 = (await q(`select layers, design_pages from promo_campaigns where id = $1`, [id]))[0]
+  ck('"Salvar como modelo" congela uma cópia do design com nome e categoria', tpl?.kind === 'template' && tpl.template_category === 'limpeza' && tpl.design_pages === orig2.design_pages && tpl.layers.story.length === orig2.layers.story.length)
+  const tplAsset = (await q(`select id from promo_assets where campaign_id = $1`, [tpl.id]))[0]
+  ck('o modelo tem a própria cópia das imagens', !!tplAsset && tpl.layers.story.find((x) => x.type === 'image')?.asset === tplAsset.id)
+  await a.goto(BASE + '/criacao'); await idle(a)
+  ck('modelo não aparece na lista de designs nem na de promoções', (await a.locator(`.design-card[data-id="${tpl.id}"]`).count()) === 0 && !/Modelo Limpeza/.test(await a.textContent('main')))
+  await a.goto(`${BASE}/criacao/${tpl.id}`); await idle(a); await wait(500)
+  const sem1 = (await a.locator('.canva').count()) === 0
+  await a.goto(`${BASE}/editor/${tpl.id}`); await idle(a); await wait(500)
+  ck('o modelo não abre no editor (nem em designs nem no console): página não encontrada', sem1 && (await a.locator('.canva').count()) === 0)
+  await a.goto(BASE + '/criacao/modelos'); await idle(a)
+  ck('a página Modelos lista o modelo e filtra por categoria', (await a.locator(`.template-card[data-id="${tpl.id}"]`).count()) === 1 && (await a.getByRole('button', { name: /Limpeza \(1\)/ }).count()) === 1)
+  await a.getByRole('button', { name: /Bebê \(0\)/ }).click()
+  ck('filtrar por outra categoria esconde o modelo', (await a.locator('.template-card').count()) === 0)
+  await a.getByRole('button', { name: /Todos/ }).click()
+  await a.locator(`.template-card[data-id="${tpl.id}"]`).getByRole('button', { name: 'Usar este modelo' }).click()
+  await a.waitForSelector('#tpl-name', { timeout: 15000 })
+  const textoOrig = tpl.layers.story.find((x) => x.type === 'text').text
+  ck('usar o modelo mostra os textos para trocar', (await a.inputValue('#tpl-f-0')) === textoOrig)
+  await a.fill('#tpl-name', 'Story do Sábado'); await a.fill('#tpl-f-0', 'SUPER OFERTA DE SÁBADO')
+  await a.getByRole('button', { name: 'Criar design' }).click()
+  await a.waitForURL(/\/criacao\/[0-9a-f-]{36}$/, { timeout: 30000 }); await idle(a); await ready(a)
+  const id3 = a.url().split('/').pop()
+  const nd = (await q(`select kind, name, layers from promo_campaigns where id = $1`, [id3]))[0]
+  const novoAsset = (await q(`select id from promo_assets where campaign_id = $1`, [id3]))[0]
+  ck('o design novo nasce do modelo, com o texto trocado e o resto igual', nd.kind === 'design' && nd.name === 'Story do Sábado' && nd.layers.story.some((x) => x.text === 'SUPER OFERTA DE SÁBADO') && nd.layers.story.length === tpl.layers.story.length)
+  ck('o design novo tem as próprias imagens e o modelo ficou intacto', nd.layers.story.find((x) => x.type === 'image')?.asset === novoAsset?.id && (await q(`select layers from promo_campaigns where id = $1`, [tpl.id]))[0].layers.story.find((x) => x.type === 'text').text === textoOrig)
+  const { p: ed } = await mk(); await login(ed, 'e2e_ed')
+  await ed.goto(BASE + '/criacao/modelos'); await idle(ed)
+  ck('editor que não criou o modelo pode usar, mas não excluir', (await ed.getByRole('button', { name: 'Usar este modelo' }).count()) >= 1 && (await ed.getByRole('button', { name: 'Excluir' }).count()) === 0)
+  await ed.close()
+  await v.goto(BASE + '/criacao/modelos'); await idle(v)
+  ck('leitor vê os modelos, sem usar nem excluir', (await v.locator('.template-card').count()) >= 1 && (await v.getByRole('button', { name: 'Usar este modelo' }).count()) === 0)
+  await a.goto(BASE + '/criacao/modelos'); await idle(a)
+  await a.locator(`.template-card[data-id="${tpl.id}"]`).getByRole('button', { name: 'Excluir' }).click()
+  await a.waitForFunction(() => document.querySelectorAll('.template-card').length === 0, null, { timeout: 15000 })
+  ck('o administrador exclui o modelo; o design criado com ele continua', (await q(`select count(*)::int n from promo_campaigns where id = $1`, [tpl.id]))[0].n === 0 && (await q(`select count(*)::int n from promo_campaigns where id = $1`, [id3]))[0].n === 1)
+  await q(`delete from promo_campaigns where id = $1`, [id3])
+
   // ---------- excluir ----------
   await a.goto(BASE + '/criacao'); await idle(a)
   const antes = await a.locator('.design-card').count()

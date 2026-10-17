@@ -5,6 +5,7 @@ import { pool, withTx } from '../db.ts'
 import { displayName, applyOverrides, normalizeItemStyle, normalizeOverrides, normalizeTheme, PROMO_FORMAT_KEYS, type ItemStyle, type PromoFormat, type PromoOverrides, type PromoRow, type ThemeConfig } from '../domain/promo.ts'
 import { groupItems, groupSummary, type GroupInput, type Variants } from '../domain/promo-group.ts'
 import { normalizeLayers, type Layers } from '../domain/promo-layers.ts'
+import { applyTemplateTexts, isTemplateCategory, templateFields, type TemplateField } from '../domain/promo-templates.ts'
 import { checkPromotion, pageCountsFor, summarizeCheck } from '../domain/promo-check.ts'
 import { listLibrary, type LibraryItem } from './library.ts'
 import { sniffImage } from '../catalog/images.ts'
@@ -112,7 +113,7 @@ export async function getThemeAsset(themeId: string, role: string, format: strin
 
 // ---------- campanhas ----------
 export type CampaignStatus = 'rascunho' | 'aprovada'
-export type CampaignLite = { id: string; name: string; theme_name: string | null; items: number; status: CampaignStatus; created_at: string }
+export type CampaignLite = { id: string; name: string; theme_name: string | null; items: number; status: CampaignStatus; created_at: string; thumb_at: string | null }
 export type ImportReport = {
   /** linhas válidas da planilha */ lines: number
   /** encartes depois do agrupamento */ encartes: number
@@ -129,7 +130,7 @@ export type Campaign = {
   overrides: PromoOverrides
   /** elementos livres (texto, imagem, formas) por formato */ layers: Layers
   /** revisão dos elementos livres (controle de edição simultânea) */ layers_rev: number
-  /** 'promocao' (planilha) ou 'design' (arte livre) */ kind: 'promocao' | 'design'; design_format: PromoFormat | null; design_pages: number
+  /** 'promocao' (planilha) ou 'design' (arte livre) */ kind: 'promocao' | 'design' | 'template'; design_format: PromoFormat | null; design_pages: number
   /** imagens enviadas para esta promoção (elementos e fundos) */ assets: CampaignAsset[]
   /** imagens da biblioteca (ícones, logos, selos…) para colocar na peça */ library: LibraryItem[]
   /** temas que têm imagem de fundo, para escolher o fundo de outro tema */ themeBackgrounds: { id: string; name: string; formats: PromoFormat[] }[]
@@ -143,14 +144,14 @@ export type PromoItem = {
 
 export async function listCampaigns(): Promise<CampaignLite[]> {
   return (await pool.query(
-    `select c.id, c.name, t.name as theme_name, (select count(*)::int from promo_items i where i.campaign_id = c.id) as items, c.status, c.created_at::text as created_at
+    `select c.id, c.name, t.name as theme_name, (select count(*)::int from promo_items i where i.campaign_id = c.id) as items, c.status, c.created_at::text as created_at, c.thumb_at::text as thumb_at
        from promo_campaigns c left join promo_themes t on t.id = c.theme_id where c.kind = 'promocao' order by c.created_at desc limit 100`)).rows
 }
 
-export type DesignLite = { id: string; name: string; format: PromoFormat; pages: number; status: CampaignStatus; updated_at: string; created_by_name: string | null }
+export type DesignLite = { id: string; name: string; format: PromoFormat; pages: number; status: CampaignStatus; updated_at: string; created_by_name: string | null; thumb_at: string | null }
 export async function listDesigns(): Promise<DesignLite[]> {
   return (await pool.query(
-    `select c.id, c.name, c.design_format as format, c.design_pages as pages, c.status, c.updated_at::text as updated_at, u.display_name as created_by_name
+    `select c.id, c.name, c.design_format as format, c.design_pages as pages, c.status, c.updated_at::text as updated_at, u.display_name as created_by_name, c.thumb_at::text as thumb_at
        from promo_campaigns c left join users u on u.id = c.created_by where c.kind = 'design' order by c.updated_at desc limit 200`)).rows
 }
 
@@ -165,20 +166,67 @@ export async function createDesign(o: { name: string; format: string; userId: st
   return { ok: true, id: r.rows[0].id }
 }
 
-/** Duplica um design com as peças, os elementos e as imagens (cada imagem ganha uma cópia própria no novo design). */
+type Db = { query: (sql: string, args?: unknown[]) => Promise<{ rows: any[]; rowCount: number | null }> } // eslint-disable-line @typescript-eslint/no-explicit-any
+
+/** Copia um design/modelo inteiro (peças, elementos, fundo, miniatura e imagens: cada imagem ganha cópia própria) como outro design ou modelo. */
+async function cloneDesign(db: Db, sourceId: string, o: { sourceKinds: string[]; kind: 'design' | 'template'; name: string; userId: string; category?: string | null; texts?: Record<string, unknown> }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const c = (await db.query(`select design_format, design_pages, overrides, layers, thumb, thumb_at from promo_campaigns where id = $1 and kind = any($2::text[])`, [sourceId, o.sourceKinds])).rows[0]
+  if (!c) return { ok: false, error: 'Design ou modelo não encontrado.' }
+  const n = (await db.query(
+    `insert into promo_campaigns (name, kind, design_format, design_pages, created_by, template_category, thumb, thumb_at) values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
+    [o.name.slice(0, 120), o.kind, c.design_format, c.design_pages, o.userId, o.kind === 'template' ? o.category : null, c.thumb, c.thumb_at])).rows[0].id as string
+  await db.query(`insert into promo_assets (campaign_id, data, mime, width, height, sha256, created_by) select $2, data, mime, width, height, sha256, $3 from promo_assets where campaign_id = $1`, [sourceId, n, o.userId])
+  const map = (await db.query(`select o.id as old, w.id as new from promo_assets o join promo_assets w on w.sha256 = o.sha256 and w.campaign_id = $2 where o.campaign_id = $1`, [sourceId, n])).rows as { old: string; new: string }[]
+  let layers = JSON.stringify(c.layers ?? null), overrides = JSON.stringify(c.overrides ?? null)
+  for (const m of map) { layers = layers.split(m.old).join(m.new); overrides = overrides.split(m.old).join(m.new) }
+  const finalLayers = o.texts ? applyTemplateTexts(normalizeLayers(JSON.parse(layers)), o.texts) : JSON.parse(layers)
+  await db.query(`update promo_campaigns set layers = $2::jsonb, overrides = $3::jsonb where id = $1`, [n, JSON.stringify(finalLayers), overrides])
+  return { ok: true, id: n }
+}
+
+/** Duplica um design com as peças, os elementos e as imagens. */
 export async function duplicateDesign(id: string, userId: string): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   return withTx(async (db) => {
-    const c = (await db.query(`select name, design_format, design_pages, overrides, layers from promo_campaigns where id = $1 and kind = 'design'`, [id])).rows[0]
+    const c = (await db.query(`select name from promo_campaigns where id = $1 and kind = 'design'`, [id])).rows[0]
     if (!c) return { ok: false as const, error: 'Design não encontrado.' }
-    const name = `${c.name} (cópia)`.slice(0, 120)
-    const n = (await db.query(`insert into promo_campaigns (name, kind, design_format, design_pages, created_by) values ($1, 'design', $2, $3, $4) returning id`, [name, c.design_format, c.design_pages, userId])).rows[0].id as string
-    await db.query(`insert into promo_assets (campaign_id, data, mime, width, height, sha256, created_by) select $2, data, mime, width, height, sha256, $3 from promo_assets where campaign_id = $1`, [id, n, userId])
-    const map = (await db.query(`select o.id as old, w.id as new from promo_assets o join promo_assets w on w.sha256 = o.sha256 and w.campaign_id = $2 where o.campaign_id = $1`, [id, n])).rows as { old: string; new: string }[]
-    let layers = JSON.stringify(c.layers ?? null), overrides = JSON.stringify(c.overrides ?? null)
-    for (const m of map) { layers = layers.split(m.old).join(m.new); overrides = overrides.split(m.old).join(m.new) }
-    await db.query(`update promo_campaigns set layers = $2::jsonb, overrides = $3::jsonb where id = $1`, [n, layers, overrides])
-    return { ok: true as const, id: n }
+    return cloneDesign(db as Db, id, { sourceKinds: ['design'], kind: 'design', name: `${c.name} (cópia)`, userId })
   })
+}
+
+export type TemplateLite = { id: string; name: string; format: PromoFormat; pages: number; category: string; thumb_at: string | null; created_by: string | null; created_by_name: string | null; created_at: string }
+export async function listTemplates(): Promise<TemplateLite[]> {
+  return (await pool.query(
+    `select c.id, c.name, c.design_format as format, c.design_pages as pages, c.template_category as category, c.thumb_at::text as thumb_at, c.created_by, u.display_name as created_by_name, c.created_at::text as created_at
+       from promo_campaigns c left join users u on u.id = c.created_by where c.kind = 'template' order by c.created_at desc limit 300`)).rows
+}
+
+/** Os textos que podem ser trocados ao criar um design a partir do modelo. */
+export async function getTemplateFields(id: string): Promise<{ name: string; fields: TemplateField[] } | null> {
+  const r = (await pool.query(`select name, layers from promo_campaigns where id = $1 and kind = 'template'`, [id])).rows[0]
+  return r ? { name: r.name, fields: templateFields(normalizeLayers(r.layers)) } : null
+}
+
+/** Congela uma cópia do design como modelo (nome e categoria). */
+export async function createTemplate(o: { designId: string; name: string; category: string; userId: string }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const name = o.name.trim().replace(/\s+/g, ' ')
+  if (name.length < 2 || name.length > 120) return { ok: false, error: 'O nome do modelo deve ter de 2 a 120 caracteres.' }
+  if (!isTemplateCategory(o.category)) return { ok: false, error: 'Escolha a categoria do modelo.' }
+  return withTx((db) => cloneDesign(db as Db, o.designId, { sourceKinds: ['design'], kind: 'template', name, userId: o.userId, category: o.category }))
+}
+
+/** Cria um design novo a partir do modelo, já com os textos que a pessoa preencheu. */
+export async function createDesignFromTemplate(o: { templateId: string; name: string; texts: Record<string, unknown>; userId: string }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const name = o.name.trim().replace(/\s+/g, ' ')
+  if (name.length < 2 || name.length > 120) return { ok: false, error: 'O nome do design deve ter de 2 a 120 caracteres.' }
+  return withTx((db) => cloneDesign(db as Db, o.templateId, { sourceKinds: ['template'], kind: 'design', name, userId: o.userId, texts: o.texts }))
+}
+
+export async function deleteTemplate(id: string, user: { id: string; role: string }): Promise<{ ok: boolean; error?: string }> {
+  const t = (await pool.query(`select created_by from promo_campaigns where id = $1 and kind = 'template'`, [id])).rows[0]
+  if (!t) return { ok: false, error: 'Modelo não encontrado.' }
+  if (user.role !== 'admin' && t.created_by !== user.id) return { ok: false, error: 'Só o administrador ou quem criou o modelo pode excluir.' }
+  await pool.query(`delete from promo_campaigns where id = $1`, [id])
+  return { ok: true }
 }
 
 /** Qualquer mudança nos encartes tira a aprovação: quem mexeu precisa aprovar de novo. */
@@ -496,4 +544,21 @@ export async function ungroupItem(itemId: string): Promise<{ ok: boolean; error?
     await touch(db, it.campaign_id)
     return { ok: true }
   })
+}
+
+// ---------- miniatura da arte (gerada no editor) ----------
+/** Guarda a miniatura da primeira peça (WEBP de até 360 px de largura). Não mexe na aprovação: é só uma prévia. */
+export async function saveThumb(id: string, buf: Buffer): Promise<{ ok: boolean; error?: string }> {
+  if (buf.length === 0 || buf.length > 400 * 1024) return { ok: false, error: 'Miniatura inválida.' }
+  if (!sniffImage(buf)) return { ok: false, error: 'A miniatura precisa ser uma imagem.' }
+  try {
+    const out = await sharp(buf, { failOn: 'error', limitInputPixels: 20_000_000 }).resize({ width: 360, withoutEnlargement: true }).webp({ quality: 72 }).toBuffer()
+    const r = await pool.query(`update promo_campaigns set thumb = $2, thumb_at = now() where id = $1`, [id, out])
+    return r.rowCount ? { ok: true } : { ok: false, error: 'Não encontrado.' }
+  } catch { return { ok: false, error: 'Não consegui ler a miniatura.' } }
+}
+
+export async function getThumb(id: string): Promise<{ data: Buffer; at: string } | null> {
+  const r = (await pool.query(`select thumb, thumb_at::text as at from promo_campaigns where id = $1 and thumb is not null`, [id])).rows[0]
+  return r ? { data: r.thumb, at: r.at } : null
 }

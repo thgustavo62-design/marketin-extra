@@ -897,3 +897,8 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .canva-lbox.crop::after { content: 'Arraste a foto'; position: absolute; left: 50%; top: 6px; transform: translateX(-50%); font-size: 11px; font-weight: 700; background: #f07a2e; color: #fff; padding: 2px 8px; border-radius: 999px; pointer-events: none; white-space: nowrap; }
 
 .canva-pagetools { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+
+/* miniaturas das listas */
+.design-thumb { display: block; width: 100%; aspect-ratio: 4 / 5; object-fit: cover; object-position: top; border-radius: 10px; background: #eef2f6; margin-bottom: 8px; }
+.design-thumb.empty { display: grid; place-items: center; font-size: 12px; color: var(--muted); }
+.thumb-link { display: block; }

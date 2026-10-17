@@ -12,6 +12,7 @@ export default async function Promocao({ params }: { params: Promise<{ id: strin
   if (!isUuid(id)) notFound()
   const [data, themes] = await Promise.all([getCampaign(id), listThemes()])
   if (!data) notFound()
+  if (data.campaign.kind === 'template') notFound()
   if (data.campaign.kind === 'design') redirect(`/criacao/${id}`)
   const { campaign, theme, items } = data
   return (

@@ -46,7 +46,8 @@ Legenda: ✅ feito e testado · 🟡 parcial · ❌ não existe
 | Importação de planilha, agrupamento, relatório de importação | ✅ | Sem mapeamento manual de colunas |
 | Preço tipado, cartão de produto, grade automática | 🟡 | Preço é dado tipado (reais/centavos) e a grade vem do tema; não há motor de composição por quantidade nem "criar nova página quando não couber" além da paginação por grade |
 | Variante de layout por formato (posições próprias) | 🟡 | Grade por formato no tema; elementos livres por formato; não há herança de conteúdo entre variantes |
-| Templates editáveis, kits de marca, componentes | ❌ | Hoje: temas (artes de cabeçalho/rodapé/fundo + cores/grade) |
+| Templates editáveis | 🟡 (fase 4) | Modelos de design (cópia congelada com nome/categoria, textos trocáveis ao usar). Faltam: slots de produto, elementos protegidos, variantes por formato, versões do modelo |
+| Kits de marca, componentes | ❌ | Hoje: temas (artes de cabeçalho/rodapé/fundo + cores/grade) |
 | Documentos livres (sem promoção), "Meus designs", várias peças | 🟡 (fase 3) | Feito como `kind = 'design'` em `promo_campaigns` (mesmo editor, camadas, imagens, aprovação). Falta: miniatura real na lista, formato misto numa arte, versões e modelos |
 | Versões/snapshots e restauração | ❌ | Só o estado atual; aprovação guarda quem/quando |
 | Auditoria de alteração de preço/aprovação | 🟡 | Aprovação registrada; preço editado não gera log próprio |
@@ -86,6 +87,10 @@ Cobertas pelo e2e `e2e/suites/promocoes.mjs` (196 verificações) e `apresentaco
 - Menu **Criação › Meus designs** (`/criacao`): criar (Story, Feed ou A4), abrir, duplicar (com cópia das imagens) e excluir. Editor igual ao das promoções, sem produtos/tema; fundo branco inicial.
 - **Peças:** + Nova peça, Duplicar peça, Excluir peça (o número fica salvo junto com os elementos). Exporta PNG, ZIP (com manifesto) e PDF no A4.
 - Promoções e designs são listas separadas; `/promocoes/<design>` redireciona para `/criacao/<design>`; o console em outra aba lista os dois.
+
+### 5.4 Fase 4 (miniaturas e modelos)
+- **Miniaturas:** o editor gera a primeira peça (360 px, WEBP) alguns segundos depois da última mudança e envia para `/api/promocoes/miniatura/[id]` (não altera a aprovação). Aparecem nas listas de designs, promoções e modelos.
+- **Modelos** (`kind = 'template'`, migração 030): "Salvar como modelo" (aba Textos do design) congela uma cópia com nome e categoria; Criação › Modelos lista com filtro; "Usar este modelo" mostra os textos para trocar e cria um design novo (com cópia própria das imagens). Modelo não abre no editor; só o administrador ou quem criou exclui.
 
 ## 6. Riscos conhecidos
 - Desfazer não cobre edições de encarte (nome, preço, foto, ordem): são gravadas imediatamente.
