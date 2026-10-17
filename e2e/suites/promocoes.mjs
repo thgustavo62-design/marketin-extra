@@ -336,6 +336,7 @@ try {
   // arrastar com o mouse
   L = await lay()
   const x0 = L.layers.story[0].x, y0 = L.layers.story[0].y
+  await a.evaluate(() => { const r = document.querySelector('.canva-paper').getBoundingClientRect(); window.scrollBy(0, r.top - 120) }); await wait(300) // peça toda na tela antes de usar o mouse
   const bb = await box.first().boundingBox()
   await a.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await a.mouse.down()
   await a.mouse.move(bb.x + bb.width / 2 + 40, bb.y + bb.height / 2 + 30, { steps: 6 }); await a.mouse.move(bb.x + bb.width / 2 + 90, bb.y + bb.height / 2 + 60, { steps: 6 }); await a.mouse.up(); await wait(2000)
@@ -343,6 +344,7 @@ try {
   ck('arrastar o elemento com o mouse muda a posição e salva', L.layers.story[0].x > x0 + 60 && L.layers.story[0].y > y0 + 40, `${x0},${y0} -> ${L.layers.story[0].x},${L.layers.story[0].y}`)
   // redimensionar pelo canto
   const w0 = L.layers.story[0].w
+  await a.evaluate(() => { const r = document.querySelector('.canva-paper').getBoundingClientRect(); window.scrollBy(0, r.top - 120) }); await wait(300) // peça toda na tela antes de usar o mouse
   const bb2 = await a.locator('.canva-lbox.sel').boundingBox()
   await a.mouse.move(bb2.x + bb2.width, bb2.y + bb2.height); await a.mouse.down(); await a.mouse.move(bb2.x + bb2.width + 50, bb2.y + bb2.height + 30, { steps: 6 }); await a.mouse.up(); await wait(2000)
   ck('puxar a alça do canto aumenta o elemento', (await lay()).layers.story[0].w > w0 + 40)
@@ -475,6 +477,8 @@ try {
   ck('agrupar: os 3 ficam com o mesmo grupo', !!L2[0].group && L2.every((x) => x.group === L2[0].group))
   await a.keyboard.press('Escape'); await wait(300)
   ck('Esc limpa a seleção', (await a.locator('.canva-lbox.sel').count()) === 0)
+  await a.evaluate(() => { const r = document.querySelector('.canva-paper').getBoundingClientRect(); window.scrollBy(0, r.top - 120) }) // peça toda na tela antes de usar o mouse
+  await wait(300)
   const bbG = await a.locator('.canva-lbox').first().boundingBox()
   await a.mouse.click(bbG.x + bbG.width / 2, bbG.y + bbG.height / 2); await wait(400)
   ck('clicar em um elemento do grupo seleciona o grupo inteiro', (await a.locator('.canva-lbox.sel').count()) === 3)
@@ -837,6 +841,7 @@ try {
   await a.locator('button[aria-label="mascote: Canto de cima à esquerda"]').click()
   await a.selectOption('select[aria-label="Em quais peças logo rede aparece"]', 'last')
   await a.getByRole('button', { name: 'Salvar posições' }).click(); await wait(2200)
+  if (process.env.E2E_OUT) await a.locator('section[aria-label="Artes fixas do tema"]').screenshot({ path: `${process.env.E2E_OUT}/tema-artes-fixas.png` })
   const fx = (await q(`select fixed from promo_themes where id = $1`, [themeId]))[0].fixed.story
   const mas = fx.find((x) => x.asset === artes[0].id), lg = fx.find((x) => x.asset === artes[1].id)
   ck('as posições ficam salvas no tema (mascote no canto de cima à esquerda; logo só na última peça)', fx.length === 2 && mas.place.anchor === 'tl' && mas.x === 11 && mas.y === 11 && mas.w === 367 && lg.show === 'last' && lg.place.anchor === 'tc', JSON.stringify([mas, lg]).slice(0, 220))
@@ -855,6 +860,7 @@ try {
   // na promoção: entram sozinhas, por peça, e dá para desligar
   await a.goto(`${BASE}/promocoes/${camp.id}`); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
   await a.getByRole('tab', { name: /Artes do tema/ }).click()
+  if (process.env.E2E_OUT) { await wait(800); await a.screenshot({ path: `${process.env.E2E_OUT}/promocao-editor-v2.png` }) }
   ck('a aba "Artes do tema" da promoção lista as 2 artes do tema, ligadas', (await a.locator('.theme-arts-list li').count()) === 2 && (await a.locator('input[aria-label="Usar mascote nesta promoção"]').isChecked()))
   const base = '.canva-paper canvas:first-of-type'
   const mp = await pxl(base, 100, 100)

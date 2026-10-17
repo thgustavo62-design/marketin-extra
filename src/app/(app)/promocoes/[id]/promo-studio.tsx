@@ -455,14 +455,14 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
         <span>
           {campaign.status === 'aprovada'
             ? `Aprovada por ${campaign.approved_by_name ?? '—'}${campaign.approved_at ? ` em ${new Date(campaign.approved_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : ''}. Qualquer alteração volta para edição.`
-            : 'Confira os encartes, ajuste o que precisar e aprove. Qualquer alteração depois de aprovar exige aprovar de novo.'}
+            : isDesign ? 'Monte a arte, confira com "Verificar arte" e aprove. Qualquer alteração depois de aprovar exige aprovar de novo.' : 'Confira os encartes, ajuste o que precisar e aprove. Qualquer alteração depois de aprovar exige aprovar de novo.'}
         </span>
         {canEdit && campaign.status !== 'aprovada' && <button type="button" className="primary" style={{ width: 'auto', margin: 0, minHeight: 34 }} disabled={busy || (!items.length && !isDesign) || checkSum.bloqueio > 0} title={checkSum.bloqueio ? 'Corrija os pontos marcados em "Verificar arte" antes de aprovar' : undefined} onClick={() => act(() => approveCampaignAction(campaign.id), 'Encartes aprovados.')}>{isDesign ? 'Aprovar design' : 'Aprovar encartes'}</button>}
         {mode === 'embedded' && <a className="btn" href={editorHref} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 'auto' }}><ExternalLink size={14} /> Abrir console em outra aba</a>}
         {mode === 'tab' && <Link className="btn" href={isDesign ? `/criacao/${campaign.id}` : `/promocoes/${campaign.id}`} style={{ marginLeft: 'auto' }}>Abrir dentro do sistema</Link>}
       </div>
       {campaign.import_report && (
-        <details className="canva-report" open={campaign.status !== 'aprovada' && (campaign.import_report.withoutPhoto.length > 0 || campaign.import_report.rowErrors.length > 0)}>
+        <details className="canva-report" open={false}>
           <summary>
             Resumo da importação: {campaign.import_report.lines} produto(s) da planilha → <strong>{campaign.import_report.encartes} encarte(s)</strong>
             {campaign.import_report.grouped ? ` · ${campaign.import_report.gruposTamanho} grupo(s) de tamanho · ${campaign.import_report.gruposOpcoes} grupo(s) de fragrâncias/sabores` : ' · sem agrupar variações'}

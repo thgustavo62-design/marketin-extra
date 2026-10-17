@@ -41,6 +41,7 @@ try {
   await a.fill('#ly-text', 'FIM DE SEMANA DA LIMPEZA'); await wait(300)
   await a.locator('.canva-addbar button[aria-label="Inserir retângulo"]').click(); await wait(2500)
   let L = await lay()
+  if (process.env.E2E_OUT) { await a.getByRole('tab', { name: /Camadas/ }).click(); await wait(600); await a.screenshot({ path: `${process.env.E2E_OUT}/editor-design.png`, fullPage: false }) }
   ck('texto e forma do design ficam salvos', L.layers.story.length === 2 && L.layers.story[0].text === 'FIM DE SEMANA DA LIMPEZA' && L.layers.story.every((x) => x.page === 0))
   await a.reload(); await idle(a); await ready(a)
   ck('ao reabrir, os elementos continuam lá', (await a.locator('.canva-lbox').count()) === 2)

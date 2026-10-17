@@ -105,6 +105,9 @@ Cobertas pelo e2e `e2e/suites/promocoes.mjs` (196 verificações) e `apresentaco
 - Regras puras: `placeArt` e `layersForPage(list, page, total)` (`promo-layers.ts`).
 - Atenção: mudar uma arte fixa muda as promoções já aprovadas que usam o tema (como já acontece com as artes de cabeçalho/rodapé).
 
+### 5.7 Visual do editor (v2)
+- Só estilo (`globals.css`, bloco "Editor v2"): trilho de ferramentas vertical escuro com ícones, painel ao lado, palco neutro pontilhado com a peça em sombra de papel, barra de adicionar flutuante, inspetor em cartões recolhíveis, alças redondas, faixa de aprovação em uma linha, editor em largura total (`:has(.canva)`), peça ajustada à altura da tela, resumo da importação recolhido por padrão. Nomes, papéis e comportamento dos controles não mudaram.
+
 ## 6. Riscos conhecidos
 - Desfazer não cobre edições de encarte (nome, preço, foto, ordem): são gravadas imediatamente.
 - Colar usa memória do navegador (não funciona entre abas).
