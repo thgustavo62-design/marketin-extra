@@ -123,3 +123,17 @@ test('colar: mesma peça desloca; outro formato muda de proporção; grupos vira
   assert.equal(a4.added[0].w, Math.round(540 * (1414 / 1080))); assert.equal(a4.added[0].size, Math.round(80 * (1414 / 1080)))
   assert.ok(a4.added[0].id !== 't0000')
 })
+
+test('elementos: fontes do catálogo, formas novas, degradê, tracejado e sombra são validados', () => {
+  const r = normalizeLayers({ story: [
+    { id: 'f00001', type: 'text', font: 'bebas' },
+    { id: 'f00002', type: 'text', font: 'Comic Sans' },
+    { id: 'f00003', type: 'shape', shape: 'star', fill: '#ff0000', fill2: '#0000ff', gradAngle: 999, dash: 'dashed', shadow: true },
+    { id: 'f00004', type: 'shape', shape: 'balloon', fill2: 'azul', dash: 'tracejado', shadow: 'sim' },
+    { id: 'f00005', type: 'shape', shape: 'cubo' },
+  ] }).story
+  assert.deepEqual(r.slice(0, 2).map((l) => l.font), ['bebas', 'text'])
+  assert.deepEqual([r[2].shape, r[2].fill2, r[2].gradAngle, r[2].dash, r[2].shadow], ['star', '#0000ff', 360, 'dashed', true])
+  assert.deepEqual([r[3].shape, r[3].fill2, r[3].dash, r[3].shadow], ['balloon', undefined, undefined, undefined])
+  assert.equal(r[4].shape, 'rect')
+})

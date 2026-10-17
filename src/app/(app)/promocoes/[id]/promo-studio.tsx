@@ -10,13 +10,14 @@ import { PROMO_FORMATS, PROMO_FORMAT_KEYS, TAG_PRESETS, applyOverrides, paginate
 import { expandSelection, layersForPage } from '@/lib/domain/promo-layers'
 import { checkPromotion, pageCountsFor, summarizeCheck, type CheckIssue } from '@/lib/domain/promo-check'
 import type { Campaign, PromoItem, SizeEdit, ThemeAsset } from '@/lib/promo/store'
-import { canvasToBlob, drawPage, loadImage, loadPromoFonts, pageGeometry, type RenderAssets, type RenderBackground, type RenderItem } from '@/lib/promo/render'
+import { canvasToBlob, drawPage, loadFonts, loadImage, loadPromoFonts, pageGeometry, type RenderAssets, type RenderBackground, type RenderItem } from '@/lib/promo/render'
 import { ProductPicker } from '../../produtos/product-picker'
 import { BackgroundGallery } from './background-gallery'
 import { CheckPanel } from './check-panel'
 import { LibraryPicker } from './library-picker'
 import { AddBar, LayerBoxes, addImageLayer, LayerInspector, LayersCanvas, LayersPanel, MultiInspector, duplicateSelection, useLayerKeys, useLayers } from './layers-ui'
 import { QuickEdit } from './quick-edit'
+import { RulersAndGuides, useGuides } from './guides-ui'
 import { addItemAction, approveCampaignAction, deleteAssetAction, deleteCampaignAction, useLibraryImageAction, moveItemAction, patchItemAction, removeItemAction, reorderItemsAction, saveOverridesAction, setItemProductAction, ungroupItemAction, updateCampaignAction, updateItemAction } from '../actions'
 
 type ThemeLite = { id: string; name: string }
@@ -97,6 +98,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
     return imgCache.current.get(url) ?? null
   }, [])
 
+  const guidesApi = useGuides(campaign.id)
   const layersApi = useLayers(campaign.id, campaign.layers, canEdit, () => router.refresh(), campaign.layers_rev)
   const curLayers = layersApi.layers[format]
   const selL = selIds.length === 1 ? (curLayers.find((l) => l.id === selIds[0]) ?? null) : null
@@ -152,6 +154,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
     const pg = ps[Math.min(idx, Math.max(0, ps.length - 1))] ?? []
     const render = await Promise.all(pg.map(toRender))
     const ls = withLayers ? layersForPage(layersApi.latest.current[fmt], Math.min(idx, Math.max(0, ps.length - 1))) : []
+    await loadFonts(ls.map((l) => l.font))
     const layerImages: Record<string, HTMLImageElement | null> = {}
     for (const l of ls) if (l.asset && !(l.asset in layerImages)) layerImages[l.asset] = await getImg(`/api/promocoes/asset/${l.asset}`)
     drawPage(canvas, { format: fmt, theme: cfg, title: campaign.title, validity: campaign.validity, extraText: campaign.overrides.extraText ?? null, assets, items: render, layers: ls, layerImages, bg })
@@ -517,8 +520,9 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
 
         {/* peça */}
         <main ref={stageRef} className={`canva-stage${panning ? ' panning' : ''}`} aria-label="Prévia" onPointerDownCapture={panDown} onPointerMove={panMove} onPointerUp={() => { panRef.current = null }}>
-          <AddBar api={layersApi} campaignId={campaign.id} format={format} page={pageIdx} canEdit={canEdit} onAdded={(id) => { selectLayer(id); setTab('camadas') }} onMsg={setMsg} zoom={zoom} setZoom={setZoom} />
+          <AddBar api={layersApi} campaignId={campaign.id} format={format} page={pageIdx} canEdit={canEdit} onAdded={(id) => { selectLayer(id); setTab('camadas') }} onMsg={setMsg} zoom={zoom} setZoom={setZoom} rulers={guidesApi.shown} onToggleRulers={guidesApi.toggle} guideCount={guidesApi.guides[format].length} onClearGuides={() => guidesApi.clear(format)} />
           {!theme ? <p className="empty">Escolha um tema na aba &quot;Tema&quot; para ver a peça.</p> : (
+            <div className={`canva-frame${guidesApi.shown ? ' rulers' : ''}`}>
             <div ref={paperRef} className="canva-paper" style={{ aspectRatio: `${PROMO_FORMATS[format].w} / ${PROMO_FORMATS[format].h}`, ['--ar' as string]: PROMO_FORMATS[format].w / PROMO_FORMATS[format].h, ['--zoom' as string]: zoom }}>
               <canvas ref={canvasRef} aria-label={`Prévia ${PROMO_FORMATS[format].label}`} data-ready={rendering ? '0' : '1'} />
               <LayersCanvas format={format} list={pageLayers} hideId={editingLayer} getImg={getImg} />
@@ -545,7 +549,9 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
                   onClose={() => setQuickId(null)}
                   onSave={(v) => { setQuickId(null); act(async () => { const r = await updateItemAction(campaign.id, it.id, v.name, v.price, it.photo_image_id); if (!r.ok) return r; return v.note !== (it.note ?? '') ? patchItemAction(campaign.id, it.id, { note: v.note }) : r }) }} />
               })()}
-              <LayerBoxes format={format} list={pageLayers} selectedIds={selIds} onSelect={selectLayers} editingId={editingLayer} setEditingId={setEditingLayer} api={layersApi} paperRef={paperRef} canEdit={canEdit} />
+              {guidesApi.shown && <RulersAndGuides format={format} paperRef={paperRef} api={guidesApi} canEdit={canEdit} />}
+              <LayerBoxes userGuides={guidesApi.shown ? guidesApi.guides[format] : []} format={format} list={pageLayers} selectedIds={selIds} onSelect={selectLayers} editingId={editingLayer} setEditingId={setEditingLayer} api={layersApi} paperRef={paperRef} canEdit={canEdit} />
+            </div>
             </div>
           )}
           <div className="canva-pager">

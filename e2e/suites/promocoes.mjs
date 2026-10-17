@@ -669,13 +669,92 @@ try {
   await a.evaluate(() => { window.scrollTo(0, 0); document.activeElement?.blur?.() }) // foco fora do botão: Espaço vira "segurar para arrastar"
   const sb2 = await a.locator('.canva-stage').boundingBox()
   const py = Math.min(sb2.y + 200, 800), px = sb2.x + sb2.width / 2
-  const panAntes = await a.evaluate(() => { const s = document.querySelector('.canva-stage'); return { l: s.scrollLeft, t: s.scrollTop } })
+  const panAntes = await a.evaluate(() => { const s = document.querySelector('.canva-stage'); s.scrollLeft = 300; return { l: s.scrollLeft, t: s.scrollTop } })
   await a.mouse.move(px, py)
   await a.keyboard.down('Space'); await wait(150)
   await a.mouse.down(); await a.mouse.move(px + 80, py + 20, { steps: 6 }); await a.mouse.up()
   await a.keyboard.up('Space'); await wait(200)
   const panDepois = await a.evaluate(() => { const s = document.querySelector('.canva-stage'); return { l: s.scrollLeft, t: s.scrollTop } })
   ck('Espaço + arrastar move a área de trabalho (rolagem muda) sem mexer nos elementos', panAntes.l > 100 && panDepois.l < panAntes.l - 40, JSON.stringify([panAntes, panDepois]))
+
+  // ---------- fontes, formas novas, degradê, sombra, réguas e guias ----------
+  await q(`update promo_campaigns set layers = null where id = $1`, [camp.id])
+  await a.goto(`${BASE}/promocoes/${camp.id}`); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  const lyf = async () => (await q(`select layers from promo_campaigns where id = $1`, [camp.id]))[0].layers.story ?? []
+  await a.locator('.canva-addbar button[title="Adicionar título"]').click(); await wait(800)
+  await a.locator('#ly-font').click()
+  ck('o seletor de fontes lista as 12 fontes do catálogo, agrupadas', (await a.locator('.font-list [data-font]').count()) === 12 && (await a.locator('.font-cat').count()) >= 4)
+  await a.locator('.font-list [data-font="bebas"]').click(); await wait(2200)
+  ck('escolher a fonte salva no elemento e a fonte é carregada no navegador', (await lyf())[0].font === 'bebas' && await a.evaluate(() => document.fonts.check('20px PromoBebas')))
+  await a.locator('#ly-font').click(); await a.locator('.font-list [data-font="pacifico"]').click(); await wait(2200)
+  ck('outra fonte (manuscrita) também troca', (await lyf())[0].font === 'pacifico')
+  const h1 = (await lyf())[0].h
+  await a.locator('#ly-font').click(); await a.locator('.font-list [data-font="anton"]').click(); await wait(2200)
+  ck('a caixa do texto se ajusta à fonte nova (altura recalculada)', (await lyf())[0].font === 'anton' && (await lyf())[0].h > 0 && h1 > 0)
+
+  // formas novas: a estrela primeiro, sozinha, para conferir degradê, traço e sombra
+  await a.locator('button[aria-label="Mais formas"]').click()
+  await a.locator('button[aria-label="Inserir estrela"]').click(); await wait(600)
+  await a.locator('input[aria-label="Cor da forma"]').fill('#ff0000')
+  await a.locator('input[aria-label="Degradê"]').check(); await wait(300)
+  await a.locator('input[aria-label="Segunda cor do degradê"]').fill('#0000ff')
+  await a.fill('#ly-grad', '0'); await wait(1800)
+  let st = (await lyf()).find((x) => x.shape === 'star')
+  ck('degradê salvo na forma (duas cores e ângulo)', st.fill === '#ff0000' && st.fill2 === '#0000ff' && st.gradAngle === 0, JSON.stringify([st.fill, st.fill2, st.gradAngle]))
+  await a.locator('input[aria-label="Borda"]').check(); await wait(200)
+  await a.selectOption('#ly-dash', 'dashed'); await a.locator('input[aria-label="Sombra"]').check(); await wait(1800)
+  st = (await lyf()).find((x) => x.shape === 'star')
+  ck('traço tracejado e sombra suave salvos', st.dash === 'dashed' && st.shadow === true && !!st.border)
+  const cores = await a.evaluate((s) => { const c = document.querySelector('.canva-layers'); const ctx = c.getContext('2d'); const y = s.y + s.h / 2, px = (x) => Array.from(ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data); return { esq: px(s.x + s.w * 0.4), dir: px(s.x + s.w * 0.6) } }, st)
+  ck('a peça mostra o degradê (esquerda vermelha, direita azul)', cores.esq[3] > 200 && cores.dir[3] > 200 && cores.esq[0] > cores.dir[0] && cores.dir[2] > cores.esq[2], JSON.stringify(cores))
+  for (const nome of ['seta', 'balão', 'etiqueta', 'triângulo', 'hexágono']) {
+    await a.locator('button[aria-label="Mais formas"]').click()
+    await a.locator(`button[aria-label="Inserir ${nome}"]`).click(); await wait(300)
+  }
+  await wait(1800)
+  const formas = (await lyf()).filter((x) => x.type === 'shape').map((x) => x.shape)
+  ck('as 6 formas novas entram na peça (estrela, seta, balão, etiqueta, triângulo, hexágono)', ['star', 'arrow', 'balloon', 'tag', 'triangle', 'hexagon'].every((s) => formas.includes(s)), formas.join())
+
+  // réguas e guias
+  await q(`update promo_campaigns set layers = null where id = $1`, [camp.id])
+  await a.reload(); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  await a.getByRole('button', { name: 'Feed (Instagram/Facebook)' }).click(); await wait(1000)
+  await a.locator('.canva-addbar button[aria-label="Inserir retângulo"]').click(); await wait(500)
+  await a.locator('button[aria-label="Réguas e guias"]').click(); await wait(600)
+  ck('"Réguas e guias" mostra as duas réguas em volta da peça', (await a.locator('.canva-ruler.h').count()) === 1 && (await a.locator('.canva-ruler.v').count()) === 1)
+  // só rolagem vertical da página (scrollIntoView também rolaria a área de trabalho para o lado e esconderia a régua)
+  await a.evaluate(() => { document.querySelector('.canva-stage').scrollLeft = 0; window.scrollBy(0, document.querySelector('.canva-paper').getBoundingClientRect().top - 150) }); await wait(300)
+  const pb = await a.locator('.canva-paper').boundingBox()
+  const rv = await a.locator('.canva-ruler.v').boundingBox(), rh = await a.locator('.canva-ruler.h').boundingBox()
+  const escala = pb.width / 1080
+  // guia vertical: arrasta da régua da esquerda até ~x = 200
+  await a.mouse.move(rv.x + rv.width / 2, pb.y + 100); await a.mouse.down(); await a.mouse.move(pb.x + 200 * escala, pb.y + 100, { steps: 8 }); await a.mouse.up(); await wait(300)
+  const gv = Number(await a.locator('.canva-gline.x').first().getAttribute('data-value'))
+  ck('arrastar da régua da esquerda cria uma guia vertical na posição solta', (await a.locator('.canva-gline.x').count()) === 1 && Math.abs(gv - 200) <= 6, String(gv))
+  // guia horizontal
+  await a.mouse.move(pb.x + 300, rh.y + rh.height / 2); await a.mouse.down(); await a.mouse.move(pb.x + 300, pb.y + 300 * escala, { steps: 8 }); await a.mouse.up(); await wait(300)
+  ck('arrastar da régua de cima cria uma guia horizontal', (await a.locator('.canva-gline.y').count()) === 1)
+  // ímã nas guias: o retângulo, solto a 4 px da guia vertical, gruda nela
+  const lyff = async () => (await q(`select layers from promo_campaigns where id = $1`, [camp.id]))[0].layers.feed ?? [] // a peça está no formato Feed
+  const ret = (await lyff())[0]
+  const alvoX = gv + 4
+  const cx = pb.x + (ret.x + ret.w / 2) * escala, cy = pb.y + (ret.y + ret.h / 2) * escala
+  await a.mouse.move(cx, cy); await a.mouse.down(); await a.mouse.move(cx + (alvoX - ret.x) * escala / 2, cy, { steps: 6 }); await a.mouse.move(cx + (alvoX - ret.x) * escala, cy, { steps: 6 }); await a.mouse.up(); await wait(2200)
+  ck('o elemento solto perto da guia gruda nela (borda exatamente na guia)', (await lyff())[0].x === gv, `${(await lyff())[0].x} guia ${gv}`)
+  await a.reload(); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  await a.getByRole('button', { name: 'Feed (Instagram/Facebook)' }).click(); await wait(800)
+  ck('as guias e as réguas continuam depois de recarregar (lembradas neste navegador)', (await a.locator('.canva-ruler.h').count()) === 1 && (await a.locator('.canva-gline').count()) === 2)
+  ck('as guias valem por formato (no Feed aparecem as do Feed)', (await a.locator('.canva-gline.x').count()) === 1 && (await a.locator('.canva-gline.y').count()) === 1)
+  await a.getByRole('button', { name: 'Story / Status' }).click(); await wait(800)
+  ck('no Story não há guias do Feed', (await a.locator('.canva-gline').count()) === 0)
+  await a.getByRole('button', { name: 'Feed (Instagram/Facebook)' }).click(); await wait(800)
+  await a.locator('.canva-gline.x').first().dblclick(); await wait(300)
+  ck('duplo clique na guia apaga', (await a.locator('.canva-gline.x').count()) === 0)
+  await a.getByRole('button', { name: 'Limpar guias' }).click(); await wait(300)
+  ck('"Limpar guias" apaga as do formato', (await a.locator('.canva-gline').count()) === 0)
+  await a.locator('button[aria-label="Réguas e guias"]').click(); await wait(300)
+  ck('desligar esconde as réguas', (await a.locator('.canva-ruler').count()) === 0)
+  await q(`update promo_campaigns set layers = null where id = $1`, [camp.id])
 
   // política desligada: um encarte por produto
   await a.goto(BASE + '/promocoes'); await idle(a)

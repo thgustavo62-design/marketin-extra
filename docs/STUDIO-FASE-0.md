@@ -30,14 +30,15 @@ Legenda: ✅ feito e testado · 🟡 parcial · ❌ não existe
 |---|---|---|
 | Shell com barra superior, painéis, canvas, inspetor, faixa de peças | 🟡 | Existe, sem trilho de ícones vertical nem modo foco/recolher painéis |
 | Seleção, múltipla, retângulo de seleção, grupos, camadas | ✅ | |
-| Mover/redimensionar/girar, snap, setas | ✅ | Sem réguas e sem guias arrastáveis |
+| Mover/redimensionar/girar, snap, setas | ✅ | |
+| Réguas e guias arrastáveis (ímã nas guias) | ✅ (fase 1) | Guias só na tela, lembradas neste navegador por promoção e formato |
 | Zoom, pan | ✅ (nesta entrega) | 25–400%, Ctrl+rolagem, Espaço+arrastar |
 | Copiar/colar/recortar entre peças e formatos | ✅ (nesta entrega) | Memória da sessão do navegador |
 | Desfazer/refazer por gesto, autosave | ✅ | Só dos elementos livres; edições de encarte são salvas na hora, sem histórico de desfazer |
 | Conflito de edição simultânea | ✅ (nesta entrega) | Revisão otimista nos elementos livres |
-| Texto: edição no lugar, fonte, tamanho, cor, contorno, fundo, alinhamento | ✅ | 4 famílias fixas; sem estilo por trecho, sem arco, sem seletor de fontes |
+| Texto: edição no lugar, fonte, tamanho, cor, contorno, fundo, alinhamento | ✅ | Seletor com 12 fontes livres (OFL) e prévia; sem estilo por trecho nem texto em arco |
 | Imagem: enviar, substituir, redimensionar, opacidade | 🟡 | Sem recorte/moldura, máscaras, filtros |
-| Formas: retângulo, arredondado, círculo, explosão, linha | ✅ | Sem triângulo/seta/polígono/gradiente |
+| Formas: retângulo, arredondado, círculo, explosão, linha, triângulo, seta, estrela, hexágono, balão, etiqueta | ✅ | Degradê, traço tracejado/pontilhado e sombra suave em qualquer elemento |
 | Fundo: cor, 12 prontos, imagem, fundo de tema | ✅ | Sem gradiente editável |
 | Biblioteca de imagens, uploads | ✅ | SVG rasterizado no servidor |
 | Verificar arte antes de aprovar | ✅ (nesta entrega) | Bloqueio só para preço/nome inválidos; resto é revisão humana |
@@ -68,13 +69,18 @@ Cobertas pelo e2e `e2e/suites/promocoes.mjs` (196 verificações) e `apresentaco
 4. **Zoom 25–400%** por Ctrl+rolagem e **pan com Espaço + arrastar**.
 5. **Manifesto no ZIP** (`manifesto.json`: promoção, status/aprovação, arquivos com tamanho e SHA-256, encartes).
 
+### 5.1 Fase 1 (réguas, guias, fontes, formas)
+- **Réguas e guias:** botão "Réguas e guias"; arraste da régua para criar, arraste a guia para mover, dois cliques ou soltar fora da peça apaga; elementos grudam nas guias. Não saem na exportação.
+- **Fontes:** catálogo em `domain/promo-fonts.ts` (12 fontes; arquivos em `public/fonts/studio`, licenças em `LICENSES.md`), carregadas sob demanda antes de desenhar e de exportar.
+- **Formas e estilo:** 6 formas novas, degradê com ângulo, traço tracejado/pontilhado e sombra suave.
+
 ## 6. Riscos conhecidos
 - Desfazer não cobre edições de encarte (nome, preço, foto, ordem): são gravadas imediatamente.
 - Colar usa memória do navegador (não funciona entre abas).
 - O e2e é sensível a lentidão da máquina (esperas fixas); falhas isoladas em rodadas com a máquina ocupada foram de tempo, não de lógica.
 
 ## 7. Ordem proposta para as próximas fases (precisa de decisão do responsável)
-1. **Guias e réguas, seletor de fontes e mais formas/gradientes** (aprimora o editor atual sem mudar dados).
+1. ~~Guias e réguas, seletor de fontes e mais formas/gradientes~~ **(feito na fase 1; ver seção 5.1)**.
 2. **Recorte/moldura de imagem** e ajustes simples (brilho/contraste), com golden images.
 3. **Modelo de documento genérico** (`studio_documents` + versões) com adaptador do legado e flag: habilita "Meus designs" e arte livre.
 4. **Templates e kit de marca por filial** (sobre o item 3).

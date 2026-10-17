@@ -1,9 +1,13 @@
 // Elementos livres sobre a peça (como no Canva): texto, imagem e formas, com posição, tamanho, giro e camadas. Tudo puro e testado.
 import { PROMO_FORMATS, PROMO_FORMAT_KEYS, type PromoFormat } from './promo.ts'
+import { isPromoFont } from './promo-fonts.ts'
 
 export type LayerType = 'text' | 'image' | 'shape'
-export type LayerFont = 'display' | 'text' | 'serif' | 'mono'
-export type LayerShape = 'rect' | 'round' | 'circle' | 'burst' | 'line'
+/** id da fonte (ver promo-fonts.ts) */
+export type LayerFont = string
+export type LayerShape = 'rect' | 'round' | 'circle' | 'burst' | 'line' | 'triangle' | 'arrow' | 'star' | 'hexagon' | 'balloon' | 'tag'
+export const LAYER_SHAPES: LayerShape[] = ['rect', 'round', 'circle', 'burst', 'line', 'triangle', 'arrow', 'star', 'hexagon', 'balloon', 'tag']
+export type Dash = 'solid' | 'dashed' | 'dotted'
 export type Layer = {
   id: string
   type: LayerType
@@ -13,6 +17,7 @@ export type Layer = {
   opacity: number
   hidden: boolean; locked: boolean
   /** elementos com o mesmo grupo se movem e se redimensionam juntos */ group?: string
+  /** sombra suave atrás do elemento */ shadow?: boolean
   /** null = aparece em todas as peças do formato; n = só na peça n (começando em 0) */
   page: number | null
   // texto
@@ -22,6 +27,7 @@ export type Layer = {
   asset?: string
   // forma
   shape?: LayerShape; fill?: string; border?: string | null; borderW?: number; radius?: number
+  /** degradê: segunda cor (null = cor sólida) e ângulo em graus (0 = esquerda→direita, 90 = cima→baixo) */ fill2?: string | null; gradAngle?: number; dash?: Dash
 }
 export type Layers = Record<PromoFormat, Layer[]>
 
@@ -54,11 +60,12 @@ export function normalizeLayers(raw: unknown): Layers {
         rot: num(l.rot, -360, 360, 0), opacity: num(l.opacity, 0, 1, 1),
         hidden: l.hidden === true, locked: l.locked === true,
         ...(typeof l.group === 'string' && /^[a-z0-9-]{4,40}$/i.test(l.group) ? { group: l.group } : {}),
+        ...(l.shadow === true ? { shadow: true } : {}),
         page: l.page === null || l.page === undefined ? null : Number.isInteger(l.page) && (l.page as number) >= 0 && (l.page as number) < 200 ? (l.page as number) : null,
       }
       if (type === 'text') {
         layer.text = typeof l.text === 'string' ? l.text.slice(0, 300) : 'Texto'
-        layer.font = l.font === 'display' || l.font === 'text' || l.font === 'serif' || l.font === 'mono' ? l.font : 'text'
+        layer.font = isPromoFont(l.font) ? l.font : 'text'
         layer.size = num(l.size, 8, 600, 64)
         layer.color = color(l.color, '#111111')
         layer.bold = l.bold !== false; layer.italic = l.italic === true
@@ -69,9 +76,12 @@ export function normalizeLayers(raw: unknown): Layers {
         if (typeof l.asset !== 'string' || !UUID.test(l.asset)) continue
         layer.asset = l.asset
       } else {
-        layer.shape = l.shape === 'rect' || l.shape === 'round' || l.shape === 'circle' || l.shape === 'burst' || l.shape === 'line' ? l.shape : 'rect'
+        layer.shape = LAYER_SHAPES.includes(l.shape as LayerShape) ? (l.shape as LayerShape) : 'rect'
         layer.fill = color(l.fill, '#ffd21f'); layer.border = colorOrNull(l.border, null); layer.borderW = num(l.borderW, 0, 80, 0)
         layer.radius = num(l.radius, 0, 400, 24)
+        const fill2 = colorOrNull(l.fill2, null)
+        if (fill2) { layer.fill2 = fill2; layer.gradAngle = num(l.gradAngle, 0, 360, 90) }
+        if (l.dash === 'dashed' || l.dash === 'dotted') layer.dash = l.dash
       }
       out[f].push(layer)
     }

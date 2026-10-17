@@ -862,3 +862,32 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .canva-conflict { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
 .canva-stage.panning, .canva-stage.panning * { cursor: grab !important; }
+
+/* seletor de fontes e mais formas */
+.font-picker { position: relative; }
+.font-current { width: 100%; min-height: 36px; text-align: left; padding: 0 10px; border: 1px solid var(--line); background: #fff; border-radius: 10px; font-size: 15px; cursor: pointer; }
+.font-list { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); max-height: 340px; overflow: auto; list-style: none; margin: 0; padding: 6px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(15, 24, 48, 0.28); }
+.font-list ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.font-cat { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--blue); padding: 6px 6px 2px; }
+.font-list button { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 6px 8px; border: 0; background: transparent; border-radius: 8px; font-size: 16px; cursor: pointer; text-align: left; }
+.font-list button:hover, .font-list button.on { background: #eaf1ff; }
+.font-sample { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.more-shapes { position: relative; display: inline-flex; }
+.more-shapes-pop { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; display: grid; gap: 2px; min-width: 150px; padding: 6px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(15, 24, 48, 0.28); }
+.more-shapes-pop button { justify-content: flex-start; width: 100%; }
+
+/* réguas e guias */
+.canva-frame { width: max-content; flex: none; justify-self: safe center; } /* "safe": se a peça for mais larga que a área, começa na borda (dá para rolar) em vez de cortar o lado esquerdo */
+.canva-frame.rulers { padding: 24px 0 0 24px; }
+.canva-frame .canva-paper { margin-inline: 0; }
+.canva-ruler { position: absolute; background: #eef1f5; z-index: 8; overflow: hidden; user-select: none; }
+.canva-ruler.h { left: 0; right: 0; } .canva-ruler.v { top: 0; bottom: 0; }
+.canva-ruler canvas { display: block; }
+.canva-guides { position: absolute; inset: 0; pointer-events: none; z-index: 7; }
+.canva-gline { position: absolute; background: #00b8d9; pointer-events: auto; }
+.canva-gline.x { top: 0; bottom: 0; width: 1px; cursor: ew-resize; } .canva-gline.y { left: 0; right: 0; height: 1px; cursor: ns-resize; }
+.canva-gline::before { content: ''; position: absolute; }
+.canva-gline.x::before { top: 0; bottom: 0; left: -4px; right: -4px; } .canva-gline.y::before { left: 0; right: 0; top: -4px; bottom: -4px; }
+.canva-gline.live { pointer-events: none; }
+.canva-gline b { position: absolute; top: 4px; left: 6px; font-size: 10px; background: #00b8d9; color: #fff; padding: 0 5px; border-radius: 4px; }
+.canva-addbar button.on { background: #dfe8fb; border-color: #c8d9fb; }

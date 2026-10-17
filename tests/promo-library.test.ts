@@ -25,3 +25,13 @@ test('biblioteca: reconhece SVG e só aceita o autossuficiente', () => {
   assert.ok(!svgIsSafe(u8('<svg><script>alert(1)</script></svg>')))
   assert.ok(!svgIsSafe(u8('<svg><rect style="fill:url(http://evil.example/a)"/></svg>')))
 })
+
+test('fontes do editor: catálogo coerente (ids únicos, arquivos, pilha CSS com reserva)', async () => {
+  const { PROMO_FONTS, isPromoFont, fontStack, fontDef } = await import('../src/lib/domain/promo-fonts.ts')
+  assert.equal(new Set(PROMO_FONTS.map((f) => f.id)).size, PROMO_FONTS.length)
+  assert.ok(PROMO_FONTS.length >= 12 && PROMO_FONTS.every((f) => (f.family ? f.faces.length > 0 && f.faces.every((x) => x.url.startsWith('/fonts/')) : f.faces.length === 0)))
+  assert.ok(isPromoFont('oswald') && !isPromoFont('x') && !isPromoFont(3))
+  assert.match(fontStack('bebas'), /^"PromoBebas", /)
+  assert.match(fontStack('serif'), /^Georgia/)
+  assert.equal(fontDef('inexistente').id, 'text')
+})

@@ -2,10 +2,12 @@
 
 // Elementos livres sobre a peça (como no Canva): texto, imagem e formas que se arrastam, redimensionam, giram, ficam em camadas e podem ser desfeitos.
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
-import { AlignCenter, AlignHorizontalJustifyCenter, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, AlignVerticalJustifyCenter, ArrowDown, ArrowUp, Bold, ChevronsDown, ChevronsUp, Circle, Copy, Eye, EyeOff, Group, ImagePlus, Italic, Lock, Minus, Redo2, Square, SquareRoundCorner, Star, Trash2, Type, Undo2, Ungroup, Unlock, ZoomIn, ZoomOut } from 'lucide-react'
+import { AlignCenter, AlignHorizontalJustifyCenter, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, AlignVerticalJustifyCenter, ArrowDown, ArrowUp, Bold, ChevronsDown, ChevronsUp, Circle, Copy, ArrowRight, Eye, EyeOff, Ruler, Group, Hexagon, ImagePlus, MessageSquare, Shapes, Tag, Triangle, Italic, Lock, Minus, Redo2, Square, SquareRoundCorner, Star, Trash2, Type, Undo2, Ungroup, Unlock, ZoomIn, ZoomOut } from 'lucide-react'
 import { PROMO_FORMATS, PROMO_FORMAT_KEYS, type PromoFormat } from '@/lib/domain/promo'
-import { MAX_LAYERS, alignSelection, alignToPage, boundsOf, distribute, duplicateLayers, expandSelection, groupLayers, makeLayer, moveSelection, newLayerId, pasteLayers, reorderLayer, scaleSelection, snap, ungroupLayers, type Align, type Bounds, type Layer, type LayerFont, type LayerShape, type Layers } from '@/lib/domain/promo-layers'
-import { drawLayers, loadPromoFonts, measureLayerHeight } from '@/lib/promo/render'
+import { FONT_CATEGORY_LABEL, PROMO_FONTS, fontStack } from '@/lib/domain/promo-fonts'
+import { LAYER_SHAPES, MAX_LAYERS, alignSelection, alignToPage, boundsOf, distribute, duplicateLayers, expandSelection, groupLayers, makeLayer, moveSelection, newLayerId, pasteLayers, reorderLayer, scaleSelection, snap, ungroupLayers, type Align, type Bounds, type Dash, type Layer, type LayerShape, type Layers } from '@/lib/domain/promo-layers'
+import { guideRects, type Guide } from '@/lib/domain/promo-guides'
+import { drawLayers, loadFonts, loadPromoFonts, measureLayerHeight } from '@/lib/promo/render'
 import { saveLayersAction } from '../actions'
 
 // ---------- estado: histórico (desfazer/refazer) e salvamento automático ----------
@@ -206,7 +208,7 @@ export function LayersCanvas({ format, list: all, hideId, getImg }: { format: Pr
     const c = ref.current
     if (!c) return
     let off = false
-    void loadPromoFonts().then(() => {
+    void loadPromoFonts().then(() => loadFonts(list.map((l) => l.font))).then(() => {
       if (off) return
       c.width = W; c.height = H
       const ctx = c.getContext('2d')!
@@ -225,15 +227,14 @@ type Gesture = {
   kind: 'move' | 'resize' | 'rotate' | 'scale'; id: string; ids: string[]; handle?: Handle; start: Layer; base: Layer[]; bounds: Bounds | null
   px: number; py: number; sx: number; sy: number; left: number; top: number
 }
-const FONT_CSS: Record<LayerFont, string> = { display: '"PromoDisplay", "Baloo 2", system-ui, sans-serif', text: '"PromoText", Montserrat, system-ui, sans-serif', serif: 'Georgia, "Times New Roman", serif', mono: '"Courier New", ui-monospace, monospace' }
 
 /**
  * Caixas clicáveis dos elementos. Um clique seleciona (Shift/Ctrl soma; um membro de grupo seleciona o grupo todo), arrastar move a seleção,
  * as alças redimensionam (uma seleção de vários escala como bloco), a bolinha de cima gira. Segurando Shift e arrastando no vazio, desenha-se um retângulo de seleção.
  * Duplo clique em um texto edita direto na peça. Ímã nas bordas e no centro (Alt desliga).
  */
-export function LayerBoxes({ format, list, selectedIds, onSelect, editingId, setEditingId, api, paperRef, canEdit }: {
-  format: PromoFormat; list: Layer[]; selectedIds: string[]; onSelect: (ids: string[]) => void; editingId: string | null; setEditingId: (id: string | null) => void
+export function LayerBoxes({ format, list, selectedIds, onSelect, editingId, setEditingId, api, paperRef, canEdit, userGuides = [] }: {
+  userGuides?: Guide[]; format: PromoFormat; list: Layer[]; selectedIds: string[]; onSelect: (ids: string[]) => void; editingId: string | null; setEditingId: (id: string | null) => void
   api: LayersApi; paperRef: RefObject<HTMLDivElement | null>; canEdit: boolean
 }) {
   const { w: W, h: H } = PROMO_FORMATS[format]
@@ -285,7 +286,7 @@ export function LayerBoxes({ format, list, selectedIds, onSelect, editingId, set
       let mx = dx, my = dy
       if (e.altKey || !k.bounds) setGuides({ x: [], y: [] })
       else {
-        const m = snap({ x: k.bounds.x + dx, y: k.bounds.y + dy, w: k.bounds.w, h: k.bounds.h }, W, H, k.base.filter((o) => !k.ids.includes(o.id) && !o.hidden), 10)
+        const m = snap({ x: k.bounds.x + dx, y: k.bounds.y + dy, w: k.bounds.w, h: k.bounds.h }, W, H, [...k.base.filter((o) => !k.ids.includes(o.id) && !o.hidden), ...guideRects(userGuides, W, H)], 10)
         mx += m.dx; my += m.dy
         setGuides({ x: m.guidesX, y: m.guidesY })
       }
@@ -388,7 +389,7 @@ export function LayerBoxes({ format, list, selectedIds, onSelect, editingId, set
                 onKeyDown={(e) => { if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); setEditingId(null) } e.stopPropagation() }}
                 onPointerDown={(e) => e.stopPropagation()}
                 style={{
-                  fontFamily: FONT_CSS[l.font ?? 'text'], fontSize: (l.size ?? 64) * k, color: l.color ?? '#111', textAlign: l.align ?? 'center', fontWeight: l.bold === false ? 500 : 800, fontStyle: l.italic ? 'italic' : 'normal',
+                  fontFamily: fontStack(l.font), fontSize: (l.size ?? 64) * k, color: l.color ?? '#111', textAlign: l.align ?? 'center', fontWeight: l.bold === false ? 500 : 800, fontStyle: l.italic ? 'italic' : 'normal',
                   lineHeight: 1.15, background: l.bg ?? 'transparent', padding: l.bg ? (l.size ?? 64) * 0.3 * k : 0,
                   ...(l.stroke && l.strokeW ? { WebkitTextStroke: `${Math.max(1, l.strokeW * k * 0.5)}px ${l.stroke}`, paintOrder: 'stroke fill' } : {}),
                 }} />
@@ -413,8 +414,8 @@ export function LayerBoxes({ format, list, selectedIds, onSelect, editingId, set
 
 // ---------- barra de adicionar ----------
 type Msg = { kind: 'ok' | 'error'; text: string }
-export function AddBar({ api, campaignId, format, page, canEdit, onAdded, onMsg, zoom, setZoom }: {
-  api: LayersApi; campaignId: string; format: PromoFormat; page: number; canEdit: boolean; onAdded: (id: string) => void; onMsg: (m: Msg | null) => void; zoom: number; setZoom: (z: number) => void
+export function AddBar({ api, campaignId, format, page, canEdit, onAdded, onMsg, zoom, setZoom, rulers, onToggleRulers, guideCount, onClearGuides }: {
+  rulers: boolean; onToggleRulers: () => void; guideCount: number; onClearGuides: () => void; api: LayersApi; campaignId: string; format: PromoFormat; page: number; canEdit: boolean; onAdded: (id: string) => void; onMsg: (m: Msg | null) => void; zoom: number; setZoom: (z: number) => void
 }) {
   const { w: W, h: H } = PROMO_FORMATS[format]
   const fileRef = useRef<HTMLInputElement>(null)
@@ -430,9 +431,12 @@ export function AddBar({ api, campaignId, format, page, canEdit, onAdded, onMsg,
     put(fitLayer(makeLayer('text', format, { page, ...extra })))
   }
   const shape = (shape: LayerShape) => {
-    const w = shape === 'line' ? Math.round(W * 0.4) : Math.round(W * 0.3), h = shape === 'line' ? 12 : shape === 'circle' || shape === 'burst' ? w : Math.round(W * 0.2)
+    const square = shape === 'circle' || shape === 'burst' || shape === 'star' || shape === 'hexagon' || shape === 'triangle'
+    const w = shape === 'line' ? Math.round(W * 0.4) : shape === 'arrow' || shape === 'tag' || shape === 'balloon' ? Math.round(W * 0.4) : Math.round(W * 0.3)
+    const h = shape === 'line' ? 12 : square ? w : shape === 'arrow' ? Math.round(W * 0.2) : shape === 'tag' ? Math.round(W * 0.16) : shape === 'balloon' ? Math.round(W * 0.3) : Math.round(W * 0.2)
     put(makeLayer('shape', format, { page, shape, w, h, x: Math.round((W - w) / 2), y: Math.round((H - h) / 2), fill: shape === 'burst' ? '#e3171d' : '#ffd21f' }))
   }
+  const [moreShapes, setMoreShapes] = useState(false)
   const selo = () => {
     const s = Math.round(W * 0.34), x = Math.round((W - s) / 2), y = Math.round((H - s) / 2)
     const burst = makeLayer('shape', format, { page, shape: 'burst', w: s, h: s, x, y, fill: '#e3171d', border: '#ffffff', borderW: 8 })
@@ -468,6 +472,16 @@ export function AddBar({ api, campaignId, format, page, canEdit, onAdded, onMsg,
           <button type="button" disabled={full} onClick={() => shape('circle')} aria-label="Inserir círculo" title="Círculo"><Circle size={14} /></button>
           <button type="button" disabled={full} onClick={() => shape('burst')} aria-label="Inserir explosão" title="Explosão"><Star size={14} /></button>
           <button type="button" disabled={full} onClick={() => shape('line')} aria-label="Inserir linha" title="Linha"><Minus size={14} /></button>
+          <span className="more-shapes">
+            <button type="button" disabled={full} onClick={() => setMoreShapes((o) => !o)} aria-expanded={moreShapes} aria-label="Mais formas" title="Mais formas"><Shapes size={14} /></button>
+            {moreShapes && (
+              <span className="more-shapes-pop" role="group" aria-label="Mais formas">
+                {(['triangle', 'arrow', 'star', 'hexagon', 'balloon', 'tag'] as const).map((sh) => (
+                  <button key={sh} type="button" onClick={() => { shape(sh); setMoreShapes(false) }} aria-label={`Inserir ${SHAPE_LABEL[sh].toLowerCase()}`} title={SHAPE_LABEL[sh]}>{SHAPE_ICON[sh]} {SHAPE_LABEL[sh]}</button>
+                ))}
+              </span>
+            )}
+          </span>
           <button type="button" disabled={full} onClick={selo} title="Selo pronto (explosão com texto)">Selo OFERTA</button>
           <span className="sep" />
           <button type="button" disabled={!api.canUndo} onClick={api.undo} aria-label="Desfazer" title="Desfazer (Ctrl+Z)"><Undo2 size={14} /></button>
@@ -475,6 +489,8 @@ export function AddBar({ api, campaignId, format, page, canEdit, onAdded, onMsg,
           <span className="sep" />
         </>
       )}
+      <button type="button" className={rulers ? 'on' : ''} aria-pressed={rulers} onClick={onToggleRulers} aria-label="Réguas e guias" title="Mostrar réguas e guias (arraste a régua para criar uma guia)"><Ruler size={14} /></button>
+      {rulers && guideCount > 0 && canEdit && <button type="button" onClick={onClearGuides} title="Apagar as guias deste formato">Limpar guias</button>}
       <button type="button" onClick={() => setZoom(Math.max(0.25, +(zoom - 0.25).toFixed(2)))} aria-label="Diminuir zoom" title="Diminuir zoom"><ZoomOut size={14} /></button>
       <button type="button" className="zoom" onClick={() => setZoom(1)} title="Ajustar à tela" aria-label="Zoom">{Math.round(zoom * 100)}%</button>
       <button type="button" onClick={() => setZoom(Math.min(4, +(zoom + 0.25).toFixed(2)))} aria-label="Aumentar zoom" title="Aumentar zoom"><ZoomIn size={14} /></button>
@@ -484,8 +500,10 @@ export function AddBar({ api, campaignId, format, page, canEdit, onAdded, onMsg,
 }
 
 // ---------- lista de camadas ----------
-export const layerLabel = (l: Layer): string => (l.type === 'text' ? (l.text ?? '').split('\n')[0].slice(0, 28) || 'Texto' : l.type === 'image' ? 'Imagem' : ({ rect: 'Retângulo', round: 'Arredondado', circle: 'Círculo', burst: 'Explosão', line: 'Linha' } as const)[l.shape ?? 'rect'])
-const layerIcon = (l: Layer) => (l.type === 'text' ? <Type size={13} /> : l.type === 'image' ? <ImagePlus size={13} /> : l.shape === 'circle' ? <Circle size={13} /> : l.shape === 'burst' ? <Star size={13} /> : l.shape === 'line' ? <Minus size={13} /> : <Square size={13} />)
+export const SHAPE_LABEL: Record<LayerShape, string> = { rect: 'Retângulo', round: 'Arredondado', circle: 'Círculo', burst: 'Explosão', line: 'Linha', triangle: 'Triângulo', arrow: 'Seta', star: 'Estrela', hexagon: 'Hexágono', balloon: 'Balão', tag: 'Etiqueta' }
+export const layerLabel = (l: Layer): string => (l.type === 'text' ? (l.text ?? '').split('\n')[0].slice(0, 28) || 'Texto' : l.type === 'image' ? 'Imagem' : SHAPE_LABEL[l.shape ?? 'rect'])
+const SHAPE_ICON: Record<LayerShape, React.ReactNode> = { rect: <Square size={13} />, round: <SquareRoundCorner size={13} />, circle: <Circle size={13} />, burst: <Star size={13} />, line: <Minus size={13} />, triangle: <Triangle size={13} />, arrow: <ArrowRight size={13} />, star: <Star size={13} />, hexagon: <Hexagon size={13} />, balloon: <MessageSquare size={13} />, tag: <Tag size={13} /> }
+const layerIcon = (l: Layer) => (l.type === 'text' ? <Type size={13} /> : l.type === 'image' ? <ImagePlus size={13} /> : SHAPE_ICON[l.shape ?? 'rect'])
 
 export function LayersPanel({ api, format, page, selectedIds, onSelect, canEdit }: { api: LayersApi; format: PromoFormat; page: number; selectedIds: string[]; onSelect: (ids: string[]) => void; canEdit: boolean }) {
   const list = api.layers[format]
@@ -565,8 +583,33 @@ export function MultiInspector({ api, format, ids, canEdit, onSelect, onClose }:
 }
 
 // ---------- inspetor do elemento ----------
-const FONTS: [LayerFont, string][] = [['display', 'Baloo (títulos)'], ['text', 'Montserrat'], ['serif', 'Serifada'], ['mono', 'Máquina de escrever']]
-const SHAPES: [LayerShape, string][] = [['rect', 'Retângulo'], ['round', 'Arredondado'], ['circle', 'Círculo'], ['burst', 'Explosão'], ['line', 'Linha']]
+/** Seletor de fontes com prévia: cada nome aparece na própria fonte (carrega todas ao abrir). */
+function FontPicker({ value, disabled, onPick }: { value: string; disabled: boolean; onPick: (id: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [ready, setReady] = useState(false)
+  const cur = PROMO_FONTS.find((f) => f.id === value) ?? PROMO_FONTS[1]
+  useEffect(() => { if (open && !ready) void loadPromoFonts().then(() => loadFonts(PROMO_FONTS.map((f) => f.id))).then(() => setReady(true)) }, [open, ready])
+  return (
+    <div className="font-picker">
+      <button type="button" id="ly-font" className="font-current" disabled={disabled} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)} style={{ fontFamily: fontStack(cur.id) }}>{cur.label}</button>
+      {open && (
+        <ul className="font-list" role="listbox" aria-label="Fontes">
+          {(Object.keys(FONT_CATEGORY_LABEL) as (keyof typeof FONT_CATEGORY_LABEL)[]).map((cat) => {
+            const list = PROMO_FONTS.filter((f) => f.category === cat)
+            return list.length ? (
+              <li key={cat} role="presentation"><small className="font-cat">{FONT_CATEGORY_LABEL[cat]}</small>
+                <ul>{list.map((f) => <li key={f.id} role="option" aria-selected={f.id === cur.id}><button type="button" className={f.id === cur.id ? 'on' : ''} data-font={f.id} style={{ fontFamily: fontStack(f.id) }} onClick={() => { setOpen(false); onPick(f.id) }}>{f.label}<span className="font-sample">Oferta 12,90</span></button></li>)}</ul>
+              </li>
+            ) : null
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+const SHAPES: [LayerShape, string][] = LAYER_SHAPES.map((s) => [s, SHAPE_LABEL[s]])
+const DASHES: [Dash, string][] = [['solid', 'Contínuo'], ['dashed', 'Tracejado'], ['dotted', 'Pontilhado']]
 
 function Num({ id, label, value, min, max, onChange, disabled }: { id: string; label: string; value: number; min?: number; max?: number; onChange: (n: number) => void; disabled: boolean }) {
   return (
@@ -602,7 +645,7 @@ export function LayerInspector({ api, format, layer: l, page, pageCount, canEdit
           <summary>Texto</summary>
           <textarea id="ly-text" rows={3} value={l.text ?? ''} maxLength={300} disabled={dis} onChange={(e) => p({ text: e.target.value }, 'text')} />
           <label htmlFor="ly-font">Fonte</label>
-          <select id="ly-font" value={l.font ?? 'text'} disabled={dis} onChange={(e) => p({ font: e.target.value as LayerFont })}>{FONTS.map(([v, n]) => <option key={v} value={v}>{n}</option>)}</select>
+          <FontPicker value={l.font ?? 'text'} disabled={dis} onPick={(id) => { void loadFonts([id]).then(() => p({ font: id })) }} />
           <div className="grid-2">
             <Num id="ly-size" label="Tamanho" value={l.size ?? 64} min={8} max={600} disabled={dis} onChange={(n) => p({ size: n }, 'size')} />
             <div className="canva-chips" role="group" aria-label="Estilo do texto" style={{ alignSelf: 'end' }}>
@@ -637,7 +680,14 @@ export function LayerInspector({ api, format, layer: l, page, pageCount, canEdit
             )}
           </div>
           {!!l.border && <><label htmlFor="ly-borderw">Espessura da borda: {l.borderW ?? 0}</label><input id="ly-borderw" type="range" min={1} max={40} value={l.borderW ?? 0} disabled={dis} onChange={(e) => p({ borderW: Number(e.target.value) }, 'borderw')} /></>}
-          {l.shape === 'round' && <><label htmlFor="ly-radius">Cantos: {l.radius ?? 24}</label><input id="ly-radius" type="range" min={0} max={200} value={l.radius ?? 24} disabled={dis} onChange={(e) => p({ radius: Number(e.target.value) }, 'radius')} /></>}
+          <div className="color-grid">
+            <label className="color-item"><input type="checkbox" aria-label="Degradê" checked={!!l.fill2} disabled={dis} onChange={(e) => p({ fill2: e.target.checked ? '#e3171d' : null, gradAngle: l.gradAngle ?? 90 })} /> Degradê
+              {l.fill2 && <input type="color" aria-label="Segunda cor do degradê" value={l.fill2} disabled={dis} onChange={(e) => p({ fill2: e.target.value }, 'fill2')} />}</label>
+          </div>
+          {!!l.fill2 && <><label htmlFor="ly-grad">Ângulo do degradê: {l.gradAngle ?? 90}°</label><input id="ly-grad" type="range" min={0} max={360} step={5} value={l.gradAngle ?? 90} disabled={dis} onChange={(e) => p({ gradAngle: Number(e.target.value) }, 'grad')} /></>}
+          {(l.shape === 'line' || !!l.border) && (<><label htmlFor="ly-dash">Traço</label>
+            <select id="ly-dash" value={l.dash ?? 'solid'} disabled={dis} onChange={(e) => p({ dash: e.target.value === 'solid' ? undefined : (e.target.value as Dash) })}>{DASHES.map(([v, n]) => <option key={v} value={v}>{n}</option>)}</select></>)}
+          {(l.shape === 'round' || l.shape === 'balloon') && <><label htmlFor="ly-radius">Cantos: {l.radius ?? 24}</label><input id="ly-radius" type="range" min={0} max={200} value={l.radius ?? 24} disabled={dis} onChange={(e) => p({ radius: Number(e.target.value) }, 'radius')} /></>}
         </details>
       )}
 
@@ -659,6 +709,7 @@ export function LayerInspector({ api, format, layer: l, page, pageCount, canEdit
 
       <details open>
         <summary>Aparência e ordem</summary>
+        <label className="color-item" style={{ margin: '4px 0' }}><input type="checkbox" aria-label="Sombra" checked={!!l.shadow} disabled={dis} onChange={(e) => p({ shadow: e.target.checked ? true : undefined })} /> Sombra suave</label>
         <label htmlFor="ly-op">Opacidade: {Math.round(l.opacity * 100)}%</label>
         <input id="ly-op" type="range" min={0} max={100} value={Math.round(l.opacity * 100)} disabled={dis} onChange={(e) => p({ opacity: Number(e.target.value) / 100 }, 'opacity')} />
         <label htmlFor="ly-page">Aparece em</label>

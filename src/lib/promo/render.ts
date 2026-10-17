@@ -1,6 +1,7 @@
 // Desenho da peça de promoção em canvas (navegador): feed, story e A4. Mesmo código para a prévia e para baixar.
 import { BACKGROUND_PRESETS, PROMO_FORMATS, pageLayout, placeCells, priceParts, type ItemStyle, type PromoFormat, type Rect, type ThemeConfig } from '../domain/promo.ts'
 import type { Layer } from '../domain/promo-layers.ts'
+import { PROMO_FONTS, fontStack } from '../domain/promo-fonts.ts'
 
 export type RenderAssets = { background?: HTMLImageElement | null; header?: HTMLImageElement | null; footer?: HTMLImageElement | null; badge?: HTMLImageElement | null; tag?: HTMLImageElement | null }
 /** Fundo escolhido para a promoção no lugar do fundo do tema: pronto, duas cores ou imagem (já carregada). */
@@ -27,6 +28,27 @@ export function loadPromoFonts(): Promise<void> {
     } catch { /* sem a fonte, usa a do sistema */ }
   })()
   return fontsReady
+}
+
+const fontLoads = new Map<string, Promise<void>>()
+/** Carrega no navegador as fontes do catálogo pedidas (uma vez cada). Fonte que não carrega cai na reserva do sistema, sem travar a peça. */
+export function loadFonts(ids: Iterable<string | undefined>): Promise<void> {
+  const jobs: Promise<void>[] = []
+  for (const id of new Set(ids)) {
+    const def = PROMO_FONTS.find((f) => f.id === id)
+    if (!def || !def.family || id === 'display' || id === 'text') continue // as duas de sempre vêm de loadPromoFonts
+    if (!fontLoads.has(def.id)) {
+      fontLoads.set(def.id, (async () => {
+        try {
+          const faces = def.faces.map((x) => new FontFace(def.family!, `url(${x.url})`, { weight: x.weight }))
+          await Promise.all(faces.map((x) => x.load()))
+          for (const x of faces) document.fonts.add(x)
+        } catch { /* sem a fonte, usa a reserva */ }
+      })())
+    }
+    jobs.push(fontLoads.get(def.id)!)
+  }
+  return Promise.all(jobs).then(() => undefined)
 }
 
 export function loadImage(url: string): Promise<HTMLImageElement | null> {
@@ -174,7 +196,6 @@ function drawGradient(ctx: CanvasRenderingContext2D, a: string, b: string, W: nu
 }
 
 // ---------- elementos livres (texto, imagem, formas) ----------
-const LAYER_FONT: Record<NonNullable<Layer['font']>, string> = { display: DISPLAY, text: TEXT, serif: 'Georgia, "Times New Roman", serif', mono: '"Courier New", ui-monospace, monospace' }
 
 /** Desenha os elementos livres por cima da peça, do primeiro (fundo) ao último (topo), com giro e transparência. */
 export function drawLayers(ctx: CanvasRenderingContext2D, layers: Layer[], images: Record<string, HTMLImageElement | null>): void {
@@ -185,6 +206,7 @@ export function drawLayers(ctx: CanvasRenderingContext2D, layers: Layer[], image
     ctx.translate(l.x + l.w / 2, l.y + l.h / 2)
     if (l.rot) ctx.rotate((l.rot * Math.PI) / 180)
     ctx.translate(-l.w / 2, -l.h / 2)
+    if (l.shadow) { const blur = Math.max(8, Math.min(l.w, l.h) * 0.1); ctx.shadowColor = 'rgba(0,0,0,0.38)'; ctx.shadowBlur = blur; ctx.shadowOffsetY = blur * 0.45 }
     if (l.type === 'shape') drawShape(ctx, l)
     else if (l.type === 'image') {
       const img = l.asset ? images[l.asset] : null
@@ -195,7 +217,8 @@ export function drawLayers(ctx: CanvasRenderingContext2D, layers: Layer[], image
   }
 }
 
-function drawShape(ctx: CanvasRenderingContext2D, l: Layer): void {
+/** Contorno da forma em coordenadas locais (0,0 até w,h). A linha é desenhada à parte. */
+function shapePath(ctx: CanvasRenderingContext2D, l: Layer): void {
   const { w, h } = l
   ctx.beginPath()
   switch (l.shape) {
@@ -210,18 +233,63 @@ function drawShape(ctx: CanvasRenderingContext2D, l: Layer): void {
       }
       ctx.closePath(); break
     }
-    case 'line': { ctx.strokeStyle = l.fill ?? '#ffd21f'; ctx.lineWidth = Math.max(2, h); ctx.lineCap = 'round'; ctx.moveTo(h / 2, h / 2); ctx.lineTo(w - h / 2, h / 2); ctx.stroke(); return }
+    case 'star': {
+      for (let i = 0; i < 10; i++) {
+        const a = (Math.PI * i) / 5 - Math.PI / 2, k = i % 2 === 0 ? 1 : 0.42
+        const x = w / 2 + Math.cos(a) * (w / 2) * k, y = h / 2 + Math.sin(a) * (h / 2) * k
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+      }
+      ctx.closePath(); break
+    }
+    case 'triangle': ctx.moveTo(w / 2, 0); ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath(); break
+    case 'arrow': ctx.moveTo(0, h * 0.25); ctx.lineTo(w * 0.6, h * 0.25); ctx.lineTo(w * 0.6, 0); ctx.lineTo(w, h / 2); ctx.lineTo(w * 0.6, h); ctx.lineTo(w * 0.6, h * 0.75); ctx.lineTo(0, h * 0.75); ctx.closePath(); break
+    case 'hexagon': ctx.moveTo(w * 0.25, 0); ctx.lineTo(w * 0.75, 0); ctx.lineTo(w, h / 2); ctx.lineTo(w * 0.75, h); ctx.lineTo(w * 0.25, h); ctx.lineTo(0, h / 2); ctx.closePath(); break
+    case 'balloon': {
+      const bh = h * 0.8, r = Math.min(l.radius ?? 24, w / 2, bh / 2)
+      ctx.moveTo(r, 0); ctx.arcTo(w, 0, w, bh, r); ctx.arcTo(w, bh, w - r, bh, r)
+      ctx.lineTo(w * 0.38, bh); ctx.lineTo(w * 0.14, h); ctx.lineTo(w * 0.22, bh); ctx.lineTo(r, bh)
+      ctx.arcTo(0, bh, 0, 0, r); ctx.arcTo(0, 0, r, 0, r); ctx.closePath(); break
+    }
+    case 'tag': {
+      ctx.moveTo(h * 0.5, 0); ctx.lineTo(w, 0); ctx.lineTo(w, h); ctx.lineTo(h * 0.5, h); ctx.lineTo(0, h / 2); ctx.closePath()
+      ctx.moveTo(h * 0.5 + h * 0.1, h / 2); ctx.arc(h * 0.5, h / 2, h * 0.1, 0, Math.PI * 2, true) // furo
+      break
+    }
     default: ctx.rect(0, 0, w, h)
   }
-  ctx.fillStyle = l.fill ?? '#ffd21f'; ctx.fill()
-  if (l.border && l.borderW) { ctx.lineJoin = 'round'; ctx.lineWidth = l.borderW; ctx.strokeStyle = l.border; ctx.stroke() }
+}
+
+/** Cor de preenchimento: sólida ou degradê entre duas cores no ângulo escolhido. */
+function fillStyleFor(ctx: CanvasRenderingContext2D, l: Layer): string | CanvasGradient {
+  const a = l.fill ?? '#ffd21f'
+  if (!l.fill2) return a
+  const rad = ((l.gradAngle ?? 90) * Math.PI) / 180, dx = Math.cos(rad), dy = Math.sin(rad)
+  const half = (Math.abs(l.w * dx) + Math.abs(l.h * dy)) / 2
+  const g = ctx.createLinearGradient(l.w / 2 - dx * half, l.h / 2 - dy * half, l.w / 2 + dx * half, l.h / 2 + dy * half)
+  g.addColorStop(0, a); g.addColorStop(1, l.fill2)
+  return g
+}
+
+const dashFor = (d: Layer['dash'], w: number): number[] => (d === 'dashed' ? [w * 3, w * 2] : d === 'dotted' ? [0.1, w * 2] : [])
+
+function drawShape(ctx: CanvasRenderingContext2D, l: Layer): void {
+  const { w, h } = l
+  if (l.shape === 'line') {
+    ctx.strokeStyle = fillStyleFor(ctx, l); ctx.lineWidth = Math.max(2, h); ctx.lineCap = l.dash === 'dashed' ? 'butt' : 'round'
+    ctx.setLineDash(dashFor(l.dash, Math.max(2, h)))
+    ctx.beginPath(); ctx.moveTo(h / 2, h / 2); ctx.lineTo(w - h / 2, h / 2); ctx.stroke()
+    return
+  }
+  shapePath(ctx, l)
+  ctx.fillStyle = fillStyleFor(ctx, l); ctx.fill('evenodd')
+  if (l.border && l.borderW) { ctx.shadowColor = 'transparent'; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.lineWidth = l.borderW; ctx.strokeStyle = l.border; ctx.setLineDash(dashFor(l.dash, l.borderW)); ctx.stroke() }
 }
 
 /** Aplica a fonte do texto e quebra em linhas que cabem na largura da caixa. */
 function layoutLayerText(ctx: CanvasRenderingContext2D, l: Layer): { lines: string[]; size: number; pad: number; lh: number } {
   const size = l.size ?? 64
   const pad = l.bg ? size * 0.3 : 0
-  ctx.font = `${l.italic ? 'italic ' : ''}${l.bold === false ? 500 : 800} ${size}px ${LAYER_FONT[l.font ?? 'text']}`
+  ctx.font = `${l.italic ? 'italic ' : ''}${l.bold === false ? 500 : 800} ${size}px ${fontStack(l.font)}`
   const lines = (l.text ?? '').split('\n').flatMap((p) => wrap(ctx, p, Math.max(10, l.w - pad * 2)))
   return { lines, size, pad, lh: size * 1.15 }
 }
