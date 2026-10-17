@@ -756,6 +756,69 @@ try {
   ck('desligar esconde as réguas', (await a.locator('.canva-ruler').count()) === 0)
   await q(`update promo_campaigns set layers = null where id = $1`, [camp.id])
 
+  // ---------- foto na moldura: preencher, reposicionar, recorte, espelhar, ajustes, borda ----------
+  await q(`update promo_campaigns set layers = null where id = $1`, [camp.id])
+  await a.goto(`${BASE}/promocoes/${camp.id}`); await idle(a); await a.waitForSelector('canvas[data-ready="1"]', { timeout: 30000 })
+  const lyi = async () => ((await q(`select layers from promo_campaigns where id = $1`, [camp.id]))[0].layers.story ?? [])[0]
+  const metade = await sharp({ create: { width: 400, height: 200, channels: 3, background: '#ff0000' } }).composite([{ input: await sharp({ create: { width: 200, height: 200, channels: 3, background: '#0000ff' } }).png().toBuffer(), left: 200, top: 0 }]).png().toBuffer()
+  await a.locator('input[aria-label="Enviar imagem para a peça"]').setInputFiles({ name: 'metade.png', mimeType: 'image/png', buffer: metade }); await wait(4000)
+  const amostra = async (fx, fy) => { const L = await lyi(); return a.evaluate(([l, fx, fy]) => { const d = document.querySelector('.canva-layers').getContext('2d').getImageData(Math.round(l.x + l.w * fx), Math.round(l.y + l.h * fy), 1, 1).data; return [d[0], d[1], d[2], d[3]] }, [L, fx, fy]) }
+  ck('a foto enviada aparece com o painel "Foto e moldura"', (await lyi())?.type === 'image' && (await a.locator('#ly-fit').count()) === 1 && (await a.locator('.canva-lbox.sel .canva-handle').count()) === 5)
+  await a.fill('#ly-h', String((await lyi()).w)); await wait(1500) // moldura quadrada
+  await a.selectOption('#ly-fit', 'cover'); await wait(2000)
+  let im = await lyi()
+  ck('"Preencher a moldura" salva e libera as 8 alças (redimensiona livre)', im.fit === 'cover' && Math.abs(im.w - im.h) <= 1 && (await a.locator('.canva-lbox.sel .canva-handle').count()) === 9, JSON.stringify([im.fit, im.w, im.h]))
+  await wait(800)
+  let [e1, d1] = [await amostra(0.1, 0.5), await amostra(0.9, 0.5)]
+  ck('preenchendo a moldura quadrada com uma foto larga: esquerda vermelha e direita azul (foto centralizada)', e1[0] > 200 && e1[2] < 60 && d1[2] > 200 && d1[0] < 60, JSON.stringify([e1, d1]))
+  await a.locator('#ly-zoom').count().then(async (n) => { if (!n) throw new Error('sem zoom') })
+  await a.fill('#ly-zoom', '200'); await wait(1800)
+  ck('o zoom da foto dentro da moldura é salvo', (await lyi()).zoom === 2)
+  await a.fill('#ly-zoom', '100'); await wait(1500)
+  // espelhar
+  await a.getByRole('button', { name: 'Espelhar ↔' }).click(); await wait(2000)
+  await wait(500)
+  let [e2, d2] = [await amostra(0.1, 0.5), await amostra(0.9, 0.5)]
+  ck('espelhar na horizontal troca os lados (esquerda azul, direita vermelha)', (await lyi()).flipX === true && e2[2] > 200 && d2[0] > 200, JSON.stringify([e2, d2]))
+  await a.getByRole('button', { name: 'Espelhar ↔' }).click(); await wait(1500)
+  // reposicionar arrastando a foto na peça
+  await a.getByRole('button', { name: 'Reposicionar a foto na moldura' }).click(); await wait(500)
+  ck('o modo de reposicionamento marca a caixa e esconde as alças', (await a.locator('.canva-lbox.crop').count()) === 1 && (await a.locator('.canva-lbox.sel .canva-handle').count()) === 0)
+  const cb = await a.locator('.canva-lbox.crop').boundingBox()
+  await a.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2); await a.mouse.down(); await a.mouse.move(cb.x + cb.width / 2 - 120, cb.y + cb.height / 2, { steps: 6 }); await a.mouse.move(cb.x + cb.width / 2 - 400, cb.y + cb.height / 2, { steps: 6 }); await a.mouse.up(); await wait(2200)
+  im = await lyi()
+  ck('arrastar a foto leva o foco ao limite (px = 1) e salva', im.px === 1 && (im.py === undefined || im.py === 0.5), JSON.stringify([im.px, im.py]))
+  await wait(500)
+  const [e3, d3] = [await amostra(0.1, 0.5), await amostra(0.9, 0.5)]
+  ck('com o foco na direita só aparece o lado azul da foto', e3[2] > 200 && e3[0] < 60 && d3[2] > 200 && d3[0] < 60, JSON.stringify([e3, d3]))
+  await a.getByRole('button', { name: 'Concluir o reposicionamento' }).click(); await wait(400)
+  ck('concluir encerra o modo e devolve as alças', (await a.locator('.canva-lbox.crop').count()) === 0 && (await a.locator('.canva-lbox.sel .canva-handle').count()) === 9)
+  // moldura circular
+  await a.selectOption('#ly-mask', 'circle'); await wait(2000)
+  const [canto, centro] = [await amostra(0.02, 0.02), await amostra(0.5, 0.5)]
+  ck('moldura em círculo: o canto fica transparente e o centro mostra a foto', (await lyi()).mask === 'circle' && canto[3] === 0 && centro[3] === 255, JSON.stringify([canto, centro]))
+  // borda
+  await a.locator('input[aria-label="Borda da foto"]').check(); await wait(2000)
+  const borda = await amostra(0.5, 0.004)
+  ck('borda branca da foto aparece na beirada da moldura', (await lyi()).border === '#ffffff' && borda[0] > 240 && borda[1] > 240 && borda[2] > 240, JSON.stringify(borda))
+  // ajustes: preto e branco
+  await a.locator('summary', { hasText: 'Ajustes da foto' }).click()
+  await a.locator('input[aria-label="Preto e branco"]').check(); await wait(2200)
+  const pbw = await amostra(0.5, 0.5)
+  ck('preto e branco tira a cor da foto (azul vira cinza)', (await lyi()).gray === true && Math.abs(pbw[0] - pbw[2]) < 12 && Math.abs(pbw[1] - pbw[2]) < 12, JSON.stringify(pbw))
+  await a.getByRole('button', { name: 'Restaurar ajustes' }).click(); await wait(2000)
+  ck('"Restaurar ajustes" volta a foto ao original', (await lyi()).gray === undefined && (await amostra(0.5, 0.5))[2] > 200)
+  await a.fill('#ly-bright', '60'); await wait(2000)
+  ck('brilho salvo (+60)', (await lyi()).bright === 60)
+  // duplo clique entra no modo de reposicionamento; "foto inteira" volta às 4 alças
+  await a.keyboard.press('Escape'); await wait(300)
+  await a.locator('.canva-lbox[data-type="image"]').first().dblclick(); await wait(600)
+  ck('duplo clique na foto abre o reposicionamento', (await a.locator('.canva-lbox.crop').count()) === 1)
+  await a.getByRole('button', { name: 'Concluir o reposicionamento' }).click(); await wait(300)
+  await a.selectOption('#ly-fit', 'contain'); await wait(1800)
+  ck('"Foto inteira" volta ao encaixe padrão e às 4 alças de canto', (await lyi()).fit === undefined && (await a.locator('.canva-lbox.sel .canva-handle').count()) === 5)
+  await q(`update promo_campaigns set layers = null where id = $1`, [camp.id])
+
   // política desligada: um encarte por produto
   await a.goto(BASE + '/promocoes'); await idle(a)
   await a.fill('#np-name', 'Sem agrupar'); await a.selectOption('#np-theme', themeId); await a.locator('input[name=group]').uncheck()

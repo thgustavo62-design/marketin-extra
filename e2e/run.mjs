@@ -26,7 +26,7 @@ const flag = (name) => argv.includes(`--${name}`)
 const JOBS = Number(opt('jobs', 6))
 const ONLY = opt('only', '')?.split(',').filter(Boolean) ?? []
 const SKIP = opt('skip', '')?.split(',').filter(Boolean) ?? []
-const TIMEOUT_MS = Number(opt('timeout', 360)) * 1000
+const TIMEOUT_MS = Number(opt('timeout', 900)) * 1000
 
 if (flag('remote') && !process.env.DATABASE_URL) { console.error('Sem DATABASE_URL. Rode com: npm run e2e -- --remote (que carrega o .env).'); process.exit(2) }
 let localPg = null

@@ -37,7 +37,7 @@ Legenda: ✅ feito e testado · 🟡 parcial · ❌ não existe
 | Desfazer/refazer por gesto, autosave | ✅ | Só dos elementos livres; edições de encarte são salvas na hora, sem histórico de desfazer |
 | Conflito de edição simultânea | ✅ (nesta entrega) | Revisão otimista nos elementos livres |
 | Texto: edição no lugar, fonte, tamanho, cor, contorno, fundo, alinhamento | ✅ | Seletor com 12 fontes livres (OFL) e prévia; sem estilo por trecho nem texto em arco |
-| Imagem: enviar, substituir, redimensionar, opacidade | 🟡 | Sem recorte/moldura, máscaras, filtros |
+| Imagem: enviar, redimensionar, opacidade, encaixe, recorte/reposicionamento, moldura (retângulo/arredondada/círculo), espelhar, borda, brilho/contraste/saturação/desfoque/P&B | ✅ (fase 2) | Ajustes de cor usam `ctx.filter` (Safari antigo mostra sem ajustes); "substituir foto mantendo a moldura" ainda não existe |
 | Formas: retângulo, arredondado, círculo, explosão, linha, triângulo, seta, estrela, hexágono, balão, etiqueta | ✅ | Degradê, traço tracejado/pontilhado e sombra suave em qualquer elemento |
 | Fundo: cor, 12 prontos, imagem, fundo de tema | ✅ | Sem gradiente editável |
 | Biblioteca de imagens, uploads | ✅ | SVG rasterizado no servidor |
@@ -74,6 +74,13 @@ Cobertas pelo e2e `e2e/suites/promocoes.mjs` (196 verificações) e `apresentaco
 - **Fontes:** catálogo em `domain/promo-fonts.ts` (12 fontes; arquivos em `public/fonts/studio`, licenças em `LICENSES.md`), carregadas sob demanda antes de desenhar e de exportar.
 - **Formas e estilo:** 6 formas novas, degradê com ângulo, traço tracejado/pontilhado e sombra suave.
 
+### 5.2 Fase 2 (foto na moldura)
+- Encaixe "foto inteira" (padrão, como antes) ou "preencher a moldura", com zoom (100–400%) e foco; duplo clique ou botão entra no modo de reposicionar (arrastar a foto dentro da moldura; Esc/Concluir sai).
+- Moldura: retângulo, cantos arredondados ou círculo/elipse; espelhar; borda (contínua/tracejada/pontilhada); a sombra de foto recortada é omitida.
+- Ajustes: brilho, contraste, saturação, desfoque e preto e branco; "Restaurar ajustes".
+- Regras puras em `imagePlacement`/`panImage` (`promo-layers.ts`), testadas; render em `drawImageLayer`.
+- O e2e passou a ter limite de 900 s (a suíte de promoções leva ~6 min).
+
 ## 6. Riscos conhecidos
 - Desfazer não cobre edições de encarte (nome, preço, foto, ordem): são gravadas imediatamente.
 - Colar usa memória do navegador (não funciona entre abas).
@@ -81,7 +88,7 @@ Cobertas pelo e2e `e2e/suites/promocoes.mjs` (196 verificações) e `apresentaco
 
 ## 7. Ordem proposta para as próximas fases (precisa de decisão do responsável)
 1. ~~Guias e réguas, seletor de fontes e mais formas/gradientes~~ **(feito na fase 1; ver seção 5.1)**.
-2. **Recorte/moldura de imagem** e ajustes simples (brilho/contraste), com golden images.
+2. ~~Recorte/moldura de imagem e ajustes simples~~ **(feito na fase 2; ver 5.2)**.
 3. **Modelo de documento genérico** (`studio_documents` + versões) com adaptador do legado e flag: habilita "Meus designs" e arte livre.
 4. **Templates e kit de marca por filial** (sobre o item 3).
 5. **Composição automática por quantidade e variantes de layout por formato**; exportação em 300 DPI / PDF vetorial.

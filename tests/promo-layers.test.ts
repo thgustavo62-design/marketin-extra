@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { pasteLayers, duplicateLayers, alignSelection, boundsOf, distribute, expandSelection, groupLayers, moveSelection, scaleSelection, ungroupLayers, alignToPage, layersForPage, makeLayer, normalizeLayers, reorderLayer, snap, MAX_LAYERS, type Layer } from '../src/lib/domain/promo-layers.ts'
+import { imagePlacement, panImage, pasteLayers, duplicateLayers, alignSelection, boundsOf, distribute, expandSelection, groupLayers, moveSelection, scaleSelection, ungroupLayers, alignToPage, layersForPage, makeLayer, normalizeLayers, reorderLayer, snap, MAX_LAYERS, type Layer } from '../src/lib/domain/promo-layers.ts'
 
 const ASSET = '3f2b6c1e-8a4d-4c7e-9f10-2b5d6e7a8c90'
 
@@ -136,4 +136,32 @@ test('elementos: fontes do catálogo, formas novas, degradê, tracejado e sombra
   assert.deepEqual([r[2].shape, r[2].fill2, r[2].gradAngle, r[2].dash, r[2].shadow], ['star', '#0000ff', 360, 'dashed', true])
   assert.deepEqual([r[3].shape, r[3].fill2, r[3].dash, r[3].shadow], ['balloon', undefined, undefined, undefined])
   assert.equal(r[4].shape, 'rect')
+})
+
+test('imagem na moldura: inteira, preenchendo, com zoom e foco; reposicionar não sai da moldura', () => {
+  const quadro = { w: 400, h: 400 }
+  assert.deepEqual(imagePlacement({ ...quadro }, 800, 400), { dx: 0, dy: 100, dw: 400, dh: 200 }) // inteira: centralizada
+  const cover = imagePlacement({ ...quadro, fit: 'cover' }, 800, 400) // preenche: altura 400, largura 800, centro
+  assert.deepEqual(cover, { dx: -200, dy: 0, dw: 800, dh: 400 })
+  assert.deepEqual(imagePlacement({ ...quadro, fit: 'cover', px: 0 }, 800, 400), { dx: 0, dy: 0, dw: 800, dh: 400 }) // foco na esquerda
+  assert.deepEqual(imagePlacement({ ...quadro, fit: 'cover', px: 1 }, 800, 400), { dx: -400, dy: 0, dw: 800, dh: 400 }) // foco na direita
+  assert.equal(imagePlacement({ ...quadro, fit: 'cover', zoom: 2 }, 800, 400).dw, 1600)
+  assert.equal(imagePlacement({ ...quadro, zoom: 3 }, 800, 400).dw, 400) // zoom só vale preenchendo
+  assert.deepEqual(imagePlacement({ ...quadro }, 0, 0), { dx: 0, dy: 0, dw: 400, dh: 400 }) // sem tamanho conhecido: ocupa a moldura
+  // arrastar a foto 100 px para a direita leva o foco para a esquerda; passou do limite, trava em 0 ou 1
+  const p = panImage({ ...quadro, fit: 'cover' }, 800, 400, 100, 0)
+  assert.ok(Math.abs(p.px - 0.25) < 1e-9 && p.py === 0.5)
+  assert.equal(panImage({ ...quadro, fit: 'cover' }, 800, 400, 5000, 0).px, 0)
+  assert.equal(panImage({ ...quadro, fit: 'cover' }, 800, 400, -5000, 0).px, 1)
+  assert.equal(panImage({ ...quadro, fit: 'cover' }, 400, 400, 80, 80).px, 0.5) // foto do tamanho da moldura: nada a mover
+})
+
+test('imagem: moldura, ajustes e borda são validados; valores neutros não são guardados', () => {
+  const U = '3f2b6c1e-8a4d-4c7e-9f10-2b5d6e7a8c90'
+  const [a, b] = normalizeLayers({ story: [
+    { id: 'im0001', type: 'image', asset: U, fit: 'cover', zoom: 9, px: 2, py: -1, mask: 'circle', flipX: true, bright: 500, contrast: -20, saturate: 0, blur: 99, gray: true, border: '#FF0000', borderW: 6, dash: 'dotted' },
+    { id: 'im0002', type: 'image', asset: U, fit: 'esticar', zoom: 1, px: 0.5, mask: 'estrela', flipX: false, bright: 0 },
+  ] }).story
+  assert.deepEqual([a.fit, a.zoom, a.px, a.py, a.mask, a.flipX, a.bright, a.contrast, a.saturate, a.blur, a.gray, a.border, a.borderW, a.dash], ['cover', 4, 1, 0, 'circle', true, 100, -20, undefined, 30, true, '#ff0000', 6, 'dotted'])
+  assert.deepEqual([b.fit, b.zoom, b.px, b.mask, b.flipX, b.bright], [undefined, undefined, undefined, undefined, undefined, undefined])
 })

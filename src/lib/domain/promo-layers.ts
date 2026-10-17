@@ -25,6 +25,11 @@ export type Layer = {
   stroke?: string | null; strokeW?: number; bg?: string | null
   // imagem
   asset?: string
+  /** como a foto entra na moldura: inteira (padrão) ou preenchendo (corta o que sobra) */ fit?: 'contain' | 'cover'
+  /** zoom da foto dentro da moldura (1 a 4) e ponto de foco 0–1 (0,5 = centro), para reposicionar o recorte */ zoom?: number; px?: number; py?: number
+  /** recorte da moldura: círculo/elipse ou cantos arredondados (usa `radius`) */ mask?: 'circle' | 'round'
+  flipX?: boolean; flipY?: boolean
+  /** ajustes da foto, de −100 a 100 (0 = original); desfoque em px da peça; preto e branco */ bright?: number; contrast?: number; saturate?: number; blur?: number; gray?: boolean
   // forma
   shape?: LayerShape; fill?: string; border?: string | null; borderW?: number; radius?: number
   /** degradê: segunda cor (null = cor sólida) e ângulo em graus (0 = esquerda→direita, 90 = cima→baixo) */ fill2?: string | null; gradAngle?: number; dash?: Dash
@@ -75,6 +80,17 @@ export function normalizeLayers(raw: unknown): Layers {
       } else if (type === 'image') {
         if (typeof l.asset !== 'string' || !UUID.test(l.asset)) continue
         layer.asset = l.asset
+        if (l.fit === 'cover') layer.fit = 'cover'
+        if (l.zoom !== undefined) { const z = num(l.zoom, 1, 4, 1); if (z !== 1) layer.zoom = z }
+        for (const k of ['px', 'py'] as const) if (l[k] !== undefined) { const v = num(l[k], 0, 1, 0.5); if (v !== 0.5) layer[k] = v }
+        if (l.mask === 'circle' || l.mask === 'round') layer.mask = l.mask
+        if (l.flipX === true) layer.flipX = true
+        if (l.flipY === true) layer.flipY = true
+        for (const k of ['bright', 'contrast', 'saturate'] as const) if (l[k] !== undefined) { const v = Math.round(num(l[k], -100, 100, 0)); if (v !== 0) layer[k] = v }
+        if (l.blur !== undefined) { const v = Math.round(num(l.blur, 0, 30, 0)); if (v) layer.blur = v }
+        if (l.gray === true) layer.gray = true
+        layer.border = colorOrNull(l.border, null); layer.borderW = num(l.borderW, 0, 80, 0); layer.radius = num(l.radius, 0, 400, 24)
+        if (l.dash === 'dashed' || l.dash === 'dotted') layer.dash = l.dash
       } else {
         layer.shape = LAYER_SHAPES.includes(l.shape as LayerShape) ? (l.shape as LayerShape) : 'rect'
         layer.fill = color(l.fill, '#ffd21f'); layer.border = colorOrNull(l.border, null); layer.borderW = num(l.borderW, 0, 80, 0)
@@ -259,4 +275,24 @@ export function pasteLayers(clip: { fmt: PromoFormat; layers: Layer[] }, to: Pro
     return c
   })
   return { added, ids: added.map((l) => l.id) }
+}
+
+/**
+ * Onde a foto é desenhada dentro da moldura (coordenadas locais 0..w, 0..h).
+ * "contain": inteira e centralizada. "cover": preenche a moldura (corta o que sobra), com zoom e foco (px, py) para reposicionar o recorte.
+ */
+export function imagePlacement(l: Pick<Layer, 'w' | 'h' | 'fit' | 'zoom' | 'px' | 'py'>, iw: number, ih: number): { dx: number; dy: number; dw: number; dh: number } {
+  if (!(iw > 0 && ih > 0)) return { dx: 0, dy: 0, dw: l.w, dh: l.h }
+  const cover = l.fit === 'cover'
+  const k = (cover ? Math.max(l.w / iw, l.h / ih) : Math.min(l.w / iw, l.h / ih)) * (cover ? (l.zoom ?? 1) : 1)
+  const dw = iw * k, dh = ih * k
+  return cover ? { dx: (l.w - dw) * (l.px ?? 0.5) + 0, dy: (l.h - dh) * (l.py ?? 0.5) + 0, dw, dh } : { dx: (l.w - dw) / 2, dy: (l.h - dh) / 2, dw, dh }
+}
+
+/** Reposiciona o recorte: mover a foto `ddx, ddy` px da peça para a direita/baixo. Devolve o novo foco (0–1), sem sair da moldura. */
+export function panImage(l: Pick<Layer, 'w' | 'h' | 'fit' | 'zoom' | 'px' | 'py'>, iw: number, ih: number, ddx: number, ddy: number): { px: number; py: number } {
+  const p = imagePlacement({ ...l, fit: 'cover' }, iw, ih)
+  const sx = l.w - p.dw, sy = l.h - p.dh // negativos: quanto a foto passa da moldura
+  const clamp = (v: number) => Math.min(1, Math.max(0, v))
+  return { px: sx < -0.5 ? clamp((l.px ?? 0.5) + ddx / sx) : 0.5, py: sy < -0.5 ? clamp((l.py ?? 0.5) + ddy / sy) : 0.5 }
 }

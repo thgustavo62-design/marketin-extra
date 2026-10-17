@@ -61,6 +61,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   const [editingLayer, setEditingLayer] = useState<string | null>(null)
   const [quickId, setQuickId] = useState<string | null>(null)
   const [checkOpen, setCheckOpen] = useState(false)
+  const [cropId, setCropId] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [busy, start] = useTransition()
@@ -106,6 +107,8 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
   // sem peça aberta com este elemento, a seleção some
   useEffect(() => { if (selIds.some((id) => !curLayers.some((l) => l.id === id))) setSelIds((ids) => ids.filter((id) => curLayers.some((l) => l.id === id))) }, [selIds, curLayers])
   useEffect(() => { if (editingLayer && selIds[0] !== editingLayer) setEditingLayer(null) }, [editingLayer, selIds])
+  useEffect(() => { if (cropId && (selIds.length !== 1 || selIds[0] !== cropId)) setCropId(null) }, [cropId, selIds])
+  const assetSizes = useMemo(() => Object.fromEntries(campaign.assets.map((a) => [a.id, { w: a.width, h: a.height }])), [campaign.assets])
   useLayerKeys({ api: layersApi, format, page: pageIdx, selIds, select: (ids) => { setSelIds(ids); if (ids.length) { setSelected(null); setQuickId(null) } }, canEdit, pageIds: () => pageLayers.filter((l) => !l.locked).map((l) => l.id) })
 
   const issues = useMemo(() => checkPromotion({ items, layers: layersApi.layers, validity: campaign.validity, pageCount: pageCountsFor(items, cfg ?? null) }), [items, layersApi.layers, campaign.validity, cfg])
@@ -550,7 +553,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
                   onSave={(v) => { setQuickId(null); act(async () => { const r = await updateItemAction(campaign.id, it.id, v.name, v.price, it.photo_image_id); if (!r.ok) return r; return v.note !== (it.note ?? '') ? patchItemAction(campaign.id, it.id, { note: v.note }) : r }) }} />
               })()}
               {guidesApi.shown && <RulersAndGuides format={format} paperRef={paperRef} api={guidesApi} canEdit={canEdit} />}
-              <LayerBoxes userGuides={guidesApi.shown ? guidesApi.guides[format] : []} format={format} list={pageLayers} selectedIds={selIds} onSelect={selectLayers} editingId={editingLayer} setEditingId={setEditingLayer} api={layersApi} paperRef={paperRef} canEdit={canEdit} />
+              <LayerBoxes assetSizes={assetSizes} cropId={cropId} setCropId={setCropId} userGuides={guidesApi.shown ? guidesApi.guides[format] : []} format={format} list={pageLayers} selectedIds={selIds} onSelect={selectLayers} editingId={editingLayer} setEditingId={setEditingLayer} api={layersApi} paperRef={paperRef} canEdit={canEdit} />
             </div>
             </div>
           )}
@@ -567,6 +570,7 @@ export function PromoStudio({ campaign, theme, themes, items: initial, canEdit, 
             <MultiInspector api={layersApi} format={format} ids={selIds} canEdit={canEdit} onSelect={selectLayers} onClose={() => selectLayers([])} />
           ) : selL ? (
             <LayerInspector api={layersApi} format={format} layer={selL} page={pageIdx} pageCount={Math.max(1, pages.length)} canEdit={canEdit} onClose={() => selectLayer(null)} onMsg={setMsg}
+              cropping={cropId === selL.id} onToggleCrop={() => { if (cropId === selL.id) setCropId(null); else { if (selL.fit !== 'cover') layersApi.patch(format, selL.id, { fit: 'cover' }); setCropId(selL.id) } }}
               onDuplicate={() => { const c = duplicateSelection(layersApi, format, [selL.id]); if (c.length) selectLayers(c) }}
               onDelete={() => { layersApi.remove(format, selL.id); selectLayer(null) }} />
           ) : sel ? (

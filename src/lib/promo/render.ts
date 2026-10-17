@@ -1,6 +1,6 @@
 // Desenho da peça de promoção em canvas (navegador): feed, story e A4. Mesmo código para a prévia e para baixar.
 import { BACKGROUND_PRESETS, PROMO_FORMATS, pageLayout, placeCells, priceParts, type ItemStyle, type PromoFormat, type Rect, type ThemeConfig } from '../domain/promo.ts'
-import type { Layer } from '../domain/promo-layers.ts'
+import { imagePlacement, type Layer } from '../domain/promo-layers.ts'
 import { PROMO_FONTS, fontStack } from '../domain/promo-fonts.ts'
 
 export type RenderAssets = { background?: HTMLImageElement | null; header?: HTMLImageElement | null; footer?: HTMLImageElement | null; badge?: HTMLImageElement | null; tag?: HTMLImageElement | null }
@@ -208,12 +208,40 @@ export function drawLayers(ctx: CanvasRenderingContext2D, layers: Layer[], image
     ctx.translate(-l.w / 2, -l.h / 2)
     if (l.shadow) { const blur = Math.max(8, Math.min(l.w, l.h) * 0.1); ctx.shadowColor = 'rgba(0,0,0,0.38)'; ctx.shadowBlur = blur; ctx.shadowOffsetY = blur * 0.45 }
     if (l.type === 'shape') drawShape(ctx, l)
-    else if (l.type === 'image') {
-      const img = l.asset ? images[l.asset] : null
-      if (img) { const s = Math.min(l.w / img.width, l.h / img.height); ctx.drawImage(img, (l.w - img.width * s) / 2, (l.h - img.height * s) / 2, img.width * s, img.height * s) }
-      else { ctx.setLineDash([10, 8]); ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 3; ctx.strokeRect(0, 0, l.w, l.h) }
-    } else drawLayerText(ctx, l)
+    else if (l.type === 'image') drawImageLayer(ctx, l, l.asset ? images[l.asset] : null)
+    else drawLayerText(ctx, l)
     ctx.restore()
+  }
+}
+
+/** Contorno da moldura da foto: retângulo, cantos arredondados ou círculo/elipse. */
+function maskPath(ctx: CanvasRenderingContext2D, l: Layer): void {
+  ctx.beginPath()
+  if (l.mask === 'circle') ctx.ellipse(l.w / 2, l.h / 2, l.w / 2, l.h / 2, 0, 0, Math.PI * 2)
+  else if (l.mask === 'round') roundRect(ctx, 0, 0, l.w, l.h, Math.min(l.radius ?? 24, l.w / 2, l.h / 2))
+  else ctx.rect(0, 0, l.w, l.h)
+}
+
+/** Foto na moldura: encaixe (inteira ou preenchendo), zoom e foco, recorte da moldura, espelhar, ajustes de cor, desfoque e borda. */
+function drawImageLayer(ctx: CanvasRenderingContext2D, l: Layer, img: HTMLImageElement | null): void {
+  if (!img) { ctx.setLineDash([10, 8]); ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 3; ctx.strokeRect(0, 0, l.w, l.h); return }
+  const pl = imagePlacement(l, img.width, img.height)
+  ctx.save()
+  if (l.mask || l.fit === 'cover') { maskPath(ctx, l); ctx.clip() }
+  if (l.mask) ctx.shadowColor = 'transparent' // a sombra de uma foto recortada ficaria cortada junto
+  const f: string[] = []
+  if (l.bright) f.push(`brightness(${1 + l.bright / 100})`)
+  if (l.contrast) f.push(`contrast(${1 + l.contrast / 100})`)
+  if (l.saturate) f.push(`saturate(${1 + l.saturate / 100})`)
+  if (l.gray) f.push('grayscale(1)')
+  if (l.blur) f.push(`blur(${l.blur}px)`)
+  if (f.length) ctx.filter = f.join(' ') // navegadores sem ctx.filter (Safari antigo) mostram a foto sem os ajustes
+  if (l.flipX || l.flipY) { ctx.translate(l.w / 2, l.h / 2); ctx.scale(l.flipX ? -1 : 1, l.flipY ? -1 : 1); ctx.translate(-l.w / 2, -l.h / 2) }
+  ctx.drawImage(img, pl.dx, pl.dy, pl.dw, pl.dh)
+  ctx.restore()
+  if (l.border && l.borderW) {
+    ctx.save(); ctx.shadowColor = 'transparent'; maskPath(ctx, l); ctx.lineJoin = 'round'; ctx.lineWidth = l.borderW * 2; ctx.strokeStyle = l.border; ctx.setLineDash(dashFor(l.dash, l.borderW))
+    ctx.clip(); ctx.stroke(); ctx.restore() // clip: a borda fica por dentro da moldura
   }
 }
 

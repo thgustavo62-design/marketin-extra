@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import { AlignCenter, AlignHorizontalJustifyCenter, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, AlignVerticalJustifyCenter, ArrowDown, ArrowUp, Bold, ChevronsDown, ChevronsUp, Circle, Copy, ArrowRight, Eye, EyeOff, Ruler, Group, Hexagon, ImagePlus, MessageSquare, Shapes, Tag, Triangle, Italic, Lock, Minus, Redo2, Square, SquareRoundCorner, Star, Trash2, Type, Undo2, Ungroup, Unlock, ZoomIn, ZoomOut } from 'lucide-react'
 import { PROMO_FORMATS, PROMO_FORMAT_KEYS, type PromoFormat } from '@/lib/domain/promo'
 import { FONT_CATEGORY_LABEL, PROMO_FONTS, fontStack } from '@/lib/domain/promo-fonts'
-import { LAYER_SHAPES, MAX_LAYERS, alignSelection, alignToPage, boundsOf, distribute, duplicateLayers, expandSelection, groupLayers, makeLayer, moveSelection, newLayerId, pasteLayers, reorderLayer, scaleSelection, snap, ungroupLayers, type Align, type Bounds, type Dash, type Layer, type LayerShape, type Layers } from '@/lib/domain/promo-layers'
+import { LAYER_SHAPES, MAX_LAYERS, alignSelection, alignToPage, boundsOf, distribute, panImage, duplicateLayers, expandSelection, groupLayers, makeLayer, moveSelection, newLayerId, pasteLayers, reorderLayer, scaleSelection, snap, ungroupLayers, type Align, type Bounds, type Dash, type Layer, type LayerShape, type Layers } from '@/lib/domain/promo-layers'
 import { guideRects, type Guide } from '@/lib/domain/promo-guides'
 import { drawLayers, loadFonts, loadPromoFonts, measureLayerHeight } from '@/lib/promo/render'
 import { saveLayersAction } from '../actions'
@@ -222,9 +222,9 @@ export function LayersCanvas({ format, list: all, hideId, getImg }: { format: Pr
 
 type Handle = 'nw' | 'ne' | 'sw' | 'se' | 'e' | 'w' | 'n' | 's'
 const SIGNS: Record<Handle, [number, number]> = { nw: [-1, -1], ne: [1, -1], sw: [-1, 1], se: [1, 1], e: [1, 0], w: [-1, 0], n: [0, -1], s: [0, 1] }
-const handlesFor = (l: Layer): Handle[] => (l.type === 'image' ? ['nw', 'ne', 'sw', 'se'] : l.type === 'text' ? ['nw', 'ne', 'sw', 'se', 'e', 'w'] : l.shape === 'line' ? ['e', 'w'] : ['nw', 'ne', 'sw', 'se', 'e', 'w', 'n', 's'])
+const handlesFor = (l: Layer): Handle[] => (l.type === 'image' ? (l.fit === 'cover' ? ['nw', 'ne', 'sw', 'se', 'e', 'w', 'n', 's'] : ['nw', 'ne', 'sw', 'se']) : l.type === 'text' ? ['nw', 'ne', 'sw', 'se', 'e', 'w'] : l.shape === 'line' ? ['e', 'w'] : ['nw', 'ne', 'sw', 'se', 'e', 'w', 'n', 's'])
 type Gesture = {
-  kind: 'move' | 'resize' | 'rotate' | 'scale'; id: string; ids: string[]; handle?: Handle; start: Layer; base: Layer[]; bounds: Bounds | null
+  kind: 'move' | 'resize' | 'rotate' | 'scale' | 'crop'; id: string; ids: string[]; handle?: Handle; start: Layer; base: Layer[]; bounds: Bounds | null
   px: number; py: number; sx: number; sy: number; left: number; top: number
 }
 
@@ -233,8 +233,8 @@ type Gesture = {
  * as alças redimensionam (uma seleção de vários escala como bloco), a bolinha de cima gira. Segurando Shift e arrastando no vazio, desenha-se um retângulo de seleção.
  * Duplo clique em um texto edita direto na peça. Ímã nas bordas e no centro (Alt desliga).
  */
-export function LayerBoxes({ format, list, selectedIds, onSelect, editingId, setEditingId, api, paperRef, canEdit, userGuides = [] }: {
-  userGuides?: Guide[]; format: PromoFormat; list: Layer[]; selectedIds: string[]; onSelect: (ids: string[]) => void; editingId: string | null; setEditingId: (id: string | null) => void
+export function LayerBoxes({ format, list, selectedIds, onSelect, editingId, setEditingId, api, paperRef, canEdit, userGuides = [], assetSizes = {}, cropId = null, setCropId }: {
+  assetSizes?: Record<string, { w: number; h: number }>; cropId?: string | null; setCropId?: (id: string | null) => void; userGuides?: Guide[]; format: PromoFormat; list: Layer[]; selectedIds: string[]; onSelect: (ids: string[]) => void; editingId: string | null; setEditingId: (id: string | null) => void
   api: LayersApi; paperRef: RefObject<HTMLDivElement | null>; canEdit: boolean
 }) {
   const { w: W, h: H } = PROMO_FORMATS[format]
@@ -270,7 +270,7 @@ export function LayerBoxes({ format, list, selectedIds, onSelect, editingId, set
     if (!r || ids.every((id) => all.find((x) => x.id === id)?.locked)) return
     const h = (e.target as HTMLElement).dataset.handle as Handle | 'rot' | undefined
     g.current = {
-      id: l.id, ids, kind: h === 'rot' ? 'rotate' : h ? 'resize' : 'move', handle: h && h !== 'rot' ? h : undefined, start: l, base: all, bounds: boundsOf(all, ids),
+      id: l.id, ids, kind: cropId === l.id ? 'crop' : h === 'rot' ? 'rotate' : h ? 'resize' : 'move', handle: h && h !== 'rot' ? h : undefined, start: l, base: all, bounds: boundsOf(all, ids),
       px: e.clientX, py: e.clientY, sx: r.width / W, sy: r.height / H, left: r.left, top: r.top,
     }
     api.begin()
@@ -282,7 +282,13 @@ export function LayerBoxes({ format, list, selectedIds, onSelect, editingId, set
     if (!k || k.kind === 'scale') return
     const s = k.start
     const dx = (e.clientX - k.px) / k.sx, dy = (e.clientY - k.py) / k.sy
-    if (k.kind === 'move') {
+    if (k.kind === 'crop') {
+      const sz = s.asset ? assetSizes[s.asset] : null
+      if (!sz) return
+      const r = (-s.rot * Math.PI) / 180 // o gesto vem em coordenadas da peça; o recorte gira junto com a moldura
+      const np = panImage(s, sz.w, sz.h, dx * Math.cos(r) - dy * Math.sin(r), dx * Math.sin(r) + dy * Math.cos(r))
+      api.live(format, s.id, { px: np.px, py: np.py })
+    } else if (k.kind === 'move') {
       let mx = dx, my = dy
       if (e.altKey || !k.bounds) setGuides({ x: [], y: [] })
       else {
@@ -304,7 +310,7 @@ export function LayerBoxes({ format, list, selectedIds, onSelect, editingId, set
       const rad = (s.rot * Math.PI) / 180, cos = Math.cos(rad), sin = Math.sin(rad)
       const dxL = dx * cos + dy * sin, dyL = -dx * sin + dy * cos
       let nw = s.w + sgx * dxL, nh = s.h + sgy * dyL
-      const uniform = s.type !== 'shape' && sgx !== 0 && sgy !== 0
+      const uniform = (s.type === 'text' || (s.type === 'image' && s.fit !== 'cover')) && sgx !== 0 && sgy !== 0 // foto preenchendo a moldura redimensiona livre (o recorte se ajusta)
       if (uniform) { const f = Math.max(nw / s.w, nh / s.h); nw = s.w * f; nh = s.h * f }
       nw = Math.max(16, nw); nh = Math.max(s.type === 'shape' && s.shape === 'line' ? 4 : 16, nh)
       if (sgx === 0) nw = s.w
@@ -374,13 +380,17 @@ export function LayerBoxes({ format, list, selectedIds, onSelect, editingId, set
       {canEdit && <div className={`canva-marquee-surface${shiftHeld ? ' on' : ''}`} onPointerDown={mqDown} onPointerMove={mqMove} onPointerUp={mqUp} onPointerCancel={mqUp} />}
       {list.map((l) => {
         const sel = selectedIds.includes(l.id)
-        const editable = sel && canEdit && !l.locked && !multi
+        const cropping = cropId === l.id
+        const editable = sel && canEdit && !l.locked && !multi && !cropping
         const editing = editingId === l.id && l.type === 'text'
         return (
-          <div key={l.id} className={`canva-lbox${sel ? ' sel' : ''}${multi && sel ? ' multi' : ''}${l.locked ? ' locked' : ''}${l.group ? ' grouped' : ''}`} data-layer={l.id} data-type={l.type} title={l.locked ? 'Bloqueado' : 'Arraste para mover; Shift soma à seleção'}
+          <div key={l.id} className={`canva-lbox${sel ? ' sel' : ''}${multi && sel ? ' multi' : ''}${l.locked ? ' locked' : ''}${l.group ? ' grouped' : ''}${cropping ? ' crop' : ''}`} data-layer={l.id} data-type={l.type} title={l.locked ? 'Bloqueado' : 'Arraste para mover; Shift soma à seleção'}
             style={{ left: `${(l.x / W) * 100}%`, top: `${(l.y / H) * 100}%`, width: `${(l.w / W) * 100}%`, height: `${(l.h / H) * 100}%`, transform: l.rot ? `rotate(${l.rot}deg)` : undefined }}
             onPointerDown={(e) => { if (!editing) down(e, l) }} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
-            onDoubleClick={() => { if (l.type === 'text' && canEdit && !l.locked) { onSelect([l.id]); setEditingId(l.id) } }}>
+            onDoubleClick={() => {
+              if (l.type === 'text' && canEdit && !l.locked) { onSelect([l.id]); setEditingId(l.id) }
+              else if (l.type === 'image' && canEdit && !l.locked && setCropId) { onSelect([l.id]); if (l.fit !== 'cover') api.patch(format, l.id, { fit: 'cover' }); setCropId(l.id) }
+            }}>
             {editing && (
               <textarea className="canva-inline" aria-label="Editar o texto na peça" value={l.text ?? ''} maxLength={300} autoFocus
                 onFocus={(e) => e.currentTarget.select()}
@@ -620,8 +630,8 @@ function Num({ id, label, value, min, max, onChange, disabled }: { id: string; l
   )
 }
 
-export function LayerInspector({ api, format, layer: l, page, pageCount, canEdit, onClose, onDuplicate, onDelete, onMsg }: {
-  api: LayersApi; format: PromoFormat; layer: Layer; page: number; pageCount: number; canEdit: boolean; onClose: () => void; onDuplicate: () => void; onDelete: () => void; onMsg: (m: Msg | null) => void
+export function LayerInspector({ api, format, layer: l, page, pageCount, canEdit, onClose, onDuplicate, onDelete, onMsg, cropping = false, onToggleCrop = () => {} }: {
+  cropping?: boolean; onToggleCrop?: () => void; api: LayersApi; format: PromoFormat; layer: Layer; page: number; pageCount: number; canEdit: boolean; onClose: () => void; onDuplicate: () => void; onDelete: () => void; onMsg: (m: Msg | null) => void
 }) {
   const { w: W, h: H } = PROMO_FORMATS[format]
   const dis = !canEdit
@@ -665,6 +675,52 @@ export function LayerInspector({ api, format, layer: l, page, pageCount, canEdit
           </div>
           {!!l.stroke && <><label htmlFor="ly-strokew">Espessura do contorno: {l.strokeW ?? 0}</label><input id="ly-strokew" type="range" min={0} max={30} value={l.strokeW ?? 0} disabled={dis} onChange={(e) => p({ strokeW: Number(e.target.value) }, 'strokew')} /></>}
         </details>
+      )}
+
+      {l.type === 'image' && (
+        <>
+          <details open>
+            <summary>Foto e moldura</summary>
+            <label htmlFor="ly-fit">Encaixe da foto</label>
+            <select id="ly-fit" value={l.fit ?? 'contain'} disabled={dis} onChange={(e) => p({ fit: e.target.value === 'cover' ? 'cover' : undefined })}>
+              <option value="contain">Foto inteira dentro da moldura</option>
+              <option value="cover">Preencher a moldura (corta o que sobra)</option>
+            </select>
+            {l.fit === 'cover' && (
+              <>
+                <label htmlFor="ly-zoom">Zoom da foto: {Math.round((l.zoom ?? 1) * 100)}%</label>
+                <input id="ly-zoom" type="range" min={100} max={400} step={5} value={Math.round((l.zoom ?? 1) * 100)} disabled={dis} onChange={(e) => p({ zoom: Number(e.target.value) / 100 }, 'zoom')} />
+                {canEdit && <button type="button" className={`mini-btn${cropping ? ' primary' : ''}`} aria-pressed={cropping} onClick={onToggleCrop}>{cropping ? 'Concluir o reposicionamento' : 'Reposicionar a foto na moldura'}</button>}
+                {cropping && <p className="muted">Arraste a foto na peça para escolher o recorte. Esc ou &quot;Concluir&quot; encerra.</p>}
+              </>
+            )}
+            <label htmlFor="ly-mask">Formato da moldura</label>
+            <select id="ly-mask" value={l.mask ?? 'rect'} disabled={dis} onChange={(e) => p({ mask: e.target.value === 'rect' ? undefined : (e.target.value as 'circle' | 'round') })}>
+              <option value="rect">Retângulo</option><option value="round">Cantos arredondados</option><option value="circle">Círculo / elipse</option>
+            </select>
+            {l.mask === 'round' && <><label htmlFor="ly-radius">Cantos: {l.radius ?? 24}</label><input id="ly-radius" type="range" min={0} max={200} value={l.radius ?? 24} disabled={dis} onChange={(e) => p({ radius: Number(e.target.value) }, 'radius')} /></>}
+            <div className="canva-chips" role="group" aria-label="Espelhar a foto">
+              <button type="button" className={l.flipX ? 'on' : ''} disabled={dis} aria-pressed={!!l.flipX} onClick={() => p({ flipX: l.flipX ? undefined : true })}>Espelhar ↔</button>
+              <button type="button" className={l.flipY ? 'on' : ''} disabled={dis} aria-pressed={!!l.flipY} onClick={() => p({ flipY: l.flipY ? undefined : true })}>Espelhar ↕</button>
+            </div>
+            <div className="color-grid">
+              <label className="color-item"><input type="checkbox" aria-label="Borda da foto" checked={!!l.border} disabled={dis} onChange={(e) => p({ border: e.target.checked ? '#ffffff' : null, borderW: e.target.checked ? l.borderW || 8 : 0 })} /> Borda
+                {l.border && <input type="color" aria-label="Cor da borda da foto" value={l.border} disabled={dis} onChange={(e) => p({ border: e.target.value }, 'border')} />}</label>
+            </div>
+            {!!l.border && <><label htmlFor="ly-borderw">Espessura da borda: {l.borderW ?? 0}</label><input id="ly-borderw" type="range" min={1} max={40} value={l.borderW ?? 0} disabled={dis} onChange={(e) => p({ borderW: Number(e.target.value) }, 'borderw')} />
+              <label htmlFor="ly-dash">Traço</label><select id="ly-dash" value={l.dash ?? 'solid'} disabled={dis} onChange={(e) => p({ dash: e.target.value === 'solid' ? undefined : (e.target.value as Dash) })}>{DASHES.map(([v, n]) => <option key={v} value={v}>{n}</option>)}</select></>}
+          </details>
+          <details>
+            <summary>Ajustes da foto</summary>
+            {([['bright', 'Brilho', 'ly-bright'], ['contrast', 'Contraste', 'ly-contrast'], ['saturate', 'Saturação', 'ly-saturate']] as const).map(([k, nome, id]) => (
+              <div key={k}><label htmlFor={id}>{nome}: {l[k] ?? 0}</label><input id={id} type="range" min={-100} max={100} value={l[k] ?? 0} disabled={dis} onChange={(e) => p({ [k]: Number(e.target.value) || undefined } as Partial<Layer>, k)} /></div>
+            ))}
+            <label htmlFor="ly-blur">Desfoque: {l.blur ?? 0}</label>
+            <input id="ly-blur" type="range" min={0} max={30} value={l.blur ?? 0} disabled={dis} onChange={(e) => p({ blur: Number(e.target.value) || undefined }, 'blur')} />
+            <label className="color-item" style={{ margin: '4px 0' }}><input type="checkbox" aria-label="Preto e branco" checked={!!l.gray} disabled={dis} onChange={(e) => p({ gray: e.target.checked ? true : undefined })} /> Preto e branco</label>
+            {canEdit && <button type="button" className="mini-btn" onClick={() => p({ bright: undefined, contrast: undefined, saturate: undefined, blur: undefined, gray: undefined })}>Restaurar ajustes</button>}
+          </details>
+        </>
       )}
 
       {l.type === 'shape' && (
