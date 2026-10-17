@@ -5,17 +5,17 @@ import { pool } from '../db.ts'
 import { sniffImage } from '../catalog/images.ts'
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_ITEMS, isLibraryCategory, libraryName, looksLikeSvg, svgIsSafe, type LibraryCategory } from '../domain/promo-library.ts'
 
-export type LibraryItem = { id: string; name: string; category: LibraryCategory; width: number; height: number; created_at: string }
+export type LibraryItem = { id: string; name: string; category: LibraryCategory; width: number; height: number; created_at: string; brand_id: string | null }
 
 export async function listLibrary(category?: string): Promise<LibraryItem[]> {
   const rows = (await pool.query(
-    `select id, name, category, width, height, created_at::text as created_at from promo_library ${isLibraryCategory(category) ? 'where category = $1' : ''} order by created_at desc limit 600`,
+    `select id, name, category, width, height, created_at::text as created_at, brand_id from promo_library ${isLibraryCategory(category) ? 'where category = $1' : ''} order by created_at desc limit 600`,
     isLibraryCategory(category) ? [category] : [])).rows
   return rows
 }
 
 /** Guarda uma imagem: PNG, JPG, WEBP, GIF ou SVG (rasterizado). Vira WEBP de até 2000 px, com transparência. A mesma imagem não entra duas vezes. */
-export async function addLibraryImage(o: { buf: Buffer; fileName: string; category: string; userId: string }): Promise<{ ok: true; id: string; duplicate: boolean } | { ok: false; error: string }> {
+export async function addLibraryImage(o: { buf: Buffer; fileName: string; category: string; userId: string; brandId?: string | null }): Promise<{ ok: true; id: string; duplicate: boolean } | { ok: false; error: string }> {
   const { buf } = o
   if (buf.length === 0) return { ok: false, error: 'Arquivo vazio.' }
   if (buf.length > MAX_LIBRARY_FILE_BYTES) return { ok: false, error: 'A imagem passa de 4 MB. Reduza o tamanho e envie de novo.' }
@@ -29,10 +29,13 @@ export async function addLibraryImage(o: { buf: Buffer; fileName: string; catego
       .rotate().resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: !svg }).webp({ quality: 90, alphaQuality: 95 }).toBuffer({ resolveWithObject: true })
     const sha = createHash('sha256').update(out.data).digest('hex')
     const dup = (await pool.query(`select id from promo_library where sha256 = $1`, [sha])).rows[0]
-    if (dup) return { ok: true, id: dup.id, duplicate: true }
+    if (dup) {
+      if (o.brandId) await pool.query(`update promo_library set brand_id = $2 where id = $1 and brand_id is null`, [dup.id, o.brandId])
+      return { ok: true, id: dup.id, duplicate: true }
+    }
     const r = await pool.query(
-      `insert into promo_library (name, category, data, width, height, sha256, created_by) values ($1, $2, $3, $4, $5, $6, $7) returning id`,
-      [libraryName(o.fileName), category, out.data, out.info.width, out.info.height, sha, o.userId])
+      `insert into promo_library (name, category, data, width, height, sha256, created_by, brand_id) values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
+      [libraryName(o.fileName), category, out.data, out.info.width, out.info.height, sha, o.userId, o.brandId ?? null])
     return { ok: true, id: r.rows[0].id, duplicate: false }
   } catch {
     return { ok: false, error: 'Não consegui ler esta imagem (arquivo corrompido ou formato não suportado).' }
@@ -69,4 +72,9 @@ export async function importLibraryToCampaign(campaignId: string, libraryId: str
     `insert into promo_assets (campaign_id, data, mime, width, height, sha256, created_by) values ($1, $2, $3, $4, $5, $6, $7)
      on conflict (campaign_id, sha256) do update set sha256 = excluded.sha256 returning id`, [campaignId, l.data, l.mime, l.width, l.height, l.sha256, userId])
   return { ok: true, id: r.rows[0].id, width: l.width, height: l.height }
+}
+
+/** Logos e selos oficiais de uma filial (categoria "logo" ligada à filial). */
+export async function listBrandLogos(brandId: string): Promise<LibraryItem[]> {
+  return (await pool.query(`select id, name, category, width, height, created_at::text as created_at, brand_id from promo_library where brand_id = $1 and category = 'logo' order by created_at`, [brandId])).rows
 }

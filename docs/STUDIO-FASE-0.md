@@ -47,7 +47,8 @@ Legenda: ✅ feito e testado · 🟡 parcial · ❌ não existe
 | Preço tipado, cartão de produto, grade automática | 🟡 | Preço é dado tipado (reais/centavos) e a grade vem do tema; não há motor de composição por quantidade nem "criar nova página quando não couber" além da paginação por grade |
 | Variante de layout por formato (posições próprias) | 🟡 | Grade por formato no tema; elementos livres por formato; não há herança de conteúdo entre variantes |
 | Templates editáveis | 🟡 (fase 4) | Modelos de design (cópia congelada com nome/categoria, textos trocáveis ao usar). Faltam: slots de produto, elementos protegidos, variantes por formato, versões do modelo |
-| Kits de marca, componentes | ❌ | Hoje: temas (artes de cabeçalho/rodapé/fundo + cores/grade) |
+| Kits de marca por filial | 🟡 (fase 5) | Logos, cores, fontes aprovadas e textos prontos por filial, aba "Marca" no editor. Faltam: sobreposição por unidade, contatos/QR por unidade, componentes reutilizáveis, bloqueio de elementos oficiais |
+| Componentes reutilizáveis | ❌ | |
 | Documentos livres (sem promoção), "Meus designs", várias peças | 🟡 (fase 3) | Feito como `kind = 'design'` em `promo_campaigns` (mesmo editor, camadas, imagens, aprovação). Falta: miniatura real na lista, formato misto numa arte, versões e modelos |
 | Versões/snapshots e restauração | ❌ | Só o estado atual; aprovação guarda quem/quando |
 | Auditoria de alteração de preço/aprovação | 🟡 | Aprovação registrada; preço editado não gera log próprio |
@@ -91,6 +92,11 @@ Cobertas pelo e2e `e2e/suites/promocoes.mjs` (196 verificações) e `apresentaco
 ### 5.4 Fase 4 (miniaturas e modelos)
 - **Miniaturas:** o editor gera a primeira peça (360 px, WEBP) alguns segundos depois da última mudança e envia para `/api/promocoes/miniatura/[id]` (não altera a aprovação). Aparecem nas listas de designs, promoções e modelos.
 - **Modelos** (`kind = 'template'`, migração 030): "Salvar como modelo" (aba Textos do design) congela uma cópia com nome e categoria; Criação › Modelos lista com filtro; "Usar este modelo" mostra os textos para trocar e cria um design novo (com cópia própria das imagens). Modelo não abre no editor; só o administrador ou quem criou exclui.
+
+### 5.5 Fase 5 (kit de marca)
+- Migração 031: `brand_kits` (cores, fontes, textos por filial) e `promo_library.brand_id` (logos ligados à filial).
+- Criação › Kit de marca (`/criacao/marcas`): escolhe a filial e cadastra logos (envio em lote), cores com nome, até 6 fontes do catálogo e até 12 textos prontos; respeita o acesso por filial no servidor.
+- Editor, aba **Marca**: escolhe a filial e, com um clique, coloca o logo, aplica a cor ao texto/forma selecionado (ou como fundo), troca a fonte do texto selecionado (ou cria um texto) e adiciona textos prontos. Uma filial nunca mostra o kit da outra.
 
 ## 6. Riscos conhecidos
 - Desfazer não cobre edições de encarte (nome, preço, foto, ordem): são gravadas imediatamente.

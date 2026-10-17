@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { zipSync } from 'fflate'
 import { PDFDocument } from 'pdf-lib'
-import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Download, ExternalLink, GripVertical, ImagePlus, Image as ImageIcon, Images, Layers, Palette, Shapes, Settings2, Trash2, Type } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Download, ExternalLink, GripVertical, ImagePlus, BadgeCheck, Image as ImageIcon, Images, Layers, Palette, Shapes, Settings2, Trash2, Type } from 'lucide-react'
 import { PROMO_FORMATS, PROMO_FORMAT_KEYS, BLANK_THEME, TAG_PRESETS, applyOverrides, paginateSections, type BackgroundChoice, type ItemStyle, type PromoFormat, type PromoOverrides, type Rect, type ThemeConfig } from '@/lib/domain/promo'
 import { deletePageLayers, duplicatePageLayers, expandSelection, layersForPage, pagesNeeded } from '@/lib/domain/promo-layers'
 import { TEMPLATE_CATEGORIES } from '@/lib/domain/promo-templates'
@@ -15,8 +15,9 @@ import { canvasToBlob, drawPage, loadFonts, loadImage, loadPromoFonts, pageGeome
 import { ProductPicker } from '../../produtos/product-picker'
 import { BackgroundGallery } from './background-gallery'
 import { CheckPanel } from './check-panel'
+import { BrandPanel } from './brand-panel'
 import { LibraryPicker } from './library-picker'
-import { AddBar, LayerBoxes, addImageLayer, LayerInspector, LayersCanvas, LayersPanel, MultiInspector, duplicateSelection, useLayerKeys, useLayers } from './layers-ui'
+import { AddBar, LayerBoxes, addImageLayer, LayerInspector, LayersCanvas, LayersPanel, MultiInspector, addTextLayer, duplicateSelection, useLayerKeys, useLayers } from './layers-ui'
 import { QuickEdit } from './quick-edit'
 import { RulersAndGuides, useGuides } from './guides-ui'
 import { createTemplateAction, addItemAction, approveCampaignAction, deleteAssetAction, deleteCampaignAction, useLibraryImageAction, moveItemAction, patchItemAction, removeItemAction, reorderItemsAction, saveOverridesAction, setItemProductAction, ungroupItemAction, updateCampaignAction, updateItemAction } from '../actions'
@@ -30,6 +31,7 @@ type Props = {
   canEdit: boolean
   /** "tab" = console em tela cheia, aberto em outra aba */
   mode?: 'embedded' | 'tab'
+  /** filiais a que a pessoa tem acesso (para a aba Marca) */ brands?: { id: string; name: string }[]
 }
 type Geo = { W: number; H: number; cells: Rect[]; ids: string[] }
 
@@ -50,7 +52,7 @@ function ColorField({ label, value, fallback, disabled, onCommit }: { label: str
   )
 }
 
-export function PromoStudio({ campaign, theme: themeProp, themes, items: initial, canEdit, mode = 'embedded' }: Props) {
+export function PromoStudio({ campaign, theme: themeProp, themes, items: initial, canEdit, mode = 'embedded', brands = [] }: Props) {
   const router = useRouter()
   const isDesign = campaign.kind === 'design'
   // design livre: tema em branco (sem cabeçalho, rodapé nem painel); promoção: o tema escolhido
@@ -61,7 +63,7 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
   const [format, setFormat] = useState<PromoFormat>(campaign.design_format ?? 'story')
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
-  const [tab, setTab] = useState<'produtos' | 'camadas' | 'fundo' | 'biblioteca' | 'tema' | 'dados'>(campaign.kind === 'design' ? 'camadas' : 'produtos')
+  const [tab, setTab] = useState<'produtos' | 'camadas' | 'fundo' | 'biblioteca' | 'marca' | 'tema' | 'dados'>(campaign.kind === 'design' ? 'camadas' : 'produtos')
   const [selIds, setSelIds] = useState<string[]>([])
   const [editingLayer, setEditingLayer] = useState<string | null>(null)
   const [quickId, setQuickId] = useState<string | null>(null)
@@ -326,6 +328,21 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
     layersApi.mutate(format, (l) => deletePageLayers(l, pageIdx)); setDesignPages(designPages - 1); setPage(Math.max(0, pageIdx - 1)); setSelIds([])
   }
 
+  // ---------- kit de marca ----------
+  const applyBrandColor = (hex: string) => {
+    if (!selL) return
+    if (selL.type === 'text') layersApi.patch(format, selL.id, { color: hex })
+    else if (selL.type === 'shape') layersApi.patch(format, selL.id, { fill: hex })
+    else setMsg({ kind: 'error', text: 'Selecione um texto ou uma forma para aplicar a cor.' })
+  }
+  const applyBrandFont = (id: string) => {
+    void loadFonts([id]).then(() => {
+      if (selL?.type === 'text') layersApi.patch(format, selL.id, { font: id })
+      else { const n = addTextLayer(layersApi, format, pageIdx, { font: id, text: 'Seu texto aqui' }); if (n) selectLayer(n); else setMsg({ kind: 'error', text: 'Cada formato aceita até 40 elementos livres.' }) }
+    })
+  }
+  const addBrandText = (text: string) => { void loadPromoFonts().then(() => { const n = addTextLayer(layersApi, format, pageIdx, { text, size: 48, bold: true }); if (n) selectLayer(n); else setMsg({ kind: 'error', text: 'Cada formato aceita até 40 elementos livres.' }) }) }
+
   // ---------- downloads ----------
   const pageBlob = async (fmt: PromoFormat, idx: number) => { layersApi.flush(); const c = document.createElement('canvas'); await renderTo(c, fmt, idx, true); return canvasToBlob(c) }
   const save = (blob: Blob, name: string) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000) }
@@ -474,6 +491,7 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
             {!isDesign && <button type="button" role="tab" aria-selected={tab === 'produtos'} className={tab === 'produtos' ? 'on' : ''} onClick={() => setTab('produtos')}><Layers size={14} /> Produtos</button>}
             <button type="button" role="tab" aria-selected={tab === 'camadas'} className={tab === 'camadas' ? 'on' : ''} onClick={() => setTab('camadas')}><Shapes size={14} /> Camadas{curLayers.length ? ` (${curLayers.length})` : ''}</button>
             <button type="button" role="tab" aria-selected={tab === 'biblioteca'} className={tab === 'biblioteca' ? 'on' : ''} onClick={() => setTab('biblioteca')}><Images size={14} /> Biblioteca</button>
+            <button type="button" role="tab" aria-selected={tab === 'marca'} className={tab === 'marca' ? 'on' : ''} onClick={() => setTab('marca')}><BadgeCheck size={14} /> Marca</button>
             <button type="button" role="tab" aria-selected={tab === 'fundo'} className={tab === 'fundo' ? 'on' : ''} onClick={() => setTab('fundo')}><ImageIcon size={14} /> Fundo</button>
             {!isDesign && <button type="button" role="tab" aria-selected={tab === 'tema'} className={tab === 'tema' ? 'on' : ''} onClick={() => setTab('tema')}><Palette size={14} /> Tema</button>}
             <button type="button" role="tab" aria-selected={tab === 'dados'} className={tab === 'dados' ? 'on' : ''} onClick={() => setTab('dados')}><Settings2 size={14} /> Textos</button>
@@ -517,6 +535,8 @@ export function PromoStudio({ campaign, theme: themeProp, themes, items: initial
           )}
 
           {tab === 'camadas' && <LayersPanel api={layersApi} format={format} page={pageIdx} selectedIds={selIds} onSelect={selectLayers} canEdit={canEdit} />}
+
+          {tab === 'marca' && <BrandPanel brands={brands} canEdit={canEdit} busy={libBusy || busy} hasSelection={!!selL} onLogo={(l) => void fromLibrary(l, 'element')} onColor={applyBrandColor} onBgColor={(hex) => chooseBg({ kind: 'color', color: hex })} onFont={applyBrandFont} onText={addBrandText} />}
 
           {tab === 'biblioteca' && <LibraryPicker items={campaign.library} canEdit={canEdit} busy={libBusy || busy} onAdd={(i) => void fromLibrary(i, 'element')} onBackground={(i) => void fromLibrary(i, 'bg')} />}
 

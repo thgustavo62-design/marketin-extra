@@ -182,6 +182,56 @@ try {
   ck('o administrador exclui o modelo; o design criado com ele continua', (await q(`select count(*)::int n from promo_campaigns where id = $1`, [tpl.id]))[0].n === 0 && (await q(`select count(*)::int n from promo_campaigns where id = $1`, [id3]))[0].n === 1)
   await q(`delete from promo_campaigns where id = $1`, [id3])
 
+  // ---------- kit de marca por filial ----------
+  const brands = await q(`select id, name from brands order by name`)
+  const [bA, bB] = brands
+  await a.goto(BASE + '/criacao/marcas'); await idle(a)
+  ck('a tela do kit de marca lista as filiais', (await a.locator('#kit-brand option').count()) >= 2)
+  await a.selectOption('#kit-brand', bA.id); await a.waitForSelector('section[aria-label="Cores"]')
+  await a.getByRole('button', { name: 'Adicionar cor' }).click()
+  await a.locator('input[aria-label="Cor 1"]').fill('#e3171d'); await a.fill('input[aria-label="Nome da cor 1"]', 'Vermelho forte')
+  await a.getByRole('button', { name: 'Adicionar texto' }).click()
+  await a.fill('input[aria-label="Rótulo do texto 1"]', 'Instagram'); await a.fill('input[aria-label="Texto 1"]', '@minasfarma')
+  await a.locator('input[aria-label="Fonte Bebas Neue"]').check(); await a.locator('input[aria-label="Fonte Oswald"]').check()
+  await a.locator('input[aria-label="Enviar logos"]').setInputFiles({ name: 'logo_minas.png', mimeType: 'image/png', buffer: await sharp({ create: { width: 300, height: 120, channels: 4, background: { r: 227, g: 23, b: 29, alpha: 1 } } }).png().toBuffer() }); await wait(3500)
+  await a.getByRole('button', { name: 'Salvar kit de marca' }).click(); await wait(2200)
+  const kitA = (await q(`select colors, fonts, texts from brand_kits where brand_id = $1`, [bA.id]))[0]
+  ck('o kit da filial salva cores, fontes aprovadas e textos prontos', kitA?.colors[0]?.hex === '#e3171d' && kitA.colors[0].name === 'Vermelho forte' && kitA.fonts.join() === 'bebas,oswald' && kitA.texts[0].text === '@minasfarma', JSON.stringify(kitA))
+  const logoA = (await q(`select id, category, brand_id from promo_library where brand_id = $1`, [bA.id]))[0]
+  ck('o logo enviado fica ligado à filial (categoria logo)', logoA?.category === 'logo' && (await a.locator('[data-logo]').count()) === 1)
+  ck('a outra filial continua sem kit (nada se mistura)', (await q(`select count(*)::int n from brand_kits where brand_id = $1`, [bB.id]))[0].n === 0 && (await q(`select count(*)::int n from promo_library where brand_id = $1`, [bB.id]))[0].n === 0)
+
+  // usar no editor
+  await a.goto(`${BASE}/criacao/${id}`); await idle(a); await ready(a)
+  await a.getByRole('tab', { name: /Camadas/ }).click()
+  await a.locator('.canva-layer-list li', { hasText: 'FIM DE SEMANA' }).first().click(); await wait(300)
+  await a.getByRole('tab', { name: /Marca/ }).click()
+  await a.selectOption('#bp-brand', bA.id); await a.waitForSelector('button[aria-label="Aplicar a cor Vermelho forte"]')
+  await a.locator('button[aria-label="Aplicar a cor Vermelho forte"]').click(); await wait(2200)
+  const lyk = async () => (await q(`select layers, overrides from promo_campaigns where id = $1`, [id]))[0]
+  ck('clicar na cor oficial aplica ao texto selecionado', (await lyk()).layers.story.find((x) => x.text === 'FIM DE SEMANA DA LIMPEZA').color === '#e3171d')
+  await a.locator('button[aria-label="Usar a fonte Bebas Neue"]').click(); await wait(2500)
+  ck('clicar na fonte aprovada troca a fonte do texto selecionado', (await lyk()).layers.story.find((x) => x.text === 'FIM DE SEMANA DA LIMPEZA').font === 'bebas')
+  const n0 = (await lyk()).layers.story.length
+  await a.locator('button[aria-label="Adicionar o texto Instagram"]').click(); await wait(2500)
+  ck('clicar no texto pronto adiciona um texto novo na peça', (await lyk()).layers.story.length === n0 + 1 && (await lyk()).layers.story.some((x) => x.text === '@minasfarma'))
+  await a.getByRole('tab', { name: /Marca/ }).click()
+  await a.locator('button[aria-label="Colocar o logo logo minas na peça"]').click(); await wait(3500)
+  ck('clicar no logo coloca a imagem na peça (cópia própria na promoção)', (await lyk()).layers.story.filter((x) => x.type === 'image').length >= 2)
+  await a.getByRole('tab', { name: /Marca/ }).click()
+  await a.locator('button[aria-label="Usar Vermelho forte como fundo"]').click(); await wait(2500)
+  ck('"fundo" usa a cor oficial como fundo do design', (await lyk()).overrides?.background?.kind === 'color' && (await lyk()).overrides.background.color === '#e3171d')
+  await a.getByRole('tab', { name: /Marca/ }).click()
+  await a.selectOption('#bp-brand', bB.id); await wait(1200)
+  ck('trocar para a outra filial mostra o kit dela (vazio), sem logos nem cores da primeira', (await a.locator('button[aria-label^="Colocar o logo"]').count()) === 0 && (await a.locator('button[aria-label^="Aplicar a cor"]').count()) === 0 && /Nenhum logo/.test(await a.textContent('.brand-panel')))
+  await v.goto(BASE + '/criacao/marcas'); await idle(v)
+  ck('leitor vê o kit, sem salvar nem enviar logos', (await v.getByRole('button', { name: 'Salvar kit de marca' }).count()) === 0 && (await v.locator('input[aria-label="Enviar logos"]').count()) === 0)
+  ck('leitor não envia logo pela API (403)', (await vc.request.post(BASE + '/api/promocoes/biblioteca', { headers: { origin: BASE }, multipart: { brand_id: bA.id, file: { name: 'x.png', mimeType: 'image/png', buffer: await sharp({ create: { width: 20, height: 20, channels: 3, background: '#000' } }).png().toBuffer() } } })).status() === 403)
+  await a.goto(BASE + '/criacao/marcas'); await idle(a); await a.waitForSelector('[data-logo]')
+  await a.locator('[data-logo] button[aria-label^="Excluir logo"]').click(); await wait(2000)
+  ck('excluir o logo tira da filial e da biblioteca', (await q(`select count(*)::int n from promo_library where brand_id = $1`, [bA.id]))[0].n === 0)
+  await q(`delete from brand_kits where brand_id = $1`, [bA.id])
+
   // ---------- excluir ----------
   await a.goto(BASE + '/criacao'); await idle(a)
   const antes = await a.locator('.design-card').count()

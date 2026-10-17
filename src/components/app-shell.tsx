@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
-  BarChart3, Bell, BookOpen, ClipboardCheck, Columns3, CalendarDays, Camera, ChevronLeft, ChevronRight, FileBarChart, FileText, FileUp, Flag, LayoutDashboard,
+  BadgeCheck, BarChart3, Bell, BookOpen, ClipboardCheck, Columns3, CalendarDays, Camera, ChevronLeft, ChevronRight, FileBarChart, FileText, FileUp, Flag, LayoutDashboard,
   FolderOpen, LayoutTemplate, Link2, PackageSearch, PenTool, Presentation, Sparkles, LogOut, Megaphone, Menu, Radar, Settings, Store, Target, X,
   type LucideIcon,
 } from 'lucide-react'
@@ -23,7 +23,7 @@ const GROUPS: Group[] = [
       { href: '/planejamento/importar-plano', label: 'Importar plano (PDF)', icon: FileUp, write: true },
     ],
   },
-  { title: 'Criação', items: [{ href: '/criacao', label: 'Meus designs', icon: PenTool, exact: true }, { href: '/criacao/modelos', label: 'Modelos', icon: LayoutTemplate }] },
+  { title: 'Criação', items: [{ href: '/criacao', label: 'Meus designs', icon: PenTool, exact: true }, { href: '/criacao/modelos', label: 'Modelos', icon: LayoutTemplate }, { href: '/criacao/marcas', label: 'Kit de marca', icon: BadgeCheck }] },
   {
     title: 'Produção',
     items: [

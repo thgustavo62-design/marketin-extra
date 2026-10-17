@@ -145,6 +145,12 @@ export function addImageLayer(api: LayersApi, fmt: PromoFormat, page: number, im
   return api.add(fmt, l) ? l.id : null
 }
 
+/** Coloca um texto novo no meio da peça (já com a caixa ajustada ao texto). */
+export function addTextLayer(api: LayersApi, fmt: PromoFormat, page: number, extra: Partial<Layer>): string | null {
+  const l = fitLayer(makeLayer('text', fmt, { page, ...extra }))
+  return api.add(fmt, l) ? l.id : null
+}
+
 /** Atalhos como no Canva: Delete, setas (Shift = 10 px), Ctrl+A (tudo da peça), Ctrl+C / Ctrl+X / Ctrl+V (copiar, recortar e colar, inclusive em outra peça ou formato), Ctrl+D (duplicar), Ctrl+G (agrupar) e Ctrl+Shift+G (desagrupar), Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z, Esc. Não atrapalha quem está digitando. */
 // área de transferência dos elementos: vale entre peças e formatos da mesma sessão do navegador
 let layerClipboard: { fmt: PromoFormat; layers: Layer[] } | null = null
