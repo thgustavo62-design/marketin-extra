@@ -57,7 +57,7 @@ const GROUPS: Group[] = [
   { title: 'Sistema', items: [{ href: '/configuracoes', label: 'Configurações', icon: Settings }] },
 ]
 
-const STORE_KEY = 'extra_sidebar_collapsed'
+const STORE_KEY = 'nova7_sidebar_collapsed'
 
 export function AppShell({
   user, logout, topbar, readOnly, children,
@@ -89,10 +89,10 @@ export function AppShell({
     <div className={`shell${collapsed ? ' collapsed' : ''}${open ? ' open' : ''}`}>
       <aside className="sidebar" aria-label="Menu lateral">
         <div className="side-head">
-          <div className="side-logo"><img src="/brand/extra-e.png" alt="" /></div>
+          <div className="side-logo"><img src="/brand/nova7-simbolo.png" alt="" /></div>
           <div className="side-title">
-            <b>EXTRA MARKETING</b>
-            <small>Central de conteúdo</small>
+            <b>NOVA7</b>
+            <small>Marketing em movimento</small>
           </div>
         </div>
 
@@ -139,6 +139,7 @@ export function AppShell({
           <button type="button" className="btn menu-btn" onClick={() => setOpen((o) => !o)} aria-label={open ? 'Fechar menu' : 'Abrir menu'}>
             {open ? <X size={18} /> : <Menu size={18} />}
           </button>
+          <span className="workspace-label">NOVA7 <span>Workspace</span></span>
           <span className="spacer" />
           {topbar}
         </div>

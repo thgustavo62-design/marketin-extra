@@ -1,5 +1,5 @@
 // PDF A4 do relatório, com pdf-lib (sem arquivos de fonte em disco: funciona em serverless).
-// Identidade: faixa azul-marinho "Extra Marketing" + nome da filial. Células truncadas com reticências (o HTML e o CSV trazem o texto completo).
+// Identidade: faixa azul-marinho "Nova7" + nome da filial. Células truncadas com reticências (o HTML e o CSV trazem o texto completo).
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import { pdfSafe } from '../domain/index.ts'
 import { LEGEND, reportTitle, snapshotToBlocks, type Block, type Col } from './blocks.ts'
@@ -33,7 +33,7 @@ function wrap(font: PDFFont, text: string, size: number, width: number): string[
 export async function reportToPdf(s: ReportSnapshot): Promise<Uint8Array> {
   const doc = await PDFDocument.create()
   const font = await doc.embedFont(StandardFonts.Helvetica), bold = await doc.embedFont(StandardFonts.HelveticaBold)
-  doc.setTitle(pdfSafe(reportTitle(s))); doc.setAuthor('Extra Marketing'); doc.setCreator('Extra Marketing'); doc.setCreationDate(new Date(s.meta.generatedAt))
+  doc.setTitle(pdfSafe(reportTitle(s))); doc.setAuthor('Nova7'); doc.setCreator('Nova7'); doc.setCreationDate(new Date(s.meta.generatedAt))
 
   let page: PDFPage = doc.addPage([W, H]), y = H - M
   const newPage = () => { page = doc.addPage([W, H]); y = H - M }
@@ -41,7 +41,7 @@ export async function reportToPdf(s: ReportSnapshot): Promise<Uint8Array> {
   // faixa de identidade da primeira página
   page.drawRectangle({ x: 0, y: H - 78, width: W, height: 78, color: NAVY })
   page.drawRectangle({ x: 0, y: H - 82, width: W, height: 4, color: ORANGE })
-  page.drawText('EXTRA MARKETING', { x: M, y: H - 34, size: 9, font: bold, color: ORANGE })
+  page.drawText('NOVA7', { x: M, y: H - 34, size: 9, font: bold, color: ORANGE })
   page.drawText(fit(bold, reportTitle(s), 15, CW), { x: M, y: H - 56, size: 15, font: bold, color: rgb(1, 1, 1) })
   y = H - 104
 
@@ -98,7 +98,7 @@ export async function reportToPdf(s: ReportSnapshot): Promise<Uint8Array> {
   const pages = doc.getPages()
   pages.forEach((p, i) => {
     p.drawLine({ start: { x: M, y: 38 }, end: { x: W - M, y: 38 }, thickness: 0.5, color: LINE })
-    p.drawText(fit(font, `Extra Marketing · ${s.meta.brandName}${s.meta.branchName ? ' · ' + s.meta.branchName : ''} · ${s.meta.from.split('-').reverse().join('/')} a ${s.meta.to.split('-').reverse().join('/')}`, 7, CW - 90), { x: M, y: 26, size: 7, font, color: MUTED })
+    p.drawText(fit(font, `Nova7 · ${s.meta.brandName}${s.meta.branchName ? ' · ' + s.meta.branchName : ''} · ${s.meta.from.split('-').reverse().join('/')} a ${s.meta.to.split('-').reverse().join('/')}`, 7, CW - 90), { x: M, y: 26, size: 7, font, color: MUTED })
     p.drawText(`Página ${i + 1} de ${pages.length}`, { x: W - M - 60, y: 26, size: 7, font, color: MUTED })
     p.drawText(fit(font, LEGEND, 6.5, CW), { x: M, y: 15, size: 6.5, font, color: MUTED })
   })

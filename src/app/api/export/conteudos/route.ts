@@ -34,7 +34,7 @@ export async function GET(req: Request) {
   return new NextResponse(csv, {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': 'attachment; filename="cronograma-extra-marketing.csv"',
+      'Content-Disposition': 'attachment; filename="cronograma-nova7.csv"',
     },
   })
 }

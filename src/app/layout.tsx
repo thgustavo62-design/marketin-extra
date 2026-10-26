@@ -1,12 +1,12 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import localFont from 'next/font/local'
 import './globals.css'
 
-const font = Inter({ subsets: ['latin'], weight: ['400', '500', '600', '700'] })
+const font = localFont({ src: '../../public/fonts/Montserrat.ttf', weight: '100 900', display: 'swap' })
 
 export const metadata: Metadata = {
-  title: 'Extra Marketing',
-  description: 'Planejamento, conteúdo e resultados das suas redes.',
+  title: 'Nova7',
+  description: 'Estratégia, criação e resultados. Seu marketing em um só lugar.',
   robots: { index: false, follow: false },
 }
 
