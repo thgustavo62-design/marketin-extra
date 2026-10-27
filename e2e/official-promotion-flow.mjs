@@ -57,6 +57,8 @@ export async function officialPromotionFlow({
     "KIT VITAMINAS 60CAPS",
     "TERMOMETRO DIGITAL UN",
   ];
+  const photoDirectory = await fs.mkdtemp("/tmp/encartiva-photo-folder-");
+  const photoFiles = [];
   const workbook = new Excel.Workbook(),
     sheet = workbook.addWorksheet("OFERTAS");
   sheet.addRow([
@@ -93,18 +95,29 @@ export async function officialPromotionFlow({
       ])
       .png()
       .toBuffer();
-    await db.query(
-      "insert into product_images(company_id,product_id,is_primary,data,thumb,width,height,size_bytes,sha256,source)values($1,$2,true,$3,$3,120,180,$4,$5,'upload')",
-      [
-        company.id,
-        product.id,
-        image,
-        image.length,
-        createHash("sha256").update(image).digest("hex"),
-      ],
-    );
+    await fs.writeFile(photoDirectory + "/" + ean + ".png", image);
+    photoFiles.push({ ean, image, productId: product.id });
     sheet.addRow(["", ean, prices[i], names[i], prices[i]]);
   }
+  // Real folder picker -> batch uploads -> company-isolated image records.
+  await page.goto(base + "/produtos/importar");
+  await page.getByRole("heading", { name: "Importar produtos e imagens", exact: true }).waitFor();
+  await page.locator('input[webkitdirectory]').setInputFiles(photoDirectory);
+  await page.getByRole("button", { name: "Importar 5 imagens", exact: true }).click();
+  await page.getByText("Processamento concluído. As imagens aceitas já estão salvas no banco.", { exact: false }).waitFor({ timeout: 60000 });
+  const savedPhotos = (await db.query("select i.company_id,i.product_id,i.fundo,i.is_primary from product_images i where i.product_id=any($1::uuid[])", [photoFiles.map(f => f.productId)])).rows;
+  assert.equal(savedPhotos.length, 5);
+  assert.ok(savedPhotos.every(i => i.company_id === company.id && i.fundo === "transparente" && i.is_primary));
+  check();
+  const resend = await context.request.post(base + "/api/produtos/imagens", { headers: { origin: base }, multipart: { company_id: company.id, preserve_cutout: "1", file: { name: photoFiles[0].ean + ".png", mimeType: "image/png", buffer: photoFiles[0].image } } });
+  assert.equal(resend.status(), 200, await resend.text());
+  assert.equal((await resend.json()).results[0].status, "duplicada");
+  check();
+  const wrongCompany = await context.request.post(base + "/api/produtos/imagens", { headers: { origin: base }, multipart: { company_id: other, preserve_cutout: "1", file: { name: "wrong.png", mimeType: "image/png", buffer: photoFiles[0].image } } });
+  assert.equal(wrongCompany.status(), 409);
+  assert.equal((await db.query("select count(*)::int n from product_images where product_id=any($1::uuid[])", [photoFiles.map(f => f.productId)])).rows[0].n, 5);
+  check();
+  await fs.rm(photoDirectory, { recursive: true, force: true });
   const bytes = Buffer.from(await workbook.xlsx.writeBuffer());
   const response = await context.request.post(base + "/api/promocoes/revisao", {
     headers: { origin: base },

@@ -1,3 +1,4 @@
+import { catalogImportContext } from '@/lib/catalog/import-scope'
 import { NextResponse } from 'next/server'
 import { parseErpXlsx, upsertProducts } from '@/lib/catalog/erp'
 import { audit, sameOrigin } from '@/lib/auth'
@@ -14,6 +15,8 @@ export async function POST(req: Request) {
   if (!canWrite(user.role)) return NextResponse.json({ error: 'Seu perfil é somente leitura.' }, { status: 403 })
   let fd: FormData
   try { fd = await req.formData() } catch { return NextResponse.json({ error: 'Envio inválido ou grande demais (máximo 4 MB).' }, { status: 413 }) }
+  const target = await catalogImportContext(String(fd.get('company_id') ?? ''))
+  if ('error' in target) return NextResponse.json({ error: target.error }, { status: target.status })
   const file = fd.get('file')
   if (!(file instanceof File) || file.size === 0) return NextResponse.json({ error: 'Escolha a planilha do ERP (.xlsx).' }, { status: 400 })
   if (file.size > 4 * 1024 * 1024) return NextResponse.json({ error: 'A planilha passa de 4 MB. Envie só as colunas Código, Descrição, Barras e Grupo.' }, { status: 413 })

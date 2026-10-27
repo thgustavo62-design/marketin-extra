@@ -16,17 +16,13 @@ import { makeTransparent } from "./background.ts";
 import { processImage } from "./images.ts";
 
 // ---------- índice de nomes (descrição + descrições alternativas de cada produto) ----------
-let cache: { at: number; idx: NameIndex } | null = null;
-const TTL_MS = 5 * 60_000;
-export const invalidateCatalogIndex = () => {
-  cache = null;
-};
-
+// Authorization-sensitive names must never be reused across requests or tenants.
+// The signature remains compatible with existing import callers.
+export const invalidateCatalogIndex = () => {};
 export async function catalogIndex(): Promise<NameIndex> {
-  if (cache && Date.now() - cache.at < TTL_MS) return cache.idx;
   const rows = (
     await pool.query(
-      `select id, description, aliases from products where active`,
+      `select id, description, aliases from products where active and company_id=nova7_private.active_company() and (branch_id is null or branch_id=nova7_private.active_branch())`,
     )
   ).rows as { id: string; description: string; aliases: string[] }[];
   const entries: { id: string; description: string }[] = [];
@@ -41,7 +37,6 @@ export async function catalogIndex(): Promise<NameIndex> {
     }
   }
   const idx = buildIndex(entries);
-  cache = { at: Date.now(), idx };
   return idx;
 }
 
@@ -337,7 +332,7 @@ export async function ingestImage(o: {
     const ean = parseEan(base);
     if (ean) {
       const hit = (
-        await pool.query(`select id from products where ean = $1 and active`, [
+        await pool.query(`select id from products where ean = $1 and active and company_id=nova7_private.active_company() and (branch_id is null or branch_id=nova7_private.active_branch())`, [
           ean,
         ])
       ).rows[0];

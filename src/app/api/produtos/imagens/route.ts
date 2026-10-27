@@ -1,3 +1,4 @@
+import { catalogImportContext } from '@/lib/catalog/import-scope'
 import { NextResponse } from 'next/server'
 import { ingestImage, invalidateCatalogIndex, type IngestResult } from '@/lib/catalog/store'
 import { MAX_IMAGE_INPUT_BYTES } from '@/lib/catalog/images'
@@ -18,6 +19,8 @@ export async function POST(req: Request) {
   if(Number(req.headers.get("content-length"))>4*1024*1024)return NextResponse.json({error:"O envio passa de 4 MB. Use lotes menores."},{status:413})
   let fd: FormData
   try { fd = await req.formData() } catch { return NextResponse.json({ error: 'Envio inválido ou grande demais (máximo 4 MB por envio).' }, { status: 413 }) }
+  const target = await catalogImportContext(String(fd.get('company_id') ?? ''))
+  if ('error' in target) return NextResponse.json({ error: target.error }, { status: target.status })
   const productId = String(fd.get('product_id') ?? '')
   if (productId && !isUuid(productId)) return NextResponse.json({ error: 'Produto inválido.' }, { status: 400 })
   const files = fd.getAll('file').filter((f): f is File => f instanceof File).slice(0, 40)

@@ -44,7 +44,7 @@ async function compact(file: File) {
     bitmap.close();
   }
 }
-export function PhotoImporter() {
+export function PhotoImporter({ companyId, companyName }: { companyId: string; companyName: string }) {
   const router = useRouter(),
     folder = useRef<HTMLInputElement>(null),
     images = useRef<HTMLInputElement>(null),
@@ -140,6 +140,7 @@ export function PhotoImporter() {
         if (!batch.length) continue;
         const fd = new FormData();
         fd.set("preserve_cutout", preserve ? "1" : "0");
+        fd.set("company_id", companyId);
         batch.forEach((x) => fd.append("file", x.file));
         try {
           const res = await fetch("/api/produtos/imagens", {
@@ -147,7 +148,7 @@ export function PhotoImporter() {
               body: fd,
             }),
             data = await res.json().catch(() => ({}));
-          if (res.status === 401 || res.status === 403) {
+          if (res.status === 401 || res.status === 403 || res.status === 409) {
             cursor.current = batch[0].index;
             paused.current = true;
             setError(data.error ?? "Entre novamente para continuar.");
@@ -234,7 +235,7 @@ export function PhotoImporter() {
         <div>
           <h2>Seu acervo de produtos, no mesmo lugar.</h2>
           <p>
-            Salve as fotos recortadas no banco de produtos. As promoções
+            Salve as fotos recortadas no catálogo de <strong>{companyName}</strong>. As promoções
             automáticas usam a foto principal de cada produto vinculado pelo EAN.
             Selecione a pasta do computador; as subpastas também são incluídas.
           </p>
