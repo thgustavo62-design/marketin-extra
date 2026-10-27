@@ -1,4 +1,5 @@
 // Catálogo de produtos: leitura, busca, imagens e fila de conferência. Importações com .ts para rodar também em scripts do Node.
+import sharp from 'sharp'
 import { pool, withTx } from '../db.ts'
 import { buildIndex, matchName, nameFromFile, normalizeName, parseEan, searchKey, searchTerms, type Candidate, type NameIndex } from '../domain/catalog.ts'
 import { makeTransparent } from './background.ts'
@@ -133,7 +134,7 @@ type Source = 'proprio' | 'upload' | 'open_beauty_facts' | 'open_food_facts' | '
 
 /** Recebe uma imagem: valida, otimiza, tenta ligar a um produto (por EAN no nome do arquivo, descrição exata ou parecida) ou manda para a fila de conferência. */
 export async function ingestImage(o: {
-  buf: Buffer; fileName: string; userId: string | null; source?: Source; productId?: string | null; method?: 'ean' | 'manual'; requireTransparent?: boolean
+  buf: Buffer; fileName: string; userId: string | null; source?: Source; productId?: string | null; method?: 'ean' | 'manual'; requireTransparent?: boolean; preserveCutout?: boolean
   license?: string | null; attribution?: string | null; sourceUrl?: string | null
 }): Promise<IngestResult> {
   const file = o.fileName
@@ -143,10 +144,12 @@ export async function ingestImage(o: {
   let img = p.image
   let fundo: 'transparente' | 'original' = 'original'
   let original: Buffer | null = null
+  if(o.preserveCutout){const stats=await sharp(img.data).stats();fundo=stats.isOpaque?'original':'transparente'}else{
   const cut = await makeTransparent(o.buf)
   if (cut.ok) {
     const c = await processImage(cut.png)
     if (c.ok) { original = p.image.data; img = c.image; fundo = 'transparente' }
+  }
   }
   // foto de banco aberto sem fundo liso é foto amadora (mão, prateleira, cenário): não serve como foto profissional
   if (fundo === 'original' && (o.requireTransparent || (o.source ?? '').startsWith('open_'))) return { file, status: 'invalida', error: 'Sem fundo liso (não dá para deixar transparente): não usada.' }

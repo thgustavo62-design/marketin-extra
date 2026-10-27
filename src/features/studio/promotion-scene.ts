@@ -4,6 +4,7 @@ import { Context } from "svgcanvas";
 import {
   applyOverrides,
   BLANK_THEME,
+  normalizeTheme,
   paginateSections,
   PROMO_FORMATS,
   type PromoFormat,
@@ -26,8 +27,10 @@ export function promotionPageCount(
   format: PromoFormat,
 ): number {
   if (source.campaign.kind !== "promocao") return source.campaign.design_pages;
-  if (!source.theme) return 1;
-  const cfg = applyOverrides(source.theme.config, source.campaign.overrides),
+  const cfg = applyOverrides(
+      source.theme?.config ?? normalizeTheme({}),
+      source.campaign.overrides,
+    ),
     g = cfg.grid[format];
   return Math.max(
     1,
@@ -50,13 +53,9 @@ export async function promotionScene(
 ): Promise<StudioScene> {
   const { campaign: c, theme, items } = source,
     design = c.kind !== "promocao";
-  if (!design && !theme)
-    throw new Error(
-      "Escolha um tema em “Dados e geração automática” antes de abrir esta promoção no Studio.",
-    );
   const config = design
       ? BLANK_THEME
-      : applyOverrides(theme!.config, c.overrides),
+      : applyOverrides(theme?.config ?? normalizeTheme({}), c.overrides),
     { w: W, h: H } = PROMO_FORMATS[format];
   const find = (role: string) =>
       theme?.assets.find((a) => a.role === role && a.format === format),

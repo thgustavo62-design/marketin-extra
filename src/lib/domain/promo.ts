@@ -287,10 +287,12 @@ export function normalizeBackground(raw: unknown): BackgroundChoice | undefined 
   return undefined
 }
 
-export type PromoOverrides = { tagText?: string; showTag?: boolean; footerLines?: string[]; extraText?: string; background?: BackgroundChoice; /** artes fixas do tema que esta promoção não usa (ids) */ hideFixed?: string[] }
+export type PromoOverrides = { grid?: Partial<Record<PromoFormat, GridSpec>>; tagText?: string; showTag?: boolean; footerLines?: string[]; extraText?: string; background?: BackgroundChoice; /** artes fixas do tema que esta promoção não usa (ids) */ hideFixed?: string[] }
 export function normalizeOverrides(raw: unknown): PromoOverrides {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const out: PromoOverrides = {}
+  if(r.grid&&typeof r.grid==='object'&&!Array.isArray(r.grid)){const values=r.grid as Record<string,unknown>,grid:Partial<Record<PromoFormat,GridSpec>>={};for(const f of PROMO_FORMAT_KEYS){const g=values[f] as {cols?:unknown;rows?:unknown}|undefined;if(g&&Number.isInteger(g.cols)&&Number.isInteger(g.rows)&&Number(g.cols)>=1&&Number(g.cols)<=6&&Number(g.rows)>=1&&Number(g.rows)<=8&&Number(g.cols)*Number(g.rows)<=30)grid[f]={cols:Number(g.cols),rows:Number(g.rows)}}if(Object.keys(grid).length)out.grid=grid}
+
   if (typeof r.tagText === 'string') out.tagText = r.tagText.trim().slice(0, 24)
   if (typeof r.showTag === 'boolean') out.showTag = r.showTag
   if (Array.isArray(r.footerLines)) out.footerLines = r.footerLines.filter((x): x is string => typeof x === 'string').map((x) => x.trim().slice(0, 80)).filter(Boolean).slice(0, 3)
@@ -302,7 +304,7 @@ export function normalizeOverrides(raw: unknown): PromoOverrides {
 }
 /** O que a promoção define (etiqueta, rodapé) vale no lugar do tema. */
 export function applyOverrides(theme: ThemeConfig, o: PromoOverrides): ThemeConfig {
-  return { ...theme, tagText: o.tagText ?? theme.tagText, showTag: o.showTag ?? theme.showTag, footerLines: o.footerLines ?? theme.footerLines }
+  return { ...theme, grid:{...theme.grid,...o.grid}, tagText: o.tagText ?? theme.tagText, showTag: o.showTag ?? theme.showTag, footerLines: o.footerLines ?? theme.footerLines }
 }
 
 /** Tema de um design livre: sem título, rodapé, painel nem nuvens (a peça começa em branco; o fundo vem da galeria). */
