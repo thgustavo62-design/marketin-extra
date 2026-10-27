@@ -673,6 +673,7 @@ export function StudioEditor(
             {[...objects].reverse().map((o, i) => (
               <div
                 className="studio-layer"
+                data-object-type={o.type}
                 key={objects.length - i}
                 data-active={selected === o}
               >

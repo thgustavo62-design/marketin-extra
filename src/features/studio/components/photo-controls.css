@@ -1,0 +1,22 @@
+.n7-studio .studio-photo-panel{width:310px;flex:none;min-height:0;display:flex;flex-direction:column;background:#fff;border-right:1px solid #e4dfeb;position:relative}
+.n7-studio .studio-photo-scroll{overflow:auto;flex:1;min-height:0}
+.n7-studio .photo-controls{padding:16px}
+.n7-studio .photo-controls h3{font-size:12px;font-weight:750;margin:22px 0 10px;color:#302747}
+.n7-studio .photo-controls .studio-muted{line-height:1.6}
+.n7-studio .photo-slider{display:block;margin:14px 0}
+.n7-studio .photo-slider>span{display:flex;justify-content:space-between;align-items:center}
+.n7-studio .photo-slider output{font-size:11px;font-variant-numeric:tabular-nums;padding:2px 8px;background:#f1edf8;border-radius:6px}
+.n7-studio .photo-slider input{width:100%;accent-color:#6754d8;min-height:26px;margin-top:5px}
+.n7-studio .photo-buttons{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0}
+.n7-studio .photo-buttons button{display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid #e4dfeb;border-radius:8px;padding:8px 10px;font-size:11px;background:#faf9fc;color:#302747}
+.n7-studio .photo-buttons button:hover,.n7-studio .photo-buttons button[aria-pressed=true]{background:#eee7fc;border-color:#6754d8}
+.n7-studio .photo-crop-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.n7-studio .photo-crop-grid label{font-size:11px}
+.n7-studio .photo-crop-grid input{display:block;width:100%;min-height:34px;border:1px solid #e4dfeb;border-radius:7px;padding:6px 8px;margin-top:4px}
+.n7-studio .photo-controls .studio-choice{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:35px;margin-top:10px;font-size:11px}
+.n7-studio .photo-shadow{display:flex;gap:8px;align-items:center}
+.n7-studio .photo-close{border-top:1px solid #e4dfeb;padding:13px;background:#f8f5ea;font-weight:650;color:#5542bb}
+@media(max-width:900px){.n7-studio .studio-photo-panel{position:absolute;left:72px;top:0;bottom:0;z-index:30;width:min(310px,calc(100vw - 72px));box-shadow:8px 0 24px #11121420}}
+
+@media(max-width:900px){.n7-studio .studio-body > aside.studio-photo-panel[aria-label]{z-index:60}}
+@media(max-width:700px){.n7-studio .studio-body > aside.studio-photo-panel[aria-label]{left:80px;right:auto;width:min(310px,calc(100vw - 80px));max-width:calc(100vw - 80px);z-index:60}}
