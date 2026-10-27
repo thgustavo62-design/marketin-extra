@@ -189,9 +189,9 @@ export function drawOfferDescription(
       break;
     fs *= 0.94;
   }
-  c.beginPath();
-  c.rect(r.x, r.y, r.w, r.h);
-  c.clip();
+  // Fit before drawing. A per-text canvas clip becomes a relative Fabric clip
+  // after SVG import and cuts off the first line when Text turns into IText.
+  // The measured wrapping above already keeps every line inside this region.
   lines.forEach((l, i) => c.fillText(l, r.x + r.w / 2, r.y + i * fs * 1.04));
   c.restore();
 }

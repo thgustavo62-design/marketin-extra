@@ -42,17 +42,24 @@ Sem confirmação explícita da totalidade das variações, a faixa troca “TOD
 
 ## Verificação reproduzível
 
-- `npm test`: regras de domínio, regressões e preços dinâmicos.
+- `npm test`: 264 testes de domínio, regressão e proteção do inventário.
 - `NOVA7_BUILD_DIR=.next-owners npm run build`: build da aplicação.
-- `NOVA7_TEST_MODULES=/caminho/node_modules node e2e/owner-hierarchy-local.mjs`: banco descartável PGlite, todas as migrações, testes de autorização e transferência, sem acesso remoto.
-- Adicionar `NOVA7_BROWSER_TEST=1` executa também a interface sobre esse banco. Requer build, Chromium em `/tmp/nova7-chromium/chromium` e certificado local em `/tmp/nova7-test/{key,cert}.pem`, como no harness Studio existente. Dependências opcionais de QA: `@electric-sql/pglite@0.5.10`, `@electric-sql/pglite-socket@0.2.13` e `@sparticuz/chromium`.
+- `NOVA7_TEST_DB=postgres node e2e/owner-hierarchy-local.mjs`: 73 verificações em PostgreSQL nativo descartável. Usa a dependência `embedded-postgres` do projeto, sem consumir DATABASE_URL nem conectar a um banco externo. Executar com usuário de sistema não-root.
+- Adicionar `NOVA7_TEST_MIGRATION_ROLE=limited` repete as migrations com CREATEROLE sem SUPERUSER.
+- `NOVA7_TEST_DB=postgres NOVA7_BROWSER_TEST=1 NOVA7_PROMOTION_TEST=1 NOVA7_TEST_MODULES=/caminho/qa/node_modules node e2e/owner-hierarchy-local.mjs`: fluxo completo com 94 verificações, incluindo planilha, cinco preços, três formatos, PNG, PDF e isolamento entre empresas.
+- Para o navegador, fornecer `NOVA7_CHROMIUM_BIN` ou instalar `@sparticuz/chromium@153.0.0` no diretório de QA. O bootstrap extrai fontes/NSS em pasta temporária quando necessário. O certificado de teste é criado automaticamente com OpenSSL. As fontes e as bibliotecas de teste não alteram configurações de produção.
+- O modo PGlite anterior permanece disponível por `NOVA7_TEST_MODULES`, com `@electric-sql/pglite@0.5.10` e `@electric-sql/pglite-socket@0.2.13`. Apenas esse adaptador serializa conexões. O modo PostgreSQL utiliza conexões independentes e o login comercial `nova7_runtime` sem BYPASSRLS.
 
-O banco compartilhado não recebeu as migrações 037/038. O cadastro dos titulares reais, classificação dos arquivos legados, provisionamento da conexão restrita e cadastro dos componentes oficiais no banco real dependem do corte coordenado; não foram simulados como operações concluídas.
+## Inventário antes do corte
 
-### Resultado desta revisão
+`NOVA7_PROJECT_REF=<referência confirmada> node scripts/tenancy-inventory.mjs` usa a conexão interna autorizada de DATABASE_URL em transação READ ONLY com snapshot consistente. Recusa outro projeto, host arbitrário ou conexão local fora da suíte antes de consultar. TLS exige validação de certificado; informar DATABASE_CA quando necessário. O script nunca imprime a credencial, lê senhas, cria titulares ou reclassifica arquivos.
 
-Build de produção e 258 testes de domínio aprovados. A suíte de banco executa 58 verificações, incluindo leitura dos bytes de arquivos, isolamento de fotos e campanhas, limites de contrato, revogação após transferência e bloqueio de troca para o papel PostgreSQL privilegiado. A suíte combinada passou em 66 verificações de banco e navegador, incluindo cadastro de proprietário e empresa, confirmação de titularidade e instalação dos seis componentes oficiais no banco descartável; o servidor terminou sem erros. A verificação gráfica validou cinco preços e 25 objetos de texto independentes no caminho SVG/Fabric.
+O resultado lista empresas, contagens dos acervos e quantos produtos não possuem uso identificado, possuem uso em uma empresa ou são compartilhados entre empresas. Uso comercial é evidência para revisão, não prova de titularidade. O script foi testado antes e depois da migração em banco descartável, preservando as contagens e detectando o produto compartilhado. Não foi executado no banco real.
 
-Ainda exige revisão de implantação: titulares reais de Minas Farma/Farma e Farma, classificação do acervo legado sem empresa, arquivos institucionais aprovados do cabeçalho e rodapé, credenciais restritas e migração coordenada do banco real. A faixa permanece conservadora quando não há comprovação de todas as variações. O harness serializa as conexões de teste porque PGlite multiplexa uma única sessão; esse preload não participa da aplicação publicada. As migrações também foram verificadas com um ator CREATEROLE sem SUPERUSER. A validação em PostgreSQL de staging e os advisors do projeto correto continuam necessários antes do corte.
+## Resultado desta revisão
 
-`node e2e/offer-identity-visual.cjs` reproduz a verificação gráfica usando o Chromium local do harness.
+Build aprovado e 264 testes passaram. As migrations e 73 verificações passaram em PostgreSQL 18.4 nativo, também com ator CREATEROLE sem SUPERUSER. A suíte completa passou em 94 verificações de banco e navegador. Validou cadastro de proprietário/empresa, confirmação administrativa de titularidade, instalação CP-MF-001 a CP-MF-006, importação de planilha com fotos de teste, seleção automática do modelo, preços R$ 0,99 até R$ 1.299,99, Stories/Feed/A4 e exportações PNG/PDF. Os textos e os preços permanecem independentes e editáveis. Nenhum dado de cliente foi utilizado nesses testes.
+
+O teste de legado verifica IDs e nomes das duas empresas, filiais, administrador, produto compartilhado, bytes da foto e preços das campanhas antes/depois da migração, sem criar proprietários. A conferência visual do PNG revelou um recorte incorreto das descrições na conversão SVG/Fabric. O renderizador agora ajusta as linhas antes de desenhar e evita o clip relativo que cortava a primeira linha. A regressão verifica a descrição em cada formato.
+
+O banco compartilhado não recebeu as migrations 037/038. Continuam pendentes os titulares reais, classificação administrativa do acervo, arquivos institucionais aprovados do cabeçalho/rodapé, conexão restrita, backup e corte coordenado. A faixa usa texto conservador quando não há comprovação de todas as variações. Ainda faltam os advisors e o inventário no projeto real autorizado; a integração Supabase disponível apontou outro projeto e não foi usada para ler nem alterar dados do Nova7.
