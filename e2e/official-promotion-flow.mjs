@@ -251,6 +251,10 @@ export async function officialPromotionFlow({
     );
     check();
     if (format === "feed") {
+      if (process.env.ENCARTIVA_PHOTO_TEST === "1") {
+        const { photoEditingFlow } = await import("./lib/photo-editing-flow.mjs");
+        await photoEditingFlow({ db, page, campaign, format, check });
+      }
       await page.getByText("Exportar", { exact: true }).click();
       const [download] = await Promise.all([
         page.waitForEvent("download"),

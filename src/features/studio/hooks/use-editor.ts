@@ -93,7 +93,8 @@ const buildEditor = ({
         const collect = (o: fabric.Object) => {
           if (o.type === "image") {
             const img = o as fabric.Image,
-              el = img.getElement() as HTMLImageElement | HTMLCanvasElement,
+              // SVG already embeds filtered instances; URL references must embed the original pixels.
+              el = (img as fabric.Image & { _originalElement?: HTMLImageElement | HTMLCanvasElement })._originalElement ?? img.getElement() as HTMLImageElement | HTMLCanvasElement,
               c = document.createElement("canvas");
             c.width = el.width;
             c.height = el.height;

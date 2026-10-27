@@ -7,7 +7,7 @@ export default function DesignLayout({
   return (
     <div className="design-space">
       <div className="design-space-brand">
-        <span className="design-space-icon">N7</span>
+        <span className="design-space-icon"><img src="/brand/encartiva/simbolo.png" alt="" width="34" height="36" style={{ objectFit: "contain" }} /></span>
         <div>
           <b>Design</b>
           <small>Crie. Personalize. Publique.</small>

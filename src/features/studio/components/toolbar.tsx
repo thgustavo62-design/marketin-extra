@@ -339,14 +339,15 @@ export const Toolbar = ({
       )}
       {isImage && (
         <div className="flex items-center h-full justify-center">
-          <Hint label="Filtros" side="bottom" sideOffset={5}>
+          <Hint label="Ajustar foto" side="bottom" sideOffset={5}>
             <Button
               onClick={() => onChangeActiveTool("filter")}
-              size="icon"
+              aria-label="Ajustar foto"
+              size="sm"
               variant="ghost"
               className={cn(activeTool === "filter" && "bg-gray-100")}
             >
-              <TbColorFilter className="size-4" />
+              <TbColorFilter className="size-4" /> <span>Ajustar foto</span>
             </Button>
           </Hint>
         </div>
