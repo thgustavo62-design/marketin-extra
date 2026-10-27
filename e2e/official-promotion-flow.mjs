@@ -11,6 +11,7 @@ export async function officialPromotionFlow({
   require,
   base,
   staffId,
+  ownerId,
   check,
 }) {
   const Excel = require("exceljs"),
@@ -25,6 +26,28 @@ export async function officialPromotionFlow({
     )
   ).rows[0];
   assert.equal(model.config.offerIdentity.kind, "glossy-price");
+  check();
+  const adminCookies = await context.cookies(base);
+  const ownerToken = randomBytes(32).toString("base64url");
+  await db.query(
+    "insert into sessions(user_id,token_hash,expires_at)values($1,$2,now()+interval '1 hour')",
+    [ownerId, createHash("sha256").update(ownerToken).digest("hex")],
+  );
+  await context.addCookies([{
+    name: "__Host-extra_session", value: ownerToken, url: base,
+    secure: true, httpOnly: true, sameSite: "Lax",
+  }]);
+  const identity = await (await context.request.get(base + "/api/me")).json();
+  assert.equal(identity.role, "owner");
+  check();
+  const other = (
+    await db.query("select id from companies where slug='company-b'")
+  ).rows[0].id;
+  const deniedCompany = await context.request.get(base + "/empresas/" + other);
+  const deniedBody = await deniedCompany.text();
+  // Next can stream a not-found response with HTTP 200 after the layout flushes.
+  assert.ok(deniedCompany.status() === 404 || deniedBody.includes("NEXT_HTTP_ERROR_FALLBACK;404"));
+  assert.ok(!deniedBody.includes("company-b"), "Another company's data must not render");
   check();
   const prices = [0.99, 4.99, 29.99, 199.99, 1299.99];
   const names = [
@@ -262,6 +285,7 @@ export async function officialPromotionFlow({
   );
   assert.equal(privateImage.status(), 404);
   check();
+  await context.addCookies(adminCookies);
   await context.addCookies([
     {
       name: "extra_scope",
