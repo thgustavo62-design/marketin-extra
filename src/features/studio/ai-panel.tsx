@@ -110,7 +110,7 @@ export function AiPanel({
                 : "Gerar imagem"}
           </button>
           <p className="studio-muted">
-            Usa a integração Replicate configurada pela Nova7. As solicitações
+            Usa a integração Replicate configurada pela Encartiva. As solicitações
             consomem o saldo desse serviço.
           </p>
         </>

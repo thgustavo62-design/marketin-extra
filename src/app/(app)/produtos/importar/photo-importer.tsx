@@ -213,7 +213,7 @@ export function PhotoImporter() {
       ),
       a = document.createElement("a");
     a.href = url;
-    a.download = "nova7-importacao-fotos.csv";
+    a.download = "encartiva-importacao-fotos.csv";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };

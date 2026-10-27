@@ -1,0 +1,11 @@
+{
+  "name": "Encartiva — Promoções inteligentes",
+  "short_name": "Encartiva",
+  "description": "Um ecossistema para criar, organizar e acompanhar promoções.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8F5EA",
+  "theme_color": "#111214",
+  "icons": [{ "src": "/brand/encartiva/app.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" }]
+}
