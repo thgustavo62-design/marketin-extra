@@ -75,7 +75,7 @@ export default async function Integracoes() {
       <section aria-labelledby="contas" style={{ marginTop: 28 }}>
         <h2 id="contas" className="eyebrow">Contas do Windsor e a filial de cada uma</h2>
         <p className="muted" style={{ marginBottom: 12 }}>
-          O sistema reconhece a filial pelo nome da conta, usando os apelidos abaixo. É isso que separa as informações da Minas Farma e da Farma e Farma nos Resultados.
+          O sistema reconhece a filial pelo nome da conta, usando os apelidos abaixo. Esse vínculo organiza os resultados de cada empresa cadastrada.
         </p>
         {unidentified.length > 0 && (
           <div className="notice info"><AlertTriangle size={18} /><span>Sem filial identificada: <b>{unidentified.map((a) => a.name).join(' · ')}</b>. Adicione um apelido ou associe à mão abaixo. Enquanto isso só aparecem em “Todas as filiais”, sinalizadas.</span></div>

@@ -14,3 +14,5 @@ next-env.d.ts
 # resultados dos testes de ponta a ponta
 /e2e/.out/
 /e2e/.pgdata/
+
+.next-studio-*/

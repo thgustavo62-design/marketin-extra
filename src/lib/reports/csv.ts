@@ -4,7 +4,7 @@ import { LEGEND, headerRows, reportTitle, snapshotToBlocks } from './blocks.ts'
 import type { ReportSnapshot } from './build.ts'
 
 export function reportToCsv(s: ReportSnapshot): string {
-  const rows: unknown[][] = [[reportTitle(s)], ...headerRows(s), ['Fonte', 'Extra Marketing (conteúdos e publicações) e Windsor/Meta (coletas guardadas)'], ['Legenda', LEGEND], []]
+  const rows: unknown[][] = [[reportTitle(s)], ...headerRows(s), ['Fonte', 'Nova7 (conteúdos e publicações) e Windsor/Meta (coletas guardadas)'], ['Legenda', LEGEND], []]
   // o primeiro bloco é o cabeçalho (já escrito acima)
   for (const b of snapshotToBlocks(s).slice(1)) {
     if (b.kind === 'h2') rows.push([b.text])

@@ -27,7 +27,7 @@ export async function listThemes(): Promise<ThemeLite[]> {
 export async function getTheme(id: string): Promise<Theme | null> {
   const t = (await pool.query(`select id, name, config, fixed from promo_themes where id = $1`, [id])).rows[0]
   if (!t) return null
-  const assets = (await pool.query(`select role, format, width, height from promo_theme_assets where theme_id = $1`, [id])).rows as ThemeAsset[]
+  const assets = (await pool.query(`select role, format, width, height, sha256 from promo_theme_assets where theme_id = $1`, [id])).rows as ThemeAsset[]
   const arts = (await pool.query(`select id, name, kind, width, height from promo_theme_arts where theme_id = $1 order by created_at`, [id])).rows as ThemeArt[]
   return { id: t.id, name: t.name, config: normalizeTheme(t.config), assets, fixed: normalizeLayers(t.fixed), arts }
 }
@@ -185,6 +185,8 @@ async function cloneDesign(db: Db, sourceId: string, o: { sourceKinds: string[];
   for (const m of map) { layers = layers.split(m.old).join(m.new); overrides = overrides.split(m.old).join(m.new) }
   const finalLayers = o.texts ? applyTemplateTexts(normalizeLayers(JSON.parse(layers)), o.texts) : JSON.parse(layers)
   await db.query(`update promo_campaigns set layers = $2::jsonb, overrides = $3::jsonb where id = $1`, [n, JSON.stringify(finalLayers), overrides])
+  const savedPages=(await db.query('select format,page,scene,source_hash from studio_pages where campaign_id=$1',[sourceId])).rows
+  for(const page of savedPages){let scene=JSON.stringify(page.scene);for(const m of map)scene=scene.split(m.old).join(m.new);await db.query('insert into studio_pages(campaign_id,format,page,scene,source_hash,updated_by) values($1,$2,$3,$4::jsonb,$5,$6)',[n,page.format,page.page,scene,page.source_hash,o.userId])}
   return { ok: true, id: n }
 }
 
@@ -444,6 +446,7 @@ export async function deleteAsset(campaignId: string, assetId: string): Promise<
   if (!c) return { ok: false, error: 'Promoção não encontrada.' }
   const layers = normalizeLayers(c.layers), bg = normalizeOverrides(c.overrides).background
   if ((bg?.kind === 'asset' && bg.asset === assetId) || PROMO_FORMAT_KEYS.some((f) => layers[f].some((l) => l.asset === assetId))) return { ok: false, error: 'Esta imagem está em uso na peça (fundo ou elemento). Troque ou remova antes de excluir.' }
+  try{const used=await pool.query('select 1 from studio_pages where position($1 in scene::text)>0 limit 1',[assetId]);if(used.rowCount)return{ok:false,error:'Esta imagem está em uso em uma arte do Nova7 Studio.'}}catch(e){if((e as {code?:string}).code!=='42P01')throw e}
   const r = await pool.query(`delete from promo_assets where id = $1 and campaign_id = $2`, [assetId, campaignId])
   if (!r.rowCount) return { ok: false, error: 'Imagem não encontrada.' }
   await touch(pool, campaignId)

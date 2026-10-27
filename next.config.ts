@@ -51,6 +51,8 @@ const security = [
 
 const config: NextConfig = {
   poweredByHeader: false,
+  distDir: process.env.NOVA7_BUILD_DIR || '.next',
+  serverExternalPackages: ['fabric'],
   async redirects() {
     return [
       ...MOVED.map(([source, destination]) => ({ source, destination, permanent: true })),
