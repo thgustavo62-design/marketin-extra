@@ -12,6 +12,7 @@ export const PROMO_LAYOUTS = [
     hint: "Uma oferta em destaque por página",
     count: 1,
   },
+  { id: "two", name: "2 produtos", hint: "Duas ofertas por página", count: 2 },
   { id: "four", name: "4 produtos", hint: "Grade 2 × 2 por página", count: 4 },
   {
     id: "six",
@@ -31,6 +32,12 @@ export function promoLayoutGrid(
       story: { cols: 1, rows: 1 },
       feed: { cols: 1, rows: 1 },
       a4: { cols: 1, rows: 1 },
+    };
+  if (id === "two")
+    return {
+      story: { cols: 1, rows: 2 },
+      feed: { cols: 2, rows: 1 },
+      a4: { cols: 1, rows: 2 },
     };
   if (id === "four")
     return {

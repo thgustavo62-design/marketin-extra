@@ -1,4 +1,5 @@
 import { ModuleTabs } from "@/components/module-tabs";
+import { WindsorConnection } from "@/components/windsor-connection";
 export default function ModuleLayout({
   children,
 }: {
@@ -6,6 +7,7 @@ export default function ModuleLayout({
 }) {
   return (
     <>
+      <WindsorConnection />
       <ModuleTabs
         label="Resultados"
         tabs={[

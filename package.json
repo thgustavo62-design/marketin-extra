@@ -37,7 +37,8 @@
     "sharp": "^0.35.5",
     "svgcanvas": "2.6.0",
     "tailwind-merge": "2.6.0",
-    "unpdf": "^1.8.1"
+    "unpdf": "^1.8.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@types/fabric": "5.3.0",

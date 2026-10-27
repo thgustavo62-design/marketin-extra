@@ -4,6 +4,8 @@ import { ConfirmButton } from '@/components/confirm-button'
 import { requireAdmin } from '@/lib/auth'
 import { getBranches, getBrands, getIntegrationAccounts } from '@/lib/data'
 import { resolveAccount, type AccountKind } from '@/lib/integrations'
+import { windsorConfigStatus } from '@/lib/windsor-config'
+import { WindsorConnection } from '@/components/windsor-connection'
 import { windsorQuery } from '@/lib/windsor'
 import { deleteMappingAction, saveAliasesAction } from './actions'
 import { MappingForm } from './mapping-form'
@@ -19,7 +21,7 @@ async function discover(connector: 'instagram' | 'facebook') {
 export default async function Integracoes() {
   await requireAdmin()
   const [brands, branches, maps, ig, ads] = await Promise.all([getBrands(), getBranches(), getIntegrationAccounts(), discover('instagram'), discover('facebook')])
-  const windsorKey = Boolean(process.env.WINDSOR_API_KEY)
+  const windsorKey = (await windsorConfigStatus()).configured
   const problems = [ig.r, ads.r].filter((r) => r.status === 'paused' || r.status === 'error')
   const mapList = maps.map((m) => ({ account_name: m.account_name, kind: m.kind as AccountKind, brand_id: m.brand_id, branch_id: m.branch_id }))
   const brandName = (id: string) => brands.find((b) => b.id === id)?.name ?? '—'
@@ -52,6 +54,7 @@ export default async function Integracoes() {
         <p>O que está realmente ativo. Nada é mostrado como conectado sem estar.</p>
       </header>
 
+      <WindsorConnection />
       <ul className="status">
         {rows.map((r) => (
           <li key={r.name}>

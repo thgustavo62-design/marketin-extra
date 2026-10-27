@@ -8,7 +8,7 @@ export function WindsorNotice({ result }: { result: WindsorResult<never> | { sta
   let text: React.ReactNode
   switch (result.status) {
     case 'not_configured':
-      text = 'A chave do Windsor não está configurada no servidor (WINDSOR_API_KEY).'
+      text = 'Configure a chave da Windsor.ai no cabeçalho de Insights e Resultados.'
       break
     case 'no_accounts':
       text = 'Nenhuma conta deste tipo está conectada ao Windsor ainda.'

@@ -1,3 +1,4 @@
+import { campaignAccess } from "@/lib/promo/access";
 import { studioModelVersion } from "@/lib/domain/studio-ai";
 import { NextResponse } from "next/server";
 import { sameOrigin } from "@/lib/auth";
@@ -13,7 +14,11 @@ const json = (body: object, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 async function writer(id: string) {
   const user = await getSession();
-  return user && !user.mustChange && canWrite(user.role) && isUuid(id)
+  return user &&
+    !user.mustChange &&
+    canWrite(user.role) &&
+    isUuid(id) &&
+    (await campaignAccess(id))
     ? user
     : null;
 }

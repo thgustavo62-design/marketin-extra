@@ -24,6 +24,17 @@ export default async function Promocoes() {
           Studio.
         </p>
       </header>
+      {write && (
+        <div className="notice info">
+          <span>
+            <b>Revisão inteligente de encartes</b> · Confira os SKUs, aprove
+            agrupamentos e escolha até duas fotos reais por oferta.{" "}
+            <Link className="btn primary-link" href="/promocoes/importar">
+              Importar e revisar campanha
+            </Link>
+          </span>
+        </div>
+      )}
       <div className="promo-readiness">
         <Link href="/produtos">
           <span>01 · CATÁLOGO</span>
