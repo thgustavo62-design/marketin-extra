@@ -20,3 +20,5 @@ next-env.d.ts
 .next-windsor/
 
 .next-review/
+
+.next-owners/

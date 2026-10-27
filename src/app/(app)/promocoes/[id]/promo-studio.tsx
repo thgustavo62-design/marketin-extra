@@ -1,4 +1,5 @@
 "use client";
+import { OfferIdentityControls } from "@/components/offer-identity-controls";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -712,8 +713,7 @@ export function PromoStudio({
     const arr = [...items];
     const a = arr.findIndex((i) => i.id === fromId),
       b = arr.findIndex((i) => i.id === toId);
-    if (a < 0 || b < 0)
-      return; // soltar sobre outro produto na peça = troca de lugar com ele
+    if (a < 0 || b < 0) return; // soltar sobre outro produto na peça = troca de lugar com ele
     [arr[a], arr[b]] = [arr[b], arr[a]];
     setItems(arr.map((x, k) => ({ ...x, position: k + 1 })));
     act(() =>
@@ -2358,6 +2358,13 @@ export function PromoStudio({
 
               <details open>
                 <summary>Etiqueta do preço</summary>
+                {(baseCfg?.offerIdentity || sel.style.offerIdentity) && (
+                  <OfferIdentityControls
+                    value={sel.style.offerIdentity ?? baseCfg?.offerIdentity}
+                    onChange={(v) => setStyle({ offerIdentity: v })}
+                    disabled={dis}
+                  />
+                )}
                 <div
                   className="canva-chips"
                   role="group"

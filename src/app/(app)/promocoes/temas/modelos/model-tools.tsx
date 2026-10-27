@@ -133,7 +133,7 @@ export function ModelCategory({
               ),
               a = document.createElement("a");
             a.href = url;
-            a.download = "nova7-layout.json";
+            a.download = "encartiva-layout.json";
             a.click();
             URL.revokeObjectURL(url);
           }}

@@ -20,7 +20,7 @@ export default async function Design({ params, searchParams }: { params: Promise
   return (
     <>
       <header className="page-head">
-        <Link className="btn primary-link" href={`/studio/${id}`}>Abrir no Nova7 Studio</Link>
+        <Link className="btn primary-link" href={`/studio/${id}`}>Abrir no Encartiva Studio</Link>
         <h1>{data.campaign.name}</h1>
         <p><Link href="/criacao">← Meus designs</Link> · arte livre: adicione texto, imagens e formas, use a biblioteca e os fundos, e baixe em PNG.</p>
       </header>

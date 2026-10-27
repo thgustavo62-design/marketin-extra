@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import "@/features/studio/studio.css";
 export const metadata = {
-  title: "Nova7 Studio — Editor de designs e promoções",
+  title: "Encartiva Studio — Editor de designs e promoções",
 };
 export default async function StudioLayout({
   children,

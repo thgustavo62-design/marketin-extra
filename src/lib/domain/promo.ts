@@ -1,3 +1,7 @@
+import {
+  normalizeOfferIdentity,
+  type OfferIdentity,
+} from "./offer-identity.ts";
 // Promoções montadas a partir de planilha: leitura de preço, colunas, tema e posição dos produtos em cada formato. Tudo puro e testado.
 import { parseEan } from "./catalog.ts";
 
@@ -148,6 +152,7 @@ export function parsePromoRows(
 export type GridSpec = { cols: number; rows: number };
 export type GridArea = { top: number; bottom: number };
 export type ThemeConfig = {
+  offerIdentity?: OfferIdentity;
   dimensions?: Partial<Record<PromoFormat, { w: number; h: number }>>;
   colors: {
     skyTop: string;
@@ -300,6 +305,9 @@ export function normalizeTheme(raw: unknown): ThemeConfig {
     typeof v === "string" ? v.trim().slice(0, max) : def;
   const gap = Number(t.cardGap);
   return {
+    ...(normalizeOfferIdentity(t.offerIdentity)
+      ? { offerIdentity: normalizeOfferIdentity(t.offerIdentity) }
+      : {}),
     colors,
     grid,
     panel,
@@ -480,6 +488,7 @@ export const TAG_PRESETS = [
   "Oferta",
 ] as const;
 export type ItemStyle = {
+  offerIdentity?: OfferIdentity;
   /** texto da etiqueta: ausente = a do tema; "" = sem etiqueta neste encarte */
   tag?: string;
   tagColor?: string;
@@ -497,6 +506,8 @@ export function normalizeItemStyle(raw: unknown): ItemStyle {
     unknown
   >;
   const out: ItemStyle = {};
+  const identity = normalizeOfferIdentity(r.offerIdentity);
+  if (identity) out.offerIdentity = identity;
   if (typeof r.tag === "string") out.tag = r.tag.trim().slice(0, 24);
   for (const k of [
     "tagColor",

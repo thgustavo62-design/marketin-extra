@@ -260,8 +260,8 @@ export function StudioEditor(
         </button>
         <img
           className="studio-wordmark"
-          src="/brand/nova7-principal.png"
-          alt="Nova7 Studio"
+          src="/brand/encartiva/branca.png"
+          alt="Encartiva Studio"
         />
         <span className="studio-title">{c.name}</span>
         <button
@@ -455,7 +455,7 @@ export function StudioEditor(
               <aside className="studio-panel">
                 <h2>Modelos e arquivos</h2>
                 <p className="studio-muted">
-                  Modelos da sua biblioteca, com os arquivos e o login da Nova7.
+                  Modelos da sua biblioteca, com os arquivos e o login da Encartiva.
                 </p>
                 <label>
                   Importar JSON do editor

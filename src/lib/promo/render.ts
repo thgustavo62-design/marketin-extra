@@ -1,3 +1,8 @@
+import {
+  drawGlossyPrice,
+  drawGoldRibbon,
+  drawOfferDescription,
+} from "./offer-identity-render.ts";
 // Desenho da peça de promoção em canvas (navegador): feed, story e A4. Mesmo código para a prévia e para baixar.
 import {
   BACKGROUND_PRESETS,
@@ -758,6 +763,94 @@ function drawCell(
     w: cell.w,
     h: Math.max(40, bottom - top),
   };
+  const identity = st.offerIdentity ?? theme.offerIdentity;
+  if (identity) {
+    // Fixed, disjoint bands keep photos, descriptions and dynamic prices inside each cell.
+    const pad = r.w * 0.055,
+      ribbonH = r.h * 0.09;
+    if (identity.ribbonEnabled)
+      drawGoldRibbon(
+        ctx,
+        { x: r.x + pad, y: r.y + r.h * 0.01, w: r.w - pad * 2, h: ribbonH },
+        identity.ribbonText,
+      );
+    const photo = {
+      x: r.x + pad,
+      y: r.y + r.h * 0.115,
+      w: r.w - pad * 2,
+      h: r.h * 0.4,
+    };
+    const pictures = (it.imgs?.length ? it.imgs : it.img ? [it.img] : []).slice(
+      0,
+      identity.photoCount,
+    );
+    pictures.forEach((img, i) =>
+      drawContain(
+        ctx,
+        img,
+        {
+          x: photo.x + (i * photo.w) / pictures.length,
+          y: photo.y,
+          w: photo.w / pictures.length,
+          h: photo.h,
+        },
+        1,
+      ),
+    );
+    if (!pictures.length) {
+      ctx.save();
+      ctx.font = `800 ${r.w * 0.045}px ${TEXT}`;
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#777";
+      ctx.fillText(
+        "SELECIONE A FOTOGRAFIA",
+        r.x + r.w / 2,
+        photo.y + photo.h * 0.5,
+      );
+      ctx.restore();
+    }
+    drawOfferDescription(
+      ctx,
+      { x: r.x + pad, y: r.y + r.h * 0.535, w: r.w - pad * 2, h: r.h * 0.15 },
+      [it.name, it.note].filter(Boolean).join(" "),
+      identity.descriptionScale,
+    );
+    let w = (r.w * 0.79 * identity.labelScale) / 100,
+      h = (r.h * 0.255 * identity.labelScale) / 100;
+    const a = (Math.abs(identity.angle) * Math.PI) / 180,
+      cos = Math.cos(a),
+      sin = Math.sin(a);
+    const factor = Math.min(
+      1,
+      (r.w * 0.94) / (w * cos + h * sin),
+      (r.h * 0.285) / (h * cos + w * sin),
+    );
+    w *= factor;
+    h *= factor;
+    const extentX = (w * cos + h * sin) / 2,
+      extentY = (h * cos + w * sin) / 2;
+    const cx = Math.max(
+      r.x + extentX + r.w * 0.02,
+      Math.min(
+        r.x + r.w - extentX - r.w * 0.02,
+        r.x + r.w * 0.5 + (r.w * identity.labelX) / 100,
+      ),
+    );
+    const cy = Math.max(
+      r.y + r.h * 0.7 + extentY,
+      Math.min(
+        r.y + r.h * 0.985 - extentY,
+        r.y + r.h * 0.84 + (r.h * identity.labelY) / 100,
+      ),
+    );
+    drawGlossyPrice(
+      ctx,
+      { x: cx - w / 2, y: cy - h / 2, w, h },
+      it.price,
+      identity,
+    );
+    return;
+  }
   const badgeR = Math.min(r.w * 0.24, r.h * 0.22);
   const bx = r.x + r.w - badgeR - r.w * 0.015,
     by = r.y + r.h - badgeR - r.h * 0.03;

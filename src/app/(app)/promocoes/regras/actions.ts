@@ -1,6 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { adminOrError, audit } from "@/lib/auth";
+import { writerOrError, audit } from "@/lib/auth";
+import { companyAdmin } from "@/lib/tenancy/service";
 import { pool } from "@/lib/db";
 import { isUuid, type FormState } from "@/lib/form";
 import { normalizeGroupingRules } from "@/lib/domain/promotion-review";
@@ -8,12 +9,16 @@ export async function saveGroupingRules(
   _prev: FormState,
   fd: FormData,
 ): Promise<FormState> {
-  const g = await adminOrError();
+  const g = await writerOrError();
   if (!g.ok) return { error: g.error };
   const brandId = String(fd.get("brand_id")),
     revision = Number(fd.get("revision"));
   if (!isUuid(brandId) || !Number.isInteger(revision))
     return { error: "Empresa ou versão inválida." };
+  if (!(await companyAdmin(brandId)))
+    return {
+      error: "Somente administradores desta empresa alteram suas regras.",
+    };
   let raw: unknown;
   try {
     raw = JSON.parse(String(fd.get("config")));

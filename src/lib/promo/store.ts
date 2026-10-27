@@ -1311,7 +1311,7 @@ export async function deleteAsset(
     if (used.rowCount)
       return {
         ok: false,
-        error: "Esta imagem está em uso em uma arte do Nova7 Studio.",
+        error: "Esta imagem está em uso em uma arte do Encartiva Studio.",
       };
   } catch (e) {
     if ((e as { code?: string }).code !== "42P01") throw e;

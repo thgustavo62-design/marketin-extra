@@ -327,10 +327,29 @@ export async function generateReviewed(
   },
 ) {
   if (!canWrite(user.role)) throw Error("Seu perfil é somente leitura.");
-  const theme =
+  let theme =
     opts.themeId && isUuid(opts.themeId) ? await getTheme(opts.themeId) : null;
   if (opts.themeId && (!theme || theme.active === false))
     throw Error("Modelo não encontrado ou desativado.");
+  if (!opts.themeId) {
+    const source = (
+      await pool.query("select name,brand_id from promo_imports where id=$1", [
+        id,
+      ])
+    ).rows[0];
+    if (
+      source &&
+      /corta[\s_-]*pre[cç]o/i.test(`${source.name} ${opts.title}`)
+    ) {
+      const official = (
+        await pool.query(
+          "select id from promo_themes where company_id=$1 and official_code='CP-MF-006' and active",
+          [source.brand_id],
+        )
+      ).rows[0];
+      if (official) theme = await getTheme(official.id);
+    }
+  }
   return withTx(async (db) => {
     const r = (
       await db.query("select * from promo_imports where id=$1 for update", [id])
@@ -403,7 +422,9 @@ export async function generateReviewed(
           JSON.stringify(report),
           JSON.stringify(
             normalizeOverrides({
-              grid: promoLayoutGrid(opts.layout),
+              grid: theme?.config.offerIdentity
+                ? theme.config.grid
+                : promoLayoutGrid(opts.layout),
               dimensions: opts.square
                 ? { feed: { w: 1080, h: 1080 } }
                 : undefined,

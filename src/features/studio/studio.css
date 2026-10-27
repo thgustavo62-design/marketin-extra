@@ -6,7 +6,7 @@
   --studio-card-foreground: 240 10% 14%;
   --studio-popover: 0 0% 100%;
   --studio-popover-foreground: 240 10% 14%;
-  --studio-primary: 260 72% 58%;
+  --studio-primary: 249 63% 59%;
   --studio-primary-foreground: 0 0% 100%;
   --studio-secondary: 250 20% 95%;
   --studio-secondary-foreground: 240 10% 14%;
@@ -18,13 +18,13 @@
   --studio-destructive-foreground: 0 0% 100%;
   --studio-border: 250 15% 88%;
   --studio-input: 250 15% 88%;
-  --studio-ring: 260 72% 58%;
+  --studio-ring: 249 63% 59%;
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: #f1f0f6;
+  background: #f8f5ea;
   color: #242130;
-  font-family: Arial, sans-serif;
+  font-family: var(--font-interface), sans-serif;
   font-size: 13px;
   overflow: hidden;
 }
@@ -79,7 +79,7 @@
   gap: 12px;
   align-items: center;
   color: white;
-  background: linear-gradient(110deg, #18131f, #54318c);
+  background: linear-gradient(110deg, #111214, #302747);
 }
 .n7-studio .studio-header button,
 .n7-studio .studio-header select {
@@ -113,7 +113,7 @@
   flex: 1;
 }
 .n7-studio .studio-wordmark {
-  width: 98px;
+  width: 132px;
   max-height: 38px;
   object-fit: contain;
 }
@@ -213,7 +213,7 @@
   padding: 6px;
 }
 .n7-studio .studio-layer[data-active="true"] {
-  border-color: #8150e4;
+  border-color: #6754d8;
   background: #f5efff;
 }
 .n7-studio .studio-layer > button:first-child {

@@ -1,5 +1,6 @@
+import { companyAdmin } from "@/lib/tenancy/service";
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { getScope } from "@/lib/scope";
 import { getGroupingRules } from "@/lib/promo/review-store";
 import { PromoTabs } from "../promo-tabs";
@@ -9,7 +10,7 @@ export default async function Page({
 }: {
   searchParams: Promise<{ empresa?: string }>;
 }) {
-  await requireAdmin();
+  await requireUser();
   const scope = await getScope(),
     sp = await searchParams,
     brand =
@@ -17,6 +18,10 @@ export default async function Page({
       scope.brand ??
       scope.brands[0];
   if (!brand) return <p>Cadastre uma empresa antes de configurar as regras.</p>;
+  if (!(await companyAdmin(brand.id)))
+    return (
+      <p>Somente administradores autorizados da empresa alteram as regras.</p>
+    );
   const saved = await getGroupingRules(brand.id);
   return (
     <>
