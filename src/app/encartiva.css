@@ -74,3 +74,11 @@ button:focus-visible, a:focus-visible { outline-color: var(--brand-violet); }
   .workspace-label { font-size: 10px; }
   .shell.collapsed .side-logo { display: none; }
 }
+
+.side-close { display: none; }
+@media (max-width:900px) {
+  .side-close { display:grid; place-items:center; position:absolute; top:12px; right:10px; width:30px; height:30px; border:1px solid #dcceff40; border-radius:8px; background:#282331; color:#fff; }
+  .side-head { padding-right:46px; }
+  .side-title .side-wordmark { width:180px; max-width:100%; }
+  .shell.open .menu-btn { visibility:hidden; }
+}

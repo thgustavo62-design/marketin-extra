@@ -138,8 +138,9 @@ export function AppShell({
     <div
       className={`shell${collapsed ? " collapsed" : ""}${open ? " open" : ""}`}
     >
-      <aside className="sidebar" aria-label="Menu lateral">
+      <aside id="main-navigation" className="sidebar" aria-label="Menu lateral">
         <div className="side-head">
+          {open && <button type="button" className="side-close" onClick={() => setOpen(false)} aria-label="Fechar menu"><X size={18} /></button>}
           <div className="side-logo">
             <img src="/brand/encartiva/simbolo.png" alt="" />
           </div>
@@ -224,8 +225,10 @@ export function AppShell({
           <button
             type="button"
             className="btn menu-btn"
+            aria-expanded={open}
+            aria-controls="main-navigation"
             onClick={() => setOpen((o) => !o)}
-            aria-label={open ? "Fechar menu" : "Abrir menu"}
+            aria-label="Abrir menu"
           >
             {open ? <X size={18} /> : <Menu size={18} />}
           </button>
