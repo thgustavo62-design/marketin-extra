@@ -1,23 +1,40 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const TABS = [
-  { href: '/promocoes', label: 'Promoções' },
-  { href: '/promocoes/temas', label: 'Temas (artes)' },
-  { href: '/promocoes/biblioteca', label: 'Biblioteca de imagens' },
-]
+  { href: "/promocoes", label: "Promoções" },
+  { href: "/promocoes/importar", label: "Importar e revisar" },
+  { href: "/promocoes/regras", label: "Regras inteligentes" },
+  { href: "/promocoes/temas", label: "Layouts e modelos" },
+  { href: "/promocoes/biblioteca", label: "Elementos gráficos" },
+];
 
 /** Sub-abas da área de Promoções. "Promoções" fica ativa na lista e dentro de uma promoção; as outras, na própria página. */
 export function PromoTabs() {
-  const path = usePathname()
-  const active = (href: string) => (href === '/promocoes' ? !path.startsWith('/promocoes/temas') && !path.startsWith('/promocoes/biblioteca') : path === href || path.startsWith(href + '/'))
+  const path = usePathname();
+  const active = (href: string) =>
+    href === "/promocoes"
+      ? ![
+          "/promocoes/temas",
+          "/promocoes/biblioteca",
+          "/promocoes/importar",
+          "/promocoes/regras",
+        ].some((p) => path.startsWith(p))
+      : path === href || path.startsWith(href + "/");
   return (
     <nav className="stabs" aria-label="Promoções">
       {TABS.map((t) => (
-        <Link key={t.href} href={t.href} className={`stab${active(t.href) ? ' active' : ''}`} aria-current={active(t.href) ? 'page' : undefined}>{t.label}</Link>
+        <Link
+          key={t.href}
+          href={t.href}
+          className={`stab${active(t.href) ? " active" : ""}`}
+          aria-current={active(t.href) ? "page" : undefined}
+        >
+          {t.label}
+        </Link>
       ))}
     </nav>
-  )
+  );
 }

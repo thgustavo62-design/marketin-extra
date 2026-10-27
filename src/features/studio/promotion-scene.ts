@@ -56,7 +56,7 @@ export async function promotionScene(
   const config = design
       ? BLANK_THEME
       : applyOverrides(theme?.config ?? normalizeTheme({}), c.overrides),
-    { w: W, h: H } = PROMO_FORMATS[format];
+    { w: W, h: H } = config.dimensions?.[format] ?? PROMO_FORMATS[format];
   const find = (role: string) =>
       theme?.assets.find((a) => a.role === role && a.format === format),
     shared = (role: string) =>
@@ -92,6 +92,11 @@ export async function promotionScene(
         oldPrice: it.old_price,
         style: it.style,
         note: [it.note, options].filter(Boolean).join(" · ") || null,
+        imgs: await Promise.all(
+          (it.photo_image_ids ?? []).map((id) =>
+            image(`/api/produtos/imagem/${id}`),
+          ),
+        ),
         img: it.photo_id
           ? await image(`/api/produtos/imagem/${it.photo_id}`)
           : null,

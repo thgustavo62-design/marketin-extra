@@ -234,8 +234,9 @@ export function PhotoImporter() {
         <div>
           <h2>Seu acervo de produtos, no mesmo lugar.</h2>
           <p>
-            Selecione a pasta de fotos recortadas do computador. As subpastas
-            também são incluídas.
+            Salve as fotos recortadas no banco de produtos. As promoções
+            automáticas usam a foto principal de cada produto vinculado pelo EAN.
+            Selecione a pasta do computador; as subpastas também são incluídas.
           </p>
         </div>
       </div>

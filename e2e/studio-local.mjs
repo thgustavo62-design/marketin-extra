@@ -97,6 +97,8 @@ const server = spawn(
       DATABASE_URL: withSchema(url, schema),
       REPLICATE_API_TOKEN: "",
       WINDSOR_API_KEY: "",
+      INTEGRATIONS_ENCRYPTION_KEY: "ab".repeat(32),
+      NODE_OPTIONS: `--require=${root}/e2e/lib/windsor-fixture.cjs`,
     },
     stdio: ["ignore", log, log],
   },
@@ -204,6 +206,118 @@ try {
   owner = await session("teste_e2e");
   reader = await session("e2e_vw");
   const page = await owner.newPage();
+  // Credentials and provider fixtures run only in the disposable local test environment.
+  await page.goto(`${base}/resultados`);
+  await page.getByText("Configurar Windsor.ai", { exact: true }).click();
+  await page.getByLabel("Chave API da Windsor.ai").fill("https://invalid/key");
+  await page.getByRole("button", { name: "Salvar chave", exact: true }).click();
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "Informe somente a chave" })
+    .waitFor();
+  assert.equal(
+    (await pool.query("select count(*)::int as n from integration_credentials"))
+      .rows[0].n,
+    0,
+  );
+  pass("Chave malformada é recusada sem gravar credenciais");
+  const fixtureKey = "local-fixture-secret-123456";
+  await page.getByLabel("Chave API da Windsor.ai").fill(fixtureKey);
+  await page.getByRole("button", { name: "Salvar chave", exact: true }).click();
+  await page
+    .getByRole("status")
+    .filter({ hasText: "Chave salva com proteção" })
+    .waitFor();
+  const saved = (
+    await pool.query(
+      "select encrypted_secret, enabled from integration_credentials where provider='windsor'",
+    )
+  ).rows[0];
+  assert.equal(saved.enabled, true);
+  assert.ok(saved.encrypted_secret.startsWith("v1."));
+  assert.ok(!saved.encrypted_secret.includes(fixtureKey));
+  assert.equal(
+    await page.getByLabel("Chave API da Windsor.ai").inputValue(),
+    "",
+  );
+  assert.ok(!(await page.content()).includes(fixtureKey));
+  pass("Admin salva chave cifrada; formulário e HTML não devolvem segredo");
+  await page
+    .getByRole("button", { name: "Testar conexão", exact: true })
+    .click();
+  await page
+    .getByRole("status")
+    .filter({ hasText: "Conexão confirmada" })
+    .waitFor();
+  pass(
+    "Teste de conexão usa chave salva e descobre contas (provedor simulado)",
+  );
+  const viewerConfig = await reader.newPage();
+  await viewerConfig.goto(`${base}/resultados`);
+  assert.equal(
+    await viewerConfig.getByLabel("Chave API da Windsor.ai").count(),
+    0,
+  );
+  await page
+    .getByLabel("Chave API da Windsor.ai")
+    .fill("replacement-fixture-key");
+  const captured = page.waitForRequest(
+    (r) => r.method() === "POST" && !!r.headers()["next-action"],
+  );
+  await page.getByRole("button", { name: "Salvar chave", exact: true }).click();
+  const request = await captured;
+  await page
+    .getByRole("status")
+    .filter({ hasText: "Chave salva com proteção" })
+    .waitFor();
+  const beforeDenied = (
+    await pool.query(
+      "select encrypted_secret from integration_credentials where provider='windsor'",
+    )
+  ).rows[0].encrypted_secret;
+  await viewerConfig.request.post(request.url(), {
+    headers: {
+      "next-action": request.headers()["next-action"],
+      "content-type": request.headers()["content-type"],
+      origin: base,
+    },
+    data: request.postDataBuffer(),
+  });
+  assert.equal(
+    (
+      await pool.query(
+        "select encrypted_secret from integration_credentials where provider='windsor'",
+      )
+    ).rows[0].encrypted_secret,
+    beforeDenied,
+  );
+  pass("Leitor não vê formulário e não altera chave por ação forjada");
+  await page.reload();
+  assert.ok(!(await page.content()).includes("replacement-fixture-key"));
+  await page.getByText("Configurar Windsor.ai", { exact: true }).click();
+  await page.screenshot({ path: "/tmp/nova7-windsor-header.png" });
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "Desconectar", exact: true }).click();
+  await page
+    .getByRole("status")
+    .filter({ hasText: "Windsor desconectado" })
+    .waitFor();
+  const disconnected = (
+    await pool.query(
+      "select encrypted_secret,enabled from integration_credentials where provider='windsor'",
+    )
+  ).rows[0];
+  assert.equal(disconnected.enabled, false);
+  assert.equal(disconnected.encrypted_secret, null);
+  assert.equal(
+    (
+      await pool.query(
+        "select relrowsecurity from pg_class where relname='integration_credentials'",
+      )
+    ).rows[0].relrowsecurity,
+    true,
+  );
+  pass("Desconexão apaga a chave cifrada e mantém RLS habilitada");
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto(`${base}/criacao`);
   await page
@@ -538,14 +652,12 @@ try {
     await pool.query("select count(*)::int as n from promo_campaigns")
   ).rows[0].n;
   await page.goto(`${base}/promocoes`);
-  await page
-    .getByLabel("Planilha da promoção")
-    .setInputFiles({
-      name: "ofertas-e2e.xlsx",
-      mimeType:
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      buffer: xlsx,
-    });
+  await page.getByLabel("Planilha da promoção").setInputFiles({
+    name: "ofertas-e2e.xlsx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: xlsx,
+  });
   await page.getByRole("button", { name: /^4 produtos/ }).click();
   await page.getByLabel("Abrir primeiro em").selectOption("feed");
   await page
@@ -807,6 +919,21 @@ try {
     ),
   );
   pass("Layout mobile sem overflow horizontal");
+  const { runPromotionReview } = await import("./promotion-review.mjs");
+  await runPromotionReview({
+    page,
+    owner,
+    reader,
+    pool,
+    base,
+    pass,
+    poll,
+    doc,
+    require,
+    sharp,
+    gtin,
+    fs,
+  });
   assert.deepEqual(errors, []);
   pass("Nenhuma exceção de página durante o fluxo");
   console.log(`${checks} checks passed`);
