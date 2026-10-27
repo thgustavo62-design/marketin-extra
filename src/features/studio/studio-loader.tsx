@@ -26,7 +26,7 @@ export type StudioLoaderProps = {
   sourceHash: string;
   canEdit: boolean;
   needsMigration: boolean;
-  aiConfigured: boolean;
+  aiConfigured: {generate:boolean;removeBg:boolean};
   templates?: TemplateLite[];
 };
 export function StudioLoader(props: StudioLoaderProps) {

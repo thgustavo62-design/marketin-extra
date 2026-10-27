@@ -93,7 +93,7 @@ const server = spawn(
     env: {
       ...process.env,
       NODE_ENV: "production",
-      NOVA7_BUILD_DIR: ".next-studio-build",
+      NOVA7_BUILD_DIR: process.env.NOVA7_E2E_BUILD_DIR || ".next-studio-build",
       DATABASE_URL: withSchema(url, schema),
       REPLICATE_API_TOKEN: "",
       WINDSOR_API_KEY: "",
@@ -204,6 +204,413 @@ try {
   owner = await session("teste_e2e");
   reader = await session("e2e_vw");
   const page = await owner.newPage();
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto(`${base}/criacao`);
+  await page
+    .getByRole("heading", { name: "O que vamos criar hoje?" })
+    .waitFor();
+  assert.equal(await page.locator('.side-nav a[href="/criacao"]').count(), 1);
+  assert.ok((await page.locator(".side-nav a").count()) <= 13);
+  assert.ok(
+    await page
+      .locator(".design-hero")
+      .evaluate((e) => e.getBoundingClientRect().right > innerWidth - 60),
+  );
+  await page.screenshot({ path: "/tmp/nova7-design-hub-desktop.png" });
+  pass("Design tem aba própria e ocupa toda a largura disponível");
+  await page.getByRole("button", { name: "Impressos", exact: true }).click();
+  assert.equal(await page.locator(".design-format-card").count(), 3);
+  await page.getByLabel("Buscar formato de design").fill("Etiqueta");
+  assert.equal(await page.locator(".design-format-card").count(), 1);
+  await page.getByLabel("Buscar formato de design").fill("");
+  await page
+    .getByRole("button", { name: "Todos os formatos", exact: true })
+    .click();
+  assert.equal(await page.locator(".design-format-card").count(), 9);
+  pass("Categorias e busca filtram os formatos reais");
+  let presetMutation;
+  const capturePreset = (r) => {
+    if (r.method() === "POST" && r.headers()["next-action"])
+      presetMutation = { headers: r.headers(), data: r.postData() };
+  };
+  page.on("request", capturePreset);
+  await page
+    .getByRole("button", { name: "Criar TV / Telão", exact: true })
+    .click();
+  await page
+    .getByLabel("Como vamos chamar esta criação?")
+    .fill("TV horizontal E2E");
+  await page.getByRole("button", { name: "Criar e abrir no editor" }).click();
+  await page.locator("[data-editor-ready=true]").waitFor();
+  page.off("request", capturePreset);
+  const tv = page.url().match(/studio\/([a-f0-9-]{36})/)[1];
+  await poll(async () => Boolean(await doc(tv)), "TV preset");
+  let clip = (await doc(tv)).scene.objects.find((o) => o.name === "clip");
+  assert.equal(clip.width, 1920);
+  assert.equal(clip.height, 1080);
+  pass("TV cria documento horizontal persistente de 1920×1080");
+  await page.getByRole("button", { name: "+ Página", exact: true }).click();
+  await poll(
+    async () =>
+      (
+        await pool.query(
+          "select scene from studio_pages where campaign_id=$1 and page=1",
+          [tv],
+        )
+      ).rowCount === 1,
+    "second TV page",
+  );
+  clip = (
+    await pool.query(
+      "select scene from studio_pages where campaign_id=$1 and page=1",
+      [tv],
+    )
+  ).rows[0].scene.objects.find((o) => o.name === "clip");
+  assert.equal(clip.width, 1920);
+  assert.equal(clip.height, 1080);
+  pass("Novas páginas mantêm o tamanho personalizado");
+  await page.goto(`${base}/criacao`);
+  await page
+    .getByRole("button", { name: "Criar Carrossel", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Criar e abrir no editor" }).click();
+  await page.locator("[data-editor-ready=true]").waitFor();
+  const carousel = page.url().match(/studio\/([a-f0-9-]{36})/)[1];
+  assert.equal(
+    (
+      await pool.query(
+        "select count(*)::int as n from studio_pages where campaign_id=$1",
+        [carousel],
+      )
+    ).rows[0].n,
+    5,
+  );
+  pass("Carrossel cria cinco páginas na mesma transação");
+  await page.goto(`${base}/criacao`);
+  await page
+    .getByRole("button", { name: "Criar Cartaz A4", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Criar e abrir no editor" }).click();
+  await page.locator("[data-editor-ready=true]").waitFor();
+  await page.locator(".studio-download").evaluate((e) => (e.open = true));
+  const pdfWait = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "PDF para impressão", exact: true })
+    .click();
+  const pdfDownload = await pdfWait,
+    pdf = await require("pdf-lib").PDFDocument.load(
+      fs.readFileSync(await pdfDownload.path()),
+    ),
+    paper = pdf.getPages()[0].getSize();
+  assert.ok(Math.abs(paper.width - 595.2) < 1);
+  assert.ok(Math.abs(paper.height - 841.92) < 1);
+  pass("Cartaz exporta PDF no tamanho físico A4");
+  await page.goto(`${base}/criacao/ia`);
+  assert.equal(
+    await page.getByText("Aguardando configuração", { exact: true }).count(),
+    2,
+  );
+  assert.equal(
+    await page.getByRole("button", { name: "Testar conexão" }).isDisabled(),
+    true,
+  );
+  pass("Sem chave e modelos, a IA informa pendência e não dispara chamadas");
+  const presetViewer = await reader.newPage();
+  await presetViewer.goto(`${base}/criacao`);
+  assert.equal(
+    await presetViewer.locator(".design-format-card:disabled").count(),
+    9,
+  );
+  assert.ok(presetMutation);
+  const presetHeaders = { ...presetMutation.headers, origin: base };
+  delete presetHeaders.cookie;
+  delete presetHeaders["content-length"];
+  delete presetHeaders.host;
+  const forbiddenPreset = await presetViewer.request.post(`${base}/criacao`, {
+    headers: presetHeaders,
+    data: presetMutation.data,
+  });
+  assert.ok((await forbiddenPreset.text()).includes("somente leitura"));
+  pass("Leitor também é bloqueado na ação de criar design por formato");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${base}/criacao`);
+  assert.ok(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  );
+  await page.screenshot({
+    path: "/tmp/nova7-design-hub-mobile.png",
+    fullPage: true,
+  });
+  pass("Galeria de Design funciona em tela mobile sem cortes horizontais");
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto(`${base}/`);
+  assert.ok(
+    await page
+      .locator(".content")
+      .evaluate((e) => e.getBoundingClientRect().right >= innerWidth - 2),
+  );
+  await page.screenshot({ path: "/tmp/nova7-dashboard-fullwidth.png" });
+  pass("Dashboard também usa a largura completa da página");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  // Product-photo folder import: real bytes, catalog association, duplicates and pause/resume.
+  const ean = "7894900011517",
+    photoDir = "/tmp/nova7-product-photos-fixture";
+  fs.mkdirSync(photoDir + "/sub", { recursive: true });
+  const product = (
+    await pool.query(
+      "insert into products(ean,description,name_key,search) values($1,'PRODUTO CATALOGO','PRODUTO CATALOGO','produto catalogo') returning id",
+      [ean],
+    )
+  ).rows[0].id;
+  const cutout = async (color) =>
+    sharp({
+      create: {
+        width: 180,
+        height: 240,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      },
+    })
+      .composite([
+        {
+          input: await sharp({
+            create: { width: 70, height: 130, channels: 4, background: color },
+          })
+            .png()
+            .toBuffer(),
+          left: 55,
+          top: 55,
+        },
+      ])
+      .png()
+      .toBuffer();
+  fs.writeFileSync(photoDir + "/" + ean + ".png", await cutout("#d22d55"));
+  fs.writeFileSync(
+    photoDir + "/sub/RECORTE SEM CADASTRO.png",
+    await cutout("#293e99"),
+  );
+  fs.writeFileSync(photoDir + "/ignorar.txt", "ignored");
+  await page.goto(`${base}/produtos/importar`);
+  await page.getByLabel("Pasta de fotos de produtos").setInputFiles(photoDir);
+  await page
+    .getByRole("button", { name: "Importar 2 imagens", exact: true })
+    .click();
+  await page
+    .getByText(
+      "Processamento concluído. As imagens aceitas já estão salvas no banco.",
+      { exact: true },
+    )
+    .waitFor({ timeout: 30000 });
+  const productPhoto = (
+    await pool.query(
+      "select data,fundo from product_images where product_id=$1",
+      [product],
+    )
+  ).rows[0];
+  assert.ok(productPhoto);
+  assert.equal(productPhoto.fundo, "transparente");
+  assert.equal((await sharp(productPhoto.data).stats()).isOpaque, false);
+  pass("Pasta e subpastas importam fotos pelo EAN e preservam transparência");
+  assert.equal(
+    (
+      await pool.query(
+        "select count(*)::int as n from product_images where product_id is null",
+      )
+    ).rows[0].n,
+    1,
+  );
+  const reportWait = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Baixar relatório", exact: true })
+    .click();
+  const reportDownload = await reportWait;
+  assert.ok(
+    fs
+      .readFileSync(await reportDownload.path(), "utf8")
+      .includes("RECORTE SEM CADASTRO"),
+  );
+  pass("Fotos sem associação ficam para conferência e aparecem no relatório");
+  await page.getByLabel("Pasta de fotos de produtos").setInputFiles(photoDir);
+  await page
+    .getByRole("button", { name: "Importar 2 imagens", exact: true })
+    .click();
+  await page
+    .getByText(
+      "Processamento concluído. As imagens aceitas já estão salvas no banco.",
+      { exact: true },
+    )
+    .waitFor();
+  assert.equal(
+    (await pool.query("select count(*)::int as n from product_images")).rows[0]
+      .n,
+    2,
+  );
+  pass("Reenviar a mesma pasta não duplica as imagens");
+  const pauseDir = "/tmp/nova7-photos-pause-fixture";
+  fs.mkdirSync(pauseDir, { recursive: true });
+  for (let i = 0; i < 7; i++)
+    fs.writeFileSync(
+      `${pauseDir}/RECORTE EXTRA ${i}.png`,
+      await cutout(`rgb(${25 + i * 25},90,130)`),
+    );
+  await page.getByLabel("Pasta de fotos de produtos").setInputFiles(pauseDir);
+  await page.route("**/api/produtos/imagens", async (route) => {
+    await new Promise((r) => setTimeout(r, 500));
+    await route.continue();
+  });
+  await page
+    .getByRole("button", { name: "Importar 7 imagens", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Pausar", exact: true }).click();
+  await poll(
+    async () =>
+      page
+        .getByRole("button", { name: "Continuar importação", exact: true })
+        .isEnabled(),
+    "paused import",
+  );
+  assert.ok(
+    (await page.locator(".photo-import-progress").innerText()).includes(
+      "6 de 7",
+    ),
+  );
+  await page
+    .getByRole("button", { name: "Continuar importação", exact: true })
+    .click();
+  await page
+    .getByText(
+      "Processamento concluído. As imagens aceitas já estão salvas no banco.",
+      { exact: true },
+    )
+    .waitFor();
+  await page.unroute("**/api/produtos/imagens");
+  assert.equal(
+    (await pool.query("select count(*)::int as n from product_images")).rows[0]
+      .n,
+    9,
+  );
+  pass("Importação pausa entre lotes e continua sem perder fotos");
+  const badImage = await page.request.post(`${base}/api/produtos/imagens`, {
+    headers: { origin: base },
+    multipart: {
+      file: {
+        name: "fake.png",
+        mimeType: "image/png",
+        buffer: Buffer.from("invalid bytes"),
+      },
+    },
+  });
+  assert.equal((await badImage.json()).results[0].status, "invalida");
+  pass("Conteúdo inválido é recusado pelo servidor");
+  const photoReader = await reader.newPage(),
+    denyPhoto = await photoReader.request.post(`${base}/api/produtos/imagens`, {
+      headers: { origin: base },
+      multipart: {
+        file: {
+          name: "test.png",
+          mimeType: "image/png",
+          buffer: await cutout("#a23144"),
+        },
+      },
+    });
+  assert.equal(denyPhoto.status(), 403);
+  pass("Perfil leitor não importa fotos");
+  // Promotion preview is read-only and uses exactly the preparation used for creation.
+  const ExcelJS = require("exceljs"),
+    workbook = new ExcelJS.Workbook(),
+    sheet = workbook.addWorksheet("Ofertas");
+  sheet.addRow(["Código de barras", "Descrição", "Valor aproximado"]);
+  sheet.addRow([ean, "PRODUTO CATALOGO", 9.99]);
+  const gtin = (i) => {
+    const base = String(789000000000 + i),
+      sum = [...base]
+        .reverse()
+        .reduce((n, c, k) => n + Number(c) * (k % 2 === 0 ? 3 : 1), 0);
+    return base + String((10 - (sum % 10)) % 10);
+  };
+  for (let i = 1; i <= 6; i++)
+    sheet.addRow([gtin(i), "ITEM OFERTA " + i, 10 + i + 0.49]);
+  sheet.addRow([gtin(7), "PRECO INVALIDO", "x"]);
+  const xlsx = Buffer.from(await workbook.xlsx.writeBuffer());
+  const beforePreview = (
+    await pool.query("select count(*)::int as n from promo_campaigns")
+  ).rows[0].n;
+  await page.goto(`${base}/promocoes`);
+  await page
+    .getByLabel("Planilha da promoção")
+    .setInputFiles({
+      name: "ofertas-e2e.xlsx",
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      buffer: xlsx,
+    });
+  await page.getByRole("button", { name: /^4 produtos/ }).click();
+  await page.getByLabel("Abrir primeiro em").selectOption("feed");
+  await page
+    .getByRole("button", { name: "Analisar planilha", exact: true })
+    .click();
+  await page.getByRole("region", { name: "Conferência da promoção" }).waitFor();
+  assert.equal(
+    (await pool.query("select count(*)::int as n from promo_campaigns")).rows[0]
+      .n,
+    beforePreview,
+  );
+  assert.equal(await page.locator(".promo-preview tbody tr").count(), 7);
+  pass("Prévia mostra preços e fotos sem criar uma campanha");
+  assert.ok(
+    (await page.locator(".promo-preview").innerText()).includes(
+      "6 oferta(s) ainda sem foto",
+    ),
+  );
+  await page.screenshot({
+    path: "/tmp/nova7-promotion-preview.png",
+    fullPage: true,
+  });
+  await page
+    .getByLabel("Mostrar somente ofertas sem foto nesta prévia")
+    .check();
+  assert.equal(await page.locator(".promo-preview tbody tr").count(), 6);
+  pass("Prévia identifica as fotos faltantes e permite filtrá-las");
+  await page
+    .getByRole("button", { name: "Criar campanha e abrir editor", exact: true })
+    .click();
+  await page.locator("[data-editor-ready=true]").waitFor({ timeout: 60000 });
+  const generated = page.url().match(/studio\/([a-f0-9-]{36})/)[1];
+  await poll(
+    async () => Boolean(await doc(generated, "feed")),
+    "generated no-theme promotion",
+  );
+  const generatedRow = (
+    await pool.query(
+      "select theme_id,overrides from promo_campaigns where id=$1",
+      [generated],
+    )
+  ).rows[0];
+  assert.equal(generatedRow.theme_id, null);
+  assert.deepEqual(generatedRow.overrides.grid.feed, { cols: 2, rows: 2 });
+  assert.equal(
+    (
+      await pool.query(
+        "select count(*)::int as n from promo_items where campaign_id=$1",
+        [generated],
+      )
+    ).rows[0].n,
+    7,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "select price::text from promo_items where campaign_id=$1 and ean=$2",
+        [generated, ean],
+      )
+    ).rows[0].price,
+    "9.99",
+  );
+  pass(
+    "Campanha sem tema abre no Studio com grade escolhida e preços da planilha",
+  );
   const design = (
     await pool.query(
       "insert into promo_campaigns(name,kind,design_format) values('Nova7 teste','design','story') returning id",
@@ -402,7 +809,7 @@ try {
   pass("Layout mobile sem overflow horizontal");
   assert.deepEqual(errors, []);
   pass("Nenhuma exceção de página durante o fluxo");
-  console.log(`${checks}/20 checks passed`);
+  console.log(`${checks} checks passed`);
 } finally {
   await reader?.close().catch(() => {});
   await owner?.close().catch(() => {});

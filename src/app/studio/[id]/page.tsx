@@ -1,3 +1,4 @@
+import { studioAiReadiness } from "@/lib/domain/studio-ai";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { isUuid } from "@/lib/form";
@@ -46,7 +47,7 @@ export default async function StudioPage({
       canEdit={canWrite(user.role)}
       needsMigration={needsMigration}
       templates={templates}
-      aiConfigured={Boolean(process.env.REPLICATE_API_TOKEN)}
+      aiConfigured={studioAiReadiness(process.env)}
     />
   );
 }

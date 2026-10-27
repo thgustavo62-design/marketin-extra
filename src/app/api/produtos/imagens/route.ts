@@ -15,6 +15,7 @@ export async function POST(req: Request) {
   if (!user || user.mustChange) return NextResponse.json({ error: 'Sessão expirada. Entre novamente.' }, { status: 401 })
   if (!sameOrigin(req)) return NextResponse.json({ error: 'Origem não permitida.' }, { status: 403 })
   if (!canWrite(user.role)) return NextResponse.json({ error: 'Seu perfil é somente leitura.' }, { status: 403 })
+  if(Number(req.headers.get("content-length"))>4*1024*1024)return NextResponse.json({error:"O envio passa de 4 MB. Use lotes menores."},{status:413})
   let fd: FormData
   try { fd = await req.formData() } catch { return NextResponse.json({ error: 'Envio inválido ou grande demais (máximo 4 MB por envio).' }, { status: 413 }) }
   const productId = String(fd.get('product_id') ?? '')
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
   const results: IngestResult[] = []
   for (const f of files) {
     if (f.size > MAX_IMAGE_INPUT_BYTES) { results.push({ file: f.name, status: 'invalida', error: 'A imagem passa de 8 MB.' }); continue }
-    results.push(await ingestImage({ buf: Buffer.from(await f.arrayBuffer()), fileName: f.name, userId: user.id, source: 'upload', productId: productId || null }))
+    results.push(await ingestImage({ buf: Buffer.from(await f.arrayBuffer()), fileName: f.name, userId: user.id, source: 'upload', preserveCutout: fd.get('preserve_cutout')==='1', productId: productId || null }))
   }
   invalidateCatalogIndex()
   const count = (s: IngestResult['status']) => results.filter((r) => r.status === s).length

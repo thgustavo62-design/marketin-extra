@@ -127,7 +127,7 @@ label.check input { width: 18px; height: 18px; min-height: 0; accent-color: var(
 .scope { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .scope-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); font-weight: 700; }
 .scope select { width: auto; min-height: 34px; border-radius: 999px; padding: 0 34px 0 14px; font-weight: 600; background-color: #fff; }
-.content { padding: 8px clamp(16px, 3vw, 36px) 56px; width: 100%; max-width: 1240px; min-width: 0; }
+.content { padding: 8px clamp(16px, 3vw, 36px) 56px; width: 100%; max-width: none; min-width: 0; }
 
 .page-head { margin-bottom: 22px; }
 .page-head.row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type { Editor } from "./types";
 export function AiPanel({
   campaignId,
@@ -72,7 +73,8 @@ export function AiPanel({
       <h2>{removeBackground ? "Remover fundo" : "Criar imagem com IA"}</h2>
       {!configured ? (
         <p className="studio-muted">
-          A integração de IA ainda não está configurada para este workspace.
+          Este recurso ainda não está configurado para este workspace.{" "}
+          <Link href="/criacao/ia">Ver configuração de imagens e IA</Link>.
         </p>
       ) : (
         <>

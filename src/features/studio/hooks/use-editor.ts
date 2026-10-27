@@ -1,4 +1,5 @@
 // Adapted from canva-clone, Copyright 2025 Alimardon Davronov, Apache-2.0. See THIRD_PARTY_NOTICES.md.
+import { designPrintPoints } from "@/lib/domain/design-presets";
 import { fabric } from "fabric";
 import { studioCanvasJson } from "../scene-json";
 import { useCallback, useState, useMemo, useRef } from "react";
@@ -134,6 +135,34 @@ const buildEditor = ({
   const savePng = () => exportImage("png"),
     saveJpg = () => exportImage("jpeg"),
     saveSvg = () => exportImage("svg");
+  const savePdf = async () => {
+    const { PDFDocument } = await import("pdf-lib"),
+      clip = getWorkspace() as fabric.Rect,
+      before = canvas.viewportTransform?.slice();
+    canvas.discardActiveObject();
+    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    try {
+      const png = canvas.toDataURL({ ...generateSaveOptions(), format: "png" }),
+        pdf = await PDFDocument.create(),
+        image = await pdf.embedPng(png),
+        { width, height } = designPrintPoints(
+          clip.width ?? 2480,
+          clip.height ?? 3508,
+        ),
+        page = pdf.addPage([width, height]);
+      page.drawImage(image, { x: 0, y: 0, width, height });
+      const url = URL.createObjectURL(
+        new Blob([new Uint8Array(await pdf.save())], {
+          type: "application/pdf",
+        }),
+      );
+      downloadFile(url, "pdf");
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } finally {
+      if (before) canvas.setViewportTransform(before);
+      canvas.requestRenderAll();
+    }
+  };
   const saveJson = async () => {
     const dataUrl = JSON.parse(studioCanvasJson(canvas));
 
@@ -176,6 +205,7 @@ const buildEditor = ({
   };
 
   return {
+    savePdf,
     savePng,
     saveJpg,
     saveSvg,

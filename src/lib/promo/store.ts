@@ -152,11 +152,14 @@ export async function listCampaigns(): Promise<CampaignLite[]> {
        from promo_campaigns c left join promo_themes t on t.id = c.theme_id where c.kind = 'promocao' order by c.created_at desc limit 100`)).rows
 }
 
-export type DesignLite = { id: string; name: string; format: PromoFormat; pages: number; status: CampaignStatus; updated_at: string; created_by_name: string | null; thumb_at: string | null }
+export type DesignLite = { width?:number|null; height?:number|null; id: string; name: string; format: PromoFormat; pages: number; status: CampaignStatus; updated_at: string; created_by_name: string | null; thumb_at: string | null }
 export async function listDesigns(): Promise<DesignLite[]> {
   return (await pool.query(
-    `select c.id, c.name, c.design_format as format, c.design_pages as pages, c.status, c.updated_at::text as updated_at, u.display_name as created_by_name, c.thumb_at::text as thumb_at
-       from promo_campaigns c left join users u on u.id = c.created_by where c.kind = 'design' order by c.updated_at desc limit 200`)).rows
+    `select c.id, c.name, c.design_format as format, c.design_pages as pages, c.status, c.updated_at::text as updated_at, u.display_name as created_by_name, c.thumb_at::text as thumb_at,
+       (select (o->>'width')::numeric from jsonb_array_elements(sp.scene->'objects') o where o->>'name'='clip' limit 1)::int as width,
+       (select (o->>'height')::numeric from jsonb_array_elements(sp.scene->'objects') o where o->>'name'='clip' limit 1)::int as height
+       from promo_campaigns c left join users u on u.id = c.created_by
+       left join studio_pages sp on sp.campaign_id=c.id and sp.format=c.design_format and sp.page=0 where c.kind = 'design' order by c.updated_at desc limit 200`)).rows
 }
 
 /** Cria uma arte livre (sem planilha): formato fixo, uma peça, fundo branco. */
@@ -245,13 +248,8 @@ async function touch(db: { query: (sql: string, args?: unknown[]) => Promise<unk
  * (ou a do catálogo, se a planilha não trouxe), o preço é o valor da planilha e a foto vem do banco de imagens pelo código. Com `groupVariants`, produtos que só mudam
  * de tamanho ou de fragrância viram um encarte só (política de encartes).
  */
-export async function createCampaignFromRows(o: {
-  name: string; themeId: string | null; title: string | null; validity: string | null; rows: PromoRow[]; userId: string
-  groupVariants?: boolean; sheets?: { name: string; items: number }[]; rowErrors?: { line: number; message: string }[]
-}): Promise<{ ok: true; id: string; report: ImportReport } | { ok: false; error: string }> {
-  const name = o.name.trim().replace(/\s+/g, ' ')
-  if (name.length < 2 || name.length > 120) return { ok: false, error: 'O nome da promoção deve ter de 2 a 120 caracteres.' }
-  if (!o.rows.length) return { ok: false, error: 'A planilha não tem nenhuma linha válida.' }
+type PromotionRowsInput={rows:PromoRow[];groupVariants?:boolean;sheets?:{name:string;items:number}[];rowErrors?:{line:number;message:string}[]}
+export async function preparePromotionRows(o:PromotionRowsInput){
   const prods = (await pool.query(
     `select p.id, p.ean, p.description, (select i.id from product_images i where i.product_id = p.id order by i.is_primary desc, i.created_at limit 1) as photo from products p where p.active and p.ean = any($1::text[])`, [o.rows.map((r) => r.ean)])).rows
   const byEan = new Map(prods.map((p) => [p.ean as string, p]))
@@ -262,7 +260,7 @@ export async function createCampaignFromRows(o: {
     if (!desc) { skipped.push({ ean: r.ean, reason: 'sem descrição na planilha e fora do catálogo' }); continue }
     inputs.push({ ean: r.ean, name: displayName(desc), price: r.price, section: r.section })
   }
-  if (!inputs.length) return { ok: false, error: 'Nenhuma linha tem descrição. Confira se a planilha tem a coluna "Descrição".' }
+  if (!inputs.length) return { ok: false as const, error: 'Nenhuma linha tem descrição. Confira se a planilha tem a coluna "Descrição".' }
   const grouped = o.groupVariants !== false
   const encartes = groupItems(inputs, grouped)
   const notInCatalog = inputs.filter((x) => !byEan.has(x.ean)).map((x) => ({ ean: x.ean, name: x.name }))
@@ -271,12 +269,25 @@ export async function createCampaignFromRows(o: {
     // o encarte usa a foto do primeiro membro que tiver; sem foto em nenhum, usa o produto do primeiro (se estiver no catálogo)
     const member = e.eans.map((x) => byEan.get(x)).find((p) => p?.photo) ?? e.eans.map((x) => byEan.get(x)).find(Boolean) ?? null
     if (!member?.photo) withoutPhoto.push({ ean: e.ean, name: e.name })
-    return { pos: k + 1, ean: e.ean, product_id: member?.id ?? null, name: e.name, price: e.price, section: e.section, variants: e.variants }
+    return { pos: k + 1, ean: e.ean, product_id: member?.id ?? null, name: e.name, price: e.price, section: e.section, variants: e.variants, photo_id: member?.photo ?? null }
   })
   const sum = groupSummary(inputs.length, encartes)
   const report: ImportReport = { lines: sum.linhas, encartes: sum.encartes, gruposTamanho: sum.gruposTamanho, gruposOpcoes: sum.gruposOpcoes, grouped, sheets: o.sheets ?? [], notInCatalog: notInCatalog.slice(0, 200), withoutPhoto: withoutPhoto.slice(0, 200), rowErrors: (o.rowErrors ?? []).slice(0, 100), skipped: skipped.slice(0, 100) }
+  return {ok:true as const,rows,report,grouped,missingPhotos:withoutPhoto.length,missingCatalog:notInCatalog.length,skippedCount:skipped.length}
+}
+
+export async function createCampaignFromRows(o: {
+  name: string; themeId: string | null; title: string | null; validity: string | null; rows: PromoRow[]; userId: string
+  groupVariants?: boolean; sheets?: { name: string; items: number }[]; rowErrors?: { line: number; message: string }[]; overrides?:PromoOverrides
+}): Promise<{ ok: true; id: string; report: ImportReport } | { ok: false; error: string }> {
+  const name = o.name.trim().replace(/\s+/g, ' ')
+  if (name.length < 2 || name.length > 120) return { ok: false, error: 'O nome da promoção deve ter de 2 a 120 caracteres.' }
+  if (!o.rows.length) return { ok: false, error: 'A planilha não tem nenhuma linha válida.' }
+  const prepared=await preparePromotionRows(o)
+  if(!prepared.ok)return prepared
+  const {rows,report,grouped}=prepared
   const id = await withTx(async (db) => {
-    const c = await db.query(`insert into promo_campaigns (name, theme_id, title, validity, created_by, import_report, group_variants) values ($1, $2, $3, $4, $5, $6::jsonb, $7) returning id`, [name, o.themeId, o.title, o.validity, o.userId, JSON.stringify(report), grouped])
+    const c = await db.query(`insert into promo_campaigns (name, theme_id, title, validity, created_by, import_report, group_variants,overrides) values ($1, $2, $3, $4, $5, $6::jsonb, $7,$8::jsonb) returning id`, [name, o.themeId, o.title, o.validity, o.userId, JSON.stringify(report), grouped,JSON.stringify(normalizeOverrides(o.overrides))])
     await db.query(
       `insert into promo_items (campaign_id, position, ean, product_id, name, price, section, variants)
        select $1, x.pos, x.ean, x.product_id, x.name, x.price, x.section, x.variants from jsonb_to_recordset($2::jsonb) as x(pos int, ean text, product_id uuid, name text, price numeric, section text, variants jsonb)`,
