@@ -16,3 +16,9 @@ next-env.d.ts
 /e2e/.pgdata/
 
 .next-studio-*/
+
+.next-windsor/
+
+.next-review/
+
+.next-owners/

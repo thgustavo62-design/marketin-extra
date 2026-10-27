@@ -1,44 +1,117 @@
-import pg from 'pg'
+import pg from "pg";
+import { createHash } from "node:crypto";
+import { cookies } from "next/headers";
 
 declare global {
-  // eslint-disable-next-line no-var
-  var __pgPool: pg.Pool | undefined
+  var __pgPool: pg.Pool | undefined;
+  var __nova7RuntimePool: pg.Pool | undefined;
 }
-
-// Verificação do certificado: se DATABASE_CA (PEM do Supabase) estiver definido, o certificado é validado.
-// Sem ele, a conexão continua criptografada, mas sem checar a identidade do servidor.
-const ca = process.env.DATABASE_CA?.replace(/\\n/g, '\n')
-// Banco na própria máquina (usado só nos testes automatizados) não tem SSL; qualquer outro endereço continua exigindo conexão criptografada.
-const local = /@(127\.0\.0\.1|localhost)[:/]/.test(process.env.DATABASE_URL ?? '')
-
-// Pool único (sobrevive ao hot reload em dev). Só roda no servidor.
-// Os limites de tempo evitam que uma consulta presa trave a página inteira.
-export const pool: pg.Pool =
-  globalThis.__pgPool ??
-  new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: local ? false : ca ? { ca, rejectUnauthorized: true } : { rejectUnauthorized: false },
+const ca = process.env.DATABASE_CA?.replace(/\\n/g, "\n");
+const local = (url: string | undefined) =>
+  /@(127\.0\.0\.1|localhost)[:/]/.test(url ?? "");
+function makePool(url: string | undefined) {
+  return new pg.Pool({
+    connectionString: url,
+    ssl: local(url)
+      ? false
+      : ca
+        ? { ca, rejectUnauthorized: true }
+        : { rejectUnauthorized: false },
     max: 5,
-    idleTimeoutMillis: 20_000,
-    connectionTimeoutMillis: 10_000,
-    statement_timeout: 15_000,
-    query_timeout: 20_000,
-  })
-
-if (process.env.NODE_ENV !== 'production') globalThis.__pgPool = pool
-
-// Transação: tudo ou nada. Use para operações que mexem em várias tabelas (aprovações, versões).
-export async function withTx<T>(fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
-  const client = await pool.connect()
+    idleTimeoutMillis: 20000,
+    connectionTimeoutMillis: 10000,
+    statement_timeout: 15000,
+    query_timeout: 20000,
+  });
+}
+// Internal authentication only. Commercial repositories must use pool/withTx below.
+export const authDb: pg.Pool =
+  globalThis.__pgPool ?? makePool(process.env.DATABASE_URL);
+if (process.env.NODE_ENV !== "production") globalThis.__pgPool = authDb;
+let runtime: pg.Pool | undefined = globalThis.__nova7RuntimePool;
+function runtimePool() {
+  if (runtime) return runtime;
+  const url =
+    process.env.DATABASE_RUNTIME_URL ??
+    (local(process.env.DATABASE_URL) ? process.env.DATABASE_URL : undefined);
+  if (!url)
+    throw Error(
+      "Configure DATABASE_RUNTIME_URL com o papel restrito antes de ativar a hierarquia.",
+    );
+  runtime = makePool(url);
+  if (process.env.NODE_ENV !== "production")
+    globalThis.__nova7RuntimePool = runtime;
+  return runtime;
+}
+async function context() {
   try {
-    await client.query('begin')
-    const out = await fn(client)
-    await client.query('commit')
-    return out
-  } catch (e) {
-    await client.query('rollback').catch(() => {})
-    throw e
-  } finally {
-    client.release()
+    const jar = await cookies(),
+      token =
+        jar.get(
+          process.env.NODE_ENV === "production"
+            ? "__Host-extra_session"
+            : "extra_session",
+        )?.value ?? "",
+      scope = (jar.get("extra_scope")?.value ?? "").split("|");
+    return {
+      hash: token ? createHash("sha256").update(token).digest("hex") : "",
+      slug: scope[0] ?? "",
+      branch: scope[1] ?? "",
+    };
+  } catch {
+    return { hash: "", slug: "", branch: "" };
   }
 }
+export async function withTx<T>(
+  fn: (client: pg.PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await runtimePool().connect();
+  try {
+    const ctx = await context(),
+      role = process.env.NOVA7_DB_ROLE || "nova7_app";
+    if (!/^[a-z][a-z0-9_]{0,62}$/.test(role))
+      throw Error("Papel de banco inválido.");
+    if (!local(process.env.DATABASE_RUNTIME_URL ?? process.env.DATABASE_URL)) {
+      const login = (
+        await client.query(
+          "select rolname,rolsuper,rolbypassrls from pg_roles where rolname=session_user",
+        )
+      ).rows[0];
+      if (
+        login?.rolname !== "nova7_runtime" ||
+        login.rolsuper ||
+        login.rolbypassrls
+      )
+        throw Error(
+          "A conexão comercial exige o login nova7_runtime sem privilégios elevados.",
+        );
+    }
+    await client.query("begin");
+    await client.query(
+      "select set_config('role',$1,true),set_config('nova7.session_hash',$2,true),set_config('nova7.company_slug',$3,true),set_config('nova7.branch_id',$4,true)",
+      [role, ctx.hash, ctx.slug, ctx.branch],
+    );
+    const result = await fn(client);
+    await client.query("commit");
+    return result;
+  } catch (e) {
+    await client.query("rollback").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+const query = (async (...args: unknown[]) =>
+  withTx((client) =>
+    (client.query as (...v: unknown[]) => Promise<pg.QueryResult>).apply(
+      client,
+      args,
+    ),
+  )) as pg.Pool["query"];
+export const pool: Pick<pg.Pool, "query" | "end"> = {
+  query,
+  end: async () => {
+    await runtime?.end();
+    await authDb.end();
+  },
+};

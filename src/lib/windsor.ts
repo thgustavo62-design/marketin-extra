@@ -35,9 +35,11 @@ export async function windsorQuery<T extends Record<string, unknown>>(
   connector: 'instagram' | 'facebook' | 'all',
   fields: string[],
   period: Period,
-  opts: { timeoutMs?: number; fresh?: boolean } = {},
+  opts: { timeoutMs?: number; fresh?: boolean; apiKey?: string } = {},
 ): Promise<WindsorResult<T>> {
-  const key = process.env.WINDSOR_API_KEY
+  let key: string | undefined
+  try { key = opts.apiKey ?? await (await import('./windsor-config')).getWindsorKey() }
+  catch { return { status: 'error', message: 'Não foi possível abrir a configuração da integração. Contate o administrador.' } }
   if (!key) return { status: 'not_configured' }
   const u = new URL(`${BASE}/${connector}`)
   if (typeof period === 'string') u.searchParams.set('date_preset', period)
@@ -49,7 +51,10 @@ export async function windsorQuery<T extends Record<string, unknown>>(
   u.searchParams.set('api_key', key)
   try {
     const res = await fetch(u, { ...(opts.fresh ? { cache: 'no-store' as const } : { next: { revalidate: 300 } }), signal: AbortSignal.timeout(opts.timeoutMs ?? 12_000) })
-    return classifyWindsorPayload<T>(await res.json())
+    if (!res.ok) return { status: 'error', message: res.status === 401 || res.status === 403 ? 'Chave recusada pelo Windsor. Confira a credencial e o acesso da conta.' : 'O Windsor não respondeu com sucesso. Tente novamente.' }
+    // Sanitize even provider messages: the upstream URL includes a secret.
+    const payload = JSON.parse((await res.text()).split(key).join('[protegido]').split(encodeURIComponent(key)).join('[protegido]'))
+    return classifyWindsorPayload<T>(payload)
   } catch (e) {
     // Nunca incluir a URL (tem a chave) na mensagem.
     return { status: 'error', message: e instanceof Error ? e.name : 'Falha ao consultar o Windsor.' }
