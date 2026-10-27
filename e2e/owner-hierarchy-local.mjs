@@ -124,6 +124,14 @@ try {
       throw e;
     }
   }
+  // Regression: real PostgreSQL INSERT ... RETURNING evaluates SELECT policy
+  // before a STABLE existence lookup can see the new branch.
+  await as(a, "company-a", null, async () => {
+    const created = await one("insert into branches(brand_id,name)values($1,'Owner-created A3')returning id", [ca]);
+    assert.ok(created.id);
+    await db.query("delete from branches where id=$1", [created.id]);
+  });
+  checks++;
   const count = async (t) =>
     Number((await one(`select count(*) as n from ${t}`)).n);
   const eq = (x, y) => {

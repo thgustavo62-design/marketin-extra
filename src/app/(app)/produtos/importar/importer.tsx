@@ -6,7 +6,7 @@ import { useRef, useState } from "react";
 import { FileSpreadsheet } from "lucide-react";
 import { PhotoImporter } from "./photo-importer";
 
-export function Importer() {
+export function Importer({ companyId, companyName }: { companyId: string; companyName: string }) {
   const router = useRouter();
   const erpRef = useRef<HTMLInputElement>(null);
   const [erpMsg, setErpMsg] = useState<{
@@ -26,6 +26,7 @@ export function Importer() {
     try {
       const fd = new FormData();
       fd.append("file", f);
+      fd.set("company_id", companyId);
       const res = await fetch("/api/produtos/importar-erp", {
         method: "POST",
         body: fd,
@@ -66,9 +67,8 @@ export function Importer() {
           <strong>Descrição</strong> e <strong>Barras</strong> (ou Código);
           Grupo, Princípio Ativo e Registro MS são aproveitados quando
           existirem. Entram só produtos com estoque maior que zero. Medicamentos
-          (CMED, registro MS de medicamento ou grupo genérico/similar/ético/OTC)
-          são ignorados. Serve para as duas lojas: o mesmo produto vira um só e
-          as duas descrições são guardadas. Reenviar atualiza sem duplicar.
+          de prescrição são ignorados; OTC elegíveis são preservados.
+          O cadastro é exclusivo da empresa selecionada. Reenviar atualiza sem duplicar nessa empresa.
           Limite de 4 MB por planilha.
         </p>
         <div className="form-actions">
@@ -97,7 +97,7 @@ export function Importer() {
         )}
       </section>
 
-      <PhotoImporter />
+      <PhotoImporter companyId={companyId} companyName={companyName} />
     </>
   );
 }
