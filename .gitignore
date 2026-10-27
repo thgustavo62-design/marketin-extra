@@ -18,3 +18,5 @@ next-env.d.ts
 .next-studio-*/
 
 .next-windsor/
+
+.next-review/
