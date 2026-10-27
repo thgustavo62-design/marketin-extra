@@ -577,6 +577,10 @@ try {
         await page.getByRole("heading", { name: title, exact: true }).waitFor();
         checks++;
       }
+      if (process.env.ENCARTIVA_BRAND_TEST === "1") {
+        const { checkEncartivaBrand } = await import("./lib/encartiva-brand-flow.mjs");
+        checks += await checkEncartivaBrand(browser, page, "https://127.0.0.1:3142");
+      }
       await page.goto("https://127.0.0.1:3142/admin/proprietarios");
       await page
         .getByLabel("Nome", { exact: true })

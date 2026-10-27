@@ -42,7 +42,7 @@ export default async function Company({
         {company.segment} ·{" "}
         {company.owner_id
           ? "Proprietário confirmado"
-          : "Titularidade pendente: solicite confirmação à administração Nova7."}
+          : "Titularidade pendente: solicite confirmação à administração Encartiva."}
       </p>
       <section className="card tenancy-section">
         <h2>Filiais</h2>

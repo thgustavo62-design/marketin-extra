@@ -20,7 +20,7 @@ export default async function Promocoes() {
       <header className="page-head">
         <h1>Promoções automáticas</h1>
         <p>
-          Traga a planilha, confira fotos e preços e finalize as peças no Nova7
+          Traga a planilha, confira fotos e preços e finalize as peças no Encartiva
           Studio.
         </p>
       </header>

@@ -77,7 +77,7 @@ export function MembershipForm({
       </label>
       <p>
         Logins existentes mantêm suas credenciais. Para vincular alguém de outra
-        empresa sem vínculo visível, solicite à administração Nova7.
+        empresa sem vínculo visível, solicite à administração Encartiva.
       </p>
       <label>
         Escopo

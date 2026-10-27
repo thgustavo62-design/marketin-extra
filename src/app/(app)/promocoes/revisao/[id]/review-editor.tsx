@@ -461,7 +461,7 @@ export function ReviewEditor({
                 Layout e identidade
                 <select name="theme_id">
                   <option value="">
-                    Identidade automática da campanha ou padrão Nova7
+                    Identidade automática da campanha ou padrão Encartiva
                   </option>
                   {themes.map((t) => (
                     <option key={t.id} value={t.id}>

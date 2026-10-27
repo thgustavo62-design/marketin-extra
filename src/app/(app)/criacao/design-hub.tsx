@@ -89,7 +89,7 @@ export function DesignHub({
         </div>
         <div className="design-hero-art" aria-hidden="true">
           <div className="design-art-sheet">
-            <span>NOVA7</span>
+            <span>ENCARTIVA</span>
             <b>
               Ideias que
               <br />

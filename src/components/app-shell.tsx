@@ -145,14 +145,15 @@ export function AppShell({
     <div
       className={`shell${collapsed ? " collapsed" : ""}${open ? " open" : ""}`}
     >
-      <aside className="sidebar" aria-label="Menu lateral">
+      <aside id="main-navigation" className="sidebar" aria-label="Menu lateral">
         <div className="side-head">
+          {open && <button type="button" className="side-close" onClick={() => setOpen(false)} aria-label="Fechar menu"><X size={18} /></button>}
           <div className="side-logo">
-            <img src="/brand/nova7-simbolo.png" alt="" />
+            <img src="/brand/encartiva/simbolo.png" alt="" />
           </div>
           <div className="side-title">
-            <b>NOVA7</b>
-            <small>Marketing em movimento</small>
+            <img className="side-wordmark" src="/brand/encartiva/branca.png" alt="Encartiva" width="154" height="51" />
+            <small>Promoções inteligentes</small>
           </div>
         </div>
 
@@ -231,13 +232,15 @@ export function AppShell({
           <button
             type="button"
             className="btn menu-btn"
+            aria-expanded={open}
+            aria-controls="main-navigation"
             onClick={() => setOpen((o) => !o)}
-            aria-label={open ? "Fechar menu" : "Abrir menu"}
+            aria-label="Abrir menu"
           >
             {open ? <X size={18} /> : <Menu size={18} />}
           </button>
           <span className="workspace-label">
-            NOVA7 <span>Workspace</span>
+            ENCARTIVA <span>Workspace</span>
           </span>
           <span className="spacer" />
           {topbar}

@@ -43,7 +43,7 @@ export async function createOwner(
   actor: SessionUser,
 ) {
   if (!actor.isPlatformAdmin)
-    throw Error("Somente a administração Nova7 cadastra proprietários.");
+    throw Error("Somente a administração Encartiva cadastra proprietários.");
   const err =
     validateUsername(input.username) ||
     validatePassword(input.password) ||
@@ -168,7 +168,7 @@ export async function saveMembership(
     if (!user) {
       if (!hash)
         throw Error(
-          "Para um login novo, defina uma senha provisória. Para login existente sem vínculo visível, solicite a vinculação à administração Nova7.",
+          "Para um login novo, defina uma senha provisória. Para login existente sem vínculo visível, solicite a vinculação à administração Encartiva.",
         );
       user = (
         await db.query(
@@ -208,7 +208,7 @@ export async function transferCompany(
   actor: SessionUser,
 ) {
   if (!actor.isPlatformAdmin || reason.trim().length < 5)
-    throw Error("Transferência exige administrador Nova7 e motivo.");
+    throw Error("Transferência exige administrador Encartiva e motivo.");
   await withTx(async (db) => {
     await db.query("select set_config('nova7.transfer_reason',$1,true)", [
       reason.trim().slice(0, 1000),
