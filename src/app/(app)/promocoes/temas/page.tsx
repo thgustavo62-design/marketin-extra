@@ -1,3 +1,6 @@
+import { ActionForm } from "@/components/action-form";
+import { getScope } from "@/lib/scope";
+import { installOfficialIdentity } from "./official-actions";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { canWrite } from "@/lib/perms";
@@ -10,6 +13,7 @@ import { ModelTools, ImportModel, ModelCategory } from "./modelos/model-tools";
 export default async function Temas() {
   const user = await requireUser();
   const themes = await listThemes(true);
+  const scope = await getScope();
   return (
     <>
       <PromoTabs />
@@ -21,6 +25,25 @@ export default async function Temas() {
           story, feed e A4, mais cores, textos e quantos produtos por peça.
         </p>
       </header>
+      {scope.brand?.slug === "minas-farma" && canWrite(user.role) && (
+        <details className="card">
+          <summary>Identidade oficial Corta Preço — Minas Farma</summary>
+          <p>
+            Cadastre os seis componentes privados nesta empresa. O modelo antigo
+            e as artes já geradas serão preservados. A titularidade deve estar
+            confirmada.
+          </p>
+          <ActionForm
+            action={installOfficialIdentity}
+            submit="Cadastrar componentes oficiais"
+          >
+            <label>
+              Digite MINAS FARMA
+              <input name="confirmation" required />
+            </label>
+          </ActionForm>
+        </details>
+      )}
       {canWrite(user.role) && (
         <>
           <NewTheme />

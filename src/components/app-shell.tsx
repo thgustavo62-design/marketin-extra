@@ -73,6 +73,13 @@ const GROUPS: Group[] = [
   {
     title: "Workspace e acesso",
     items: [
+      {
+        href: "/admin/proprietarios",
+        label: "Proprietários",
+        icon: BookOpen,
+        admin: true,
+      },
+      { href: "/empresas", label: "Minhas Empresas", icon: BookOpen },
       { href: "/gestao", label: "Cadastros", icon: BookOpen },
       { href: "/configuracoes", label: "Configurações", icon: Settings },
     ],
