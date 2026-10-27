@@ -457,7 +457,7 @@ export async function deleteAsset(campaignId: string, assetId: string): Promise<
   if (!c) return { ok: false, error: 'Promoção não encontrada.' }
   const layers = normalizeLayers(c.layers), bg = normalizeOverrides(c.overrides).background
   if ((bg?.kind === 'asset' && bg.asset === assetId) || PROMO_FORMAT_KEYS.some((f) => layers[f].some((l) => l.asset === assetId))) return { ok: false, error: 'Esta imagem está em uso na peça (fundo ou elemento). Troque ou remova antes de excluir.' }
-  try{const used=await pool.query('select 1 from studio_pages where position($1 in scene::text)>0 limit 1',[assetId]);if(used.rowCount)return{ok:false,error:'Esta imagem está em uso em uma arte do Nova7 Studio.'}}catch(e){if((e as {code?:string}).code!=='42P01')throw e}
+  try{const used=await pool.query('select 1 from studio_pages where position($1 in scene::text)>0 limit 1',[assetId]);if(used.rowCount)return{ok:false,error:'Esta imagem está em uso em uma arte do Encartiva Studio.'}}catch(e){if((e as {code?:string}).code!=='42P01')throw e}
   const r = await pool.query(`delete from promo_assets where id = $1 and campaign_id = $2`, [assetId, campaignId])
   if (!r.rowCount) return { ok: false, error: 'Imagem não encontrada.' }
   await touch(pool, campaignId)

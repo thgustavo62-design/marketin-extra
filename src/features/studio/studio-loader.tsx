@@ -76,7 +76,7 @@ export function StudioLoader(props: StudioLoaderProps) {
     return (
       <div className="n7-studio">
         <div className="studio-loading">
-          <h1>Nova7 Studio</h1>
+          <h1>Encartiva Studio</h1>
           <p>{error || "Preparando os elementos editáveis da sua arte…"}</p>
           {error && (
             <>

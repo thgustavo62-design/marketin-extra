@@ -175,7 +175,7 @@ export function NewPromo({
               </h3>
               <label htmlFor="np-theme">Identidade da campanha</label>
               <select id="np-theme" name="theme_id" defaultValue="">
-                <option value="">Arte padrão Nova7</option>
+                <option value="">Arte padrão Encartiva</option>
                 {themes.map((t) => (
                   <option value={t.id} key={t.id}>
                     {t.name}

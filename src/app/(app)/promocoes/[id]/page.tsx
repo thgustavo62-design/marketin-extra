@@ -21,7 +21,7 @@ export default async function Promocao({ params, searchParams }: { params: Promi
   return (
     <>
       <header className="page-head">
-        <Link className="btn primary-link" href={`/studio/${id}`}>Abrir no Nova7 Studio</Link>
+        <Link className="btn primary-link" href={`/studio/${id}`}>Abrir no Encartiva Studio</Link>
         <h1>{campaign.name}</h1>
         <p><Link href="/promocoes">← Promoções</Link> · {items.length} encarte(s) · o sistema monta as peças de story, feed e A4 sozinho a partir da planilha; ajuste o que precisar e aprove.</p>
       </header>

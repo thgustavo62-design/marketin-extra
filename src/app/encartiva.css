@@ -1,0 +1,84 @@
+/* ENCARTIVA manual, supplied by the brand owner. Interface only:
+   campaign canvas styles and company identities remain independent. */
+:root {
+  --brand-lavender: #8e7fee;
+  --brand-cream: #f8f5ea;
+  --brand-graphite: #111214;
+  --brand-lilac: #dcceff;
+  --brand-violet: #6754d8;
+  --navy-950: var(--brand-graphite);
+  --navy-900: #19191e;
+  --navy-800: #25242c;
+  --navy-700: #3b374b;
+  --banner: var(--brand-graphite);
+  --orange: var(--brand-lavender);
+  --orange-d: var(--brand-violet);
+  --blue: var(--brand-violet);
+  --blue-d: #5542bb;
+  --title-blue: #5542bb;
+  --cyan: var(--brand-lilac);
+  --bg: var(--brand-cream);
+  --box: #f1edf8;
+  --line: #e4dfeb;
+  --text: var(--brand-graphite);
+  --muted: #686373;
+}
+h1, h2, h3 { font-family: var(--font-heading), sans-serif; }
+input:focus-visible, select:focus-visible, textarea:focus-visible,
+button:focus-visible, a:focus-visible { outline-color: var(--brand-violet); }
+.sidebar { background: var(--brand-graphite); border-right-color: #302d39; }
+.side-head { padding: 14px 12px; gap: 4px; }
+.side-logo { width: 40px; height: 44px; background: none; border: 0; }
+.side-logo img { width: 42px; height: 44px; object-fit: contain; }
+.shell:not(.collapsed) .side-logo { display: none; }
+.side-title .side-wordmark { display: block; width: 194px; height: auto; margin-left: -2px; }
+.side-title small { font-size: 10px; color: #c2b8d5; }
+.nav-item.active { background: var(--brand-lilac); color: #282135; box-shadow: none; }
+.nav-item:hover { background: #2c273c; }
+.nav-item.active:hover { background: var(--brand-lilac); }
+.nav-group { color: #aba0be; }
+.collapse-btn, .avatar { color: #17131f; }
+.topbar { border-bottom: 1px solid #e8e2d7; margin-bottom: 22px; }
+.workspace-label { font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+.workspace-label span { color: var(--muted); font-weight: 400; margin-left: 8px; letter-spacing: 0; }
+.panel, .card, .kpi, .table-wrap { box-shadow: 0 3px 16px #11121404; }
+.panel-banner .tile { background: #282331; color: var(--brand-lilac); }
+.module-tabs a.active { background: #e8defb; color: #4f3cae; }
+.module-tabs a:hover { background: #ede7f6; color: #4f3cae; }
+.login-page {
+  background: radial-gradient(ellipse at 0% 0%, #6754d84a, transparent 48%),
+    radial-gradient(ellipse at 100% 100%, #8e7fee38, transparent 46%), #111214;
+}
+.login-story h1 { font-weight: 600; letter-spacing: -.055em; }
+.login-story h1 span { color: #b7a6fa; }
+.login-story .login-kicker { color: #dcceff; }
+.login-story .wordmark-img { width: 300px; margin-left: -16px; }
+.login-pillars { gap: 12px; flex-wrap: wrap; }
+.login-pillars span { background: #dcceff0c; border: 1px solid #dcceff24; padding: 12px 16px; border-radius: 10px; }
+.login-card { background: #1b1a21e6; border-color: #dcceff30; }
+.login-card .login-kicker { color: var(--brand-lilac); }
+.login-card input { background: #111214; border-color: #514961; }
+.login-card button[type=submit] { background: var(--brand-lavender); color: #17131f; font-weight: 800; min-height: 44px; }
+.login-card button[type=submit]:hover { background: #a194f3; }
+.design-hero { background: radial-gradient(ellipse at 100% 100%, #6754d85c, transparent 65%), #111214; }
+.design-hero em { color: var(--brand-lilac); }
+.design-hero .design-kicker { color: var(--brand-lilac); }
+.design-space-icon { color: #5542bb; background: #eee7fc; }
+/* No viewport width restriction on the workspace; scroll only where needed. */
+.main, .content, .design-space { min-width: 0; }
+@media(max-width:800px) {
+  .login-story .wordmark-img { width: 240px; }
+  .login-story h1 { font-size: clamp(30px, 8vw, 44px); }
+  .login-pillars { margin-bottom: 24px; }
+  .login-pillars span { padding: 9px 12px; font-size: 11px; }
+  .workspace-label { font-size: 10px; }
+  .shell.collapsed .side-logo { display: none; }
+}
+
+.side-close { display: none; }
+@media (max-width:900px) {
+  .side-close { display:grid; place-items:center; position:absolute; top:12px; right:10px; width:30px; height:30px; border:1px solid #dcceff40; border-radius:8px; background:#282331; color:#fff; }
+  .side-head { padding-right:46px; }
+  .side-title .side-wordmark { width:180px; max-width:100%; }
+  .shell.open .menu-btn { visibility:hidden; }
+}
