@@ -1,4 +1,5 @@
 "use client";
+import { blankDesignScene } from "@/lib/domain/design-presets";
 import { fabric } from "fabric";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -216,12 +217,20 @@ export function StudioEditor(
     if (
       !canEdit ||
       !confirm(
-        "Regenerar esta página a partir dos produtos e do tema? As edições desta página serão substituídas. Você pode desfazer enquanto o editor estiver aberto.",
+        c.kind === "design"
+          ? "Recriar esta página em branco no tamanho atual? As edições desta página serão substituídas. Você pode desfazer enquanto o editor estiver aberto."
+          : "Regenerar esta página a partir dos produtos e do tema? As edições desta página serão substituídas. Você pode desfazer enquanto o editor estiver aberto.",
       )
     )
       return;
     void run(async () => {
-      const scene = await promotionScene(source, format, page);
+      const scene =
+        c.kind === "design"
+          ? blankDesignScene(
+              editor?.getWorkspace()?.width ?? PROMO_FORMATS[format].w,
+              editor?.getWorkspace()?.height ?? PROMO_FORMATS[format].h,
+            )
+          : await promotionScene(source, format, page);
       docHashRef.current = sourceHash;
       setDocumentSourceHash(sourceHash);
       await loadScene(scene, true);
@@ -281,7 +290,9 @@ export function StudioEditor(
         >
           {PROMO_FORMAT_KEYS.map((f) => (
             <option key={f} value={f}>
-              {PROMO_FORMATS[f].label}
+              {c.kind === "design" && editor?.getWorkspace()
+                ? `${editor.getWorkspace()?.width} × ${editor.getWorkspace()?.height} px`
+                : PROMO_FORMATS[f].label}
             </option>
           ))}
         </select>
@@ -314,6 +325,17 @@ export function StudioEditor(
           <summary>Exportar</summary>
           <div>
             <button onClick={() => editor?.savePng()}>PNG</button>
+            {format === "a4" && (
+              <button
+                onClick={() =>
+                  void run(async () => {
+                    await editor?.savePdf();
+                  })
+                }
+              >
+                PDF para impressão
+              </button>
+            )}
             <button onClick={() => editor?.saveJpg()}>JPG</button>
             <button onClick={() => editor?.saveSvg()}>SVG vetorial</button>
             <button onClick={() => editor?.saveJson()}>JSON editável</button>
@@ -538,7 +560,7 @@ export function StudioEditor(
                 >
                   {c.kind === "promocao"
                     ? "Regenerar com os dados da planilha"
-                    : "Restaurar arte de origem"}
+                    : "Recriar página em branco"}
                 </button>
                 <button
                   className="studio-choice"
@@ -557,7 +579,11 @@ export function StudioEditor(
                 campaignId={c.id}
                 editor={editor}
                 removeBackground={activeTool === "remove-bg"}
-                configured={props.aiConfigured}
+                configured={
+                  activeTool === "remove-bg"
+                    ? props.aiConfigured.removeBg
+                    : props.aiConfigured.generate
+                }
                 onError={setMessage}
               />
             )}

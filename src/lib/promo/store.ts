@@ -152,11 +152,14 @@ export async function listCampaigns(): Promise<CampaignLite[]> {
        from promo_campaigns c left join promo_themes t on t.id = c.theme_id where c.kind = 'promocao' order by c.created_at desc limit 100`)).rows
 }
 
-export type DesignLite = { id: string; name: string; format: PromoFormat; pages: number; status: CampaignStatus; updated_at: string; created_by_name: string | null; thumb_at: string | null }
+export type DesignLite = { width?:number|null; height?:number|null; id: string; name: string; format: PromoFormat; pages: number; status: CampaignStatus; updated_at: string; created_by_name: string | null; thumb_at: string | null }
 export async function listDesigns(): Promise<DesignLite[]> {
   return (await pool.query(
-    `select c.id, c.name, c.design_format as format, c.design_pages as pages, c.status, c.updated_at::text as updated_at, u.display_name as created_by_name, c.thumb_at::text as thumb_at
-       from promo_campaigns c left join users u on u.id = c.created_by where c.kind = 'design' order by c.updated_at desc limit 200`)).rows
+    `select c.id, c.name, c.design_format as format, c.design_pages as pages, c.status, c.updated_at::text as updated_at, u.display_name as created_by_name, c.thumb_at::text as thumb_at,
+       (select (o->>'width')::numeric from jsonb_array_elements(sp.scene->'objects') o where o->>'name'='clip' limit 1)::int as width,
+       (select (o->>'height')::numeric from jsonb_array_elements(sp.scene->'objects') o where o->>'name'='clip' limit 1)::int as height
+       from promo_campaigns c left join users u on u.id = c.created_by
+       left join studio_pages sp on sp.campaign_id=c.id and sp.format=c.design_format and sp.page=0 where c.kind = 'design' order by c.updated_at desc limit 200`)).rows
 }
 
 /** Cria uma arte livre (sem planilha): formato fixo, uma peça, fundo branco. */

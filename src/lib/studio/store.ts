@@ -1,3 +1,4 @@
+import { blankDesignScene } from "../domain/design-presets";
 import { createHash } from "node:crypto";
 import { pool, withTx } from "../db";
 import { getCampaign } from "../promo/store";
@@ -7,7 +8,22 @@ import {
   type StudioPage,
 } from "../domain/studio";
 export type StudioSource = NonNullable<Awaited<ReturnType<typeof getCampaign>>>;
-export function sourceHash(data: StudioSource): string {
+type SourceSnapshot = {
+  campaign: Pick<
+    StudioSource["campaign"],
+    | "name"
+    | "title"
+    | "validity"
+    | "kind"
+    | "design_format"
+    | "design_pages"
+    | "layers"
+    | "overrides"
+  >;
+  theme: StudioSource["theme"];
+  items: StudioSource["items"];
+};
+export function sourceHash(data: SourceSnapshot): string {
   const { campaign: c, theme, items } = data;
   return createHash("sha256")
     .update(
@@ -128,6 +144,26 @@ export async function addStudioDesignPage(id: string) {
       "update promo_campaigns set design_pages=design_pages+1,status='rascunho',approved_by=null,approved_at=null,updated_at=now() where id=$1",
       [id],
     );
+    const first = (
+      await db.query(
+        "select format,scene,source_hash from studio_pages where campaign_id=$1 and page=0 limit 1",
+        [id],
+      )
+    ).rows[0];
+    const clip = first?.scene.objects?.find(
+      (o: { name?: string }) => o.name === "clip",
+    );
+    if (clip)
+      await db.query(
+        "insert into studio_pages(campaign_id,format,page,scene,source_hash) values($1,$2,$3,$4::jsonb,$5)",
+        [
+          id,
+          first.format,
+          row.design_pages,
+          JSON.stringify(blankDesignScene(clip.width, clip.height)),
+          first.source_hash,
+        ],
+      );
     return { ok: true, page: row.design_pages as number };
   });
 }

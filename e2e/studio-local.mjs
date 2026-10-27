@@ -93,7 +93,7 @@ const server = spawn(
     env: {
       ...process.env,
       NODE_ENV: "production",
-      NOVA7_BUILD_DIR: ".next-studio-build",
+      NOVA7_BUILD_DIR: process.env.NOVA7_E2E_BUILD_DIR || ".next-studio-build",
       DATABASE_URL: withSchema(url, schema),
       REPLICATE_API_TOKEN: "",
       WINDSOR_API_KEY: "",
@@ -204,6 +204,156 @@ try {
   owner = await session("teste_e2e");
   reader = await session("e2e_vw");
   const page = await owner.newPage();
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto(`${base}/criacao`);
+  await page
+    .getByRole("heading", { name: "O que vamos criar hoje?" })
+    .waitFor();
+  assert.equal(await page.locator('.side-nav a[href="/criacao"]').count(), 1);
+  assert.ok((await page.locator(".side-nav a").count()) <= 13);
+  assert.ok(
+    await page
+      .locator(".design-hero")
+      .evaluate((e) => e.getBoundingClientRect().right > innerWidth - 60),
+  );
+  await page.screenshot({ path: "/tmp/nova7-design-hub-desktop.png" });
+  pass("Design tem aba própria e ocupa toda a largura disponível");
+  await page.getByRole("button", { name: "Impressos", exact: true }).click();
+  assert.equal(await page.locator(".design-format-card").count(), 3);
+  await page.getByLabel("Buscar formato de design").fill("Etiqueta");
+  assert.equal(await page.locator(".design-format-card").count(), 1);
+  await page.getByLabel("Buscar formato de design").fill("");
+  await page
+    .getByRole("button", { name: "Todos os formatos", exact: true })
+    .click();
+  assert.equal(await page.locator(".design-format-card").count(), 9);
+  pass("Categorias e busca filtram os formatos reais");
+  let presetMutation;
+  const capturePreset = (r) => {
+    if (r.method() === "POST" && r.headers()["next-action"])
+      presetMutation = { headers: r.headers(), data: r.postData() };
+  };
+  page.on("request", capturePreset);
+  await page
+    .getByRole("button", { name: "Criar TV / Telão", exact: true })
+    .click();
+  await page
+    .getByLabel("Como vamos chamar esta criação?")
+    .fill("TV horizontal E2E");
+  await page.getByRole("button", { name: "Criar e abrir no editor" }).click();
+  await page.locator("[data-editor-ready=true]").waitFor();
+  page.off("request", capturePreset);
+  const tv = page.url().match(/studio\/([a-f0-9-]{36})/)[1];
+  await poll(async () => Boolean(await doc(tv)), "TV preset");
+  let clip = (await doc(tv)).scene.objects.find((o) => o.name === "clip");
+  assert.equal(clip.width, 1920);
+  assert.equal(clip.height, 1080);
+  pass("TV cria documento horizontal persistente de 1920×1080");
+  await page.getByRole("button", { name: "+ Página", exact: true }).click();
+  await poll(
+    async () =>
+      (
+        await pool.query(
+          "select scene from studio_pages where campaign_id=$1 and page=1",
+          [tv],
+        )
+      ).rowCount === 1,
+    "second TV page",
+  );
+  clip = (
+    await pool.query(
+      "select scene from studio_pages where campaign_id=$1 and page=1",
+      [tv],
+    )
+  ).rows[0].scene.objects.find((o) => o.name === "clip");
+  assert.equal(clip.width, 1920);
+  assert.equal(clip.height, 1080);
+  pass("Novas páginas mantêm o tamanho personalizado");
+  await page.goto(`${base}/criacao`);
+  await page
+    .getByRole("button", { name: "Criar Carrossel", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Criar e abrir no editor" }).click();
+  await page.locator("[data-editor-ready=true]").waitFor();
+  const carousel = page.url().match(/studio\/([a-f0-9-]{36})/)[1];
+  assert.equal(
+    (
+      await pool.query(
+        "select count(*)::int as n from studio_pages where campaign_id=$1",
+        [carousel],
+      )
+    ).rows[0].n,
+    5,
+  );
+  pass("Carrossel cria cinco páginas na mesma transação");
+  await page.goto(`${base}/criacao`);
+  await page
+    .getByRole("button", { name: "Criar Cartaz A4", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Criar e abrir no editor" }).click();
+  await page.locator("[data-editor-ready=true]").waitFor();
+  await page.locator(".studio-download").evaluate((e) => (e.open = true));
+  const pdfWait = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "PDF para impressão", exact: true })
+    .click();
+  const pdfDownload = await pdfWait,
+    pdf = await require("pdf-lib").PDFDocument.load(
+      fs.readFileSync(await pdfDownload.path()),
+    ),
+    paper = pdf.getPages()[0].getSize();
+  assert.ok(Math.abs(paper.width - 595.2) < 1);
+  assert.ok(Math.abs(paper.height - 841.92) < 1);
+  pass("Cartaz exporta PDF no tamanho físico A4");
+  await page.goto(`${base}/criacao/ia`);
+  assert.equal(
+    await page.getByText("Aguardando configuração", { exact: true }).count(),
+    2,
+  );
+  assert.equal(
+    await page.getByRole("button", { name: "Testar conexão" }).isDisabled(),
+    true,
+  );
+  pass("Sem chave e modelos, a IA informa pendência e não dispara chamadas");
+  const presetViewer = await reader.newPage();
+  await presetViewer.goto(`${base}/criacao`);
+  assert.equal(
+    await presetViewer.locator(".design-format-card:disabled").count(),
+    9,
+  );
+  assert.ok(presetMutation);
+  const presetHeaders = { ...presetMutation.headers, origin: base };
+  delete presetHeaders.cookie;
+  delete presetHeaders["content-length"];
+  delete presetHeaders.host;
+  const forbiddenPreset = await presetViewer.request.post(`${base}/criacao`, {
+    headers: presetHeaders,
+    data: presetMutation.data,
+  });
+  assert.ok((await forbiddenPreset.text()).includes("somente leitura"));
+  pass("Leitor também é bloqueado na ação de criar design por formato");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${base}/criacao`);
+  assert.ok(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  );
+  await page.screenshot({
+    path: "/tmp/nova7-design-hub-mobile.png",
+    fullPage: true,
+  });
+  pass("Galeria de Design funciona em tela mobile sem cortes horizontais");
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto(`${base}/`);
+  assert.ok(
+    await page
+      .locator(".content")
+      .evaluate((e) => e.getBoundingClientRect().right >= innerWidth - 2),
+  );
+  await page.screenshot({ path: "/tmp/nova7-dashboard-fullwidth.png" });
+  pass("Dashboard também usa a largura completa da página");
+  await page.setViewportSize({ width: 1440, height: 1000 });
   const design = (
     await pool.query(
       "insert into promo_campaigns(name,kind,design_format) values('Nova7 teste','design','story') returning id",
@@ -402,7 +552,7 @@ try {
   pass("Layout mobile sem overflow horizontal");
   assert.deepEqual(errors, []);
   pass("Nenhuma exceção de página durante o fluxo");
-  console.log(`${checks}/20 checks passed`);
+  console.log(`${checks} checks passed`);
 } finally {
   await reader?.close().catch(() => {});
   await owner?.close().catch(() => {});

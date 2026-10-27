@@ -1,3 +1,4 @@
+import { studioModelVersion } from "@/lib/domain/studio-ai";
 import { NextResponse } from "next/server";
 import { sameOrigin } from "@/lib/auth";
 import { getSession } from "@/lib/session";
@@ -36,11 +37,12 @@ export async function POST(
   const body = await req.json().catch(() => null);
   if (!body || !["generate", "remove-bg"].includes(body.kind))
     return json({ error: "Operação inválida." }, 400);
-  const version =
+  const version = studioModelVersion(
     body.kind === "generate"
       ? process.env.REPLICATE_GENERATE_VERSION
-      : process.env.REPLICATE_REMOVE_BG_VERSION;
-  if (!version || !/^(?:[\w.-]+\/[\w.-]+:)?[a-f0-9]{64}$/i.test(version))
+      : process.env.REPLICATE_REMOVE_BG_VERSION,
+  );
+  if (!version)
     return json({ error: "Configure a versão do modelo de IA." }, 503);
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   if (body.kind === "generate" && (prompt.length < 5 || prompt.length > 1200))

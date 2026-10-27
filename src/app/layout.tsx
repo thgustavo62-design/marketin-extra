@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import localFont from 'next/font/local'
 import './globals.css'
+import './design.css'
 
 const font = localFont({ src: '../../public/fonts/Montserrat.ttf', weight: '100 900', display: 'swap' })
 
