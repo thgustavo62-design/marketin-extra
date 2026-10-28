@@ -271,7 +271,7 @@ export async function campaignAppearanceFlow({
   await page.getByText("Salvo", { exact: true }).waitFor({ timeout: 30000 });
   const scene = (
     await db.query(
-      "select scene from studio_pages where campaign_id=$1 and format='feed' and page=0",
+      "select scene from studio_pages where campaign_id=$1 and format='story' and page=0",
       [campaign],
     )
   ).rows[0].scene;
