@@ -5,9 +5,13 @@ import { listCampaigns, listThemes } from "@/lib/promo/store";
 import { catalogStats } from "@/lib/catalog/store";
 import { NewPromo } from "./new-promo";
 import { PromoTabs } from "./promo-tabs";
+import { getScope } from "@/lib/scope";
+import { modelBrandColors } from "@/lib/promo/model-selection";
 
 export default async function Promocoes() {
   const user = await requireUser();
+  const scope = await getScope();
+  const brandColors = await modelBrandColors(scope.brand?.id ?? null);
   const [campaigns, themes, stats] = await Promise.all([
     listCampaigns(),
     listThemes(),
@@ -20,8 +24,8 @@ export default async function Promocoes() {
       <header className="page-head">
         <h1>Promoções automáticas</h1>
         <p>
-          Traga a planilha, confira fotos e preços e finalize as peças no Encartiva
-          Studio.
+          Traga a planilha, confira fotos e preços e finalize as peças no
+          Encartiva Studio.
         </p>
       </header>
       {write && (
@@ -31,6 +35,9 @@ export default async function Promocoes() {
             agrupamentos e escolha até duas fotos reais por oferta.{" "}
             <Link className="btn primary-link" href="/promocoes/importar">
               Importar e revisar campanha
+            </Link>{" "}
+            <Link className="btn" href="/promocoes/modelos">
+              Explorar modelos de farmácia
             </Link>
           </span>
         </div>
@@ -53,7 +60,13 @@ export default async function Promocoes() {
         </Link>
       </div>
       {write && (
-        <NewPromo themes={themes.map((t) => ({ id: t.id, name: t.name }))} />
+        <NewPromo
+          themes={themes.map((t) => ({ id: t.id, name: t.name }))}
+          company={
+            scope.brand ? { id: scope.brand.id, name: scope.brand.name } : null
+          }
+          brandColors={brandColors}
+        />
       )}
       <h2 style={{ marginTop: 22 }}>Promoções criadas</h2>
       {campaigns.length === 0 ? (
@@ -63,12 +76,7 @@ export default async function Promocoes() {
       ) : (
         <div className="cards">
           {campaigns.map((c) => (
-            <Link
-              key={c.id}
-              href={`/promocoes/${c.id}`}
-              className="card"
-              style={{ color: "inherit" }}
-            >
+            <article key={c.id} className="card" style={{ color: "inherit" }}>
               {c.thumb_at ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -78,7 +86,9 @@ export default async function Promocoes() {
                   loading="lazy"
                 />
               ) : null}
-              <h3>{c.name}</h3>
+              <h3>
+                <Link href={`/studio/${c.id}`}>{c.name}</Link>
+              </h3>
               <p className="muted">
                 <span
                   className={`badge`}
@@ -93,7 +103,18 @@ export default async function Promocoes() {
                 {c.items} encarte(s) · {c.theme_name ?? "sem tema"} ·{" "}
                 {c.created_at.slice(0, 10).split("-").reverse().join("/")}
               </p>
-            </Link>
+              <div className="row-actions">
+                <Link
+                  className="btn primary-link"
+                  href={`/promocoes/${c.id}/ofertas`}
+                >
+                  Editar ofertas
+                </Link>
+                <Link className="btn" href={`/studio/${c.id}`}>
+                  Abrir Studio
+                </Link>
+              </div>
+            </article>
           ))}
         </div>
       )}

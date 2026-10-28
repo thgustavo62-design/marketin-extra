@@ -17,6 +17,10 @@ import {
 } from "../domain/promo.ts";
 import { imagePlacement, type Layer } from "../domain/promo-layers.ts";
 import { fontStack } from "../domain/promo-fonts.ts";
+import {
+  drawPharmacyBackground,
+  drawPharmacyHeader,
+} from "./pharmacy-visual-render.ts";
 
 export type RenderAssets = {
   background?: HTMLImageElement | null;
@@ -100,7 +104,9 @@ export function pageGeometry(
     o.theme.dimensions?.[o.format] ?? PROMO_FORMATS[o.format];
   const headerH = o.assets.header
     ? Math.round((o.assets.header.height * W) / o.assets.header.width)
-    : HEADER_DEFAULT[o.format];
+    : o.theme.visual
+      ? Math.round(W * 0.28)
+      : HEADER_DEFAULT[o.format];
   const footerH = o.assets.footer
     ? Math.round((o.assets.footer.height * W) / o.assets.footer.width)
     : o.theme.footerLines.length
@@ -151,6 +157,7 @@ export function drawPage(canvas: HTMLCanvasElement, o: RenderOpts): void {
   // fundo
   if (o.bg) drawBackgroundChoice(ctx, o.bg, W, H);
   else if (o.assets.background) drawCover(ctx, o.assets.background, 0, 0, W, H);
+  else if (o.theme.visual) drawPharmacyBackground(ctx, o.theme, W, H);
   else {
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, c.skyTop);
@@ -218,6 +225,15 @@ export function drawPage(canvas: HTMLCanvasElement, o: RenderOpts): void {
 
   // cabeçalho
   if (o.assets.header) ctx.drawImage(o.assets.header, 0, 0, W, headerH);
+  else if (o.theme.visual)
+    drawPharmacyHeader(
+      ctx,
+      o.theme,
+      W,
+      headerH,
+      o.title || o.theme.title,
+      o.validity,
+    );
   else {
     const title = (o.title || o.theme.title || "").toUpperCase();
     if (title) {

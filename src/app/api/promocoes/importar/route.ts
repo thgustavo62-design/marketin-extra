@@ -16,6 +16,8 @@ import {
 } from "@/lib/promo/store";
 import { parsePromoXlsx } from "@/lib/promo/xlsx";
 import { getSession } from "@/lib/session";
+import { getScope } from "@/lib/scope";
+import { campaignModel } from "@/lib/promo/model-selection";
 
 export const maxDuration = 60;
 
@@ -58,6 +60,38 @@ export async function POST(req: Request) {
       { status: 413 },
     );
   const themeId = String(fd.get("theme_id") ?? "");
+  const scope = await getScope();
+  const companyId = scope.brand?.id ?? null;
+  if (!companyId || String(fd.get("brand_id") ?? "") !== companyId)
+    return NextResponse.json(
+      {
+        error:
+          "Selecione a empresa da campanha no cabeçalho e tente novamente.",
+      },
+      { status: 409 },
+    );
+  let model;
+  try {
+    model = await campaignModel(
+      {
+        modelKey: String(fd.get("model_key") ?? ""),
+        primary: String(fd.get("model_primary") ?? ""),
+        accent: String(fd.get("model_accent") ?? ""),
+        useBrandColors: fd.get("model_brand_colors") === "1",
+      },
+      companyId,
+    );
+  } catch (e) {
+    return NextResponse.json(
+      {
+        error:
+          e instanceof Error && !("code" in e)
+            ? e.message
+            : "Não foi possível preparar o modelo.",
+      },
+      { status: 422 },
+    );
+  }
   const parsed = await parsePromoXlsx(Buffer.from(await file.arrayBuffer()));
   if (!parsed.ok)
     return NextResponse.json({ error: parsed.error }, { status: 422 });
@@ -69,9 +103,12 @@ export async function POST(req: Request) {
       { error: "Escolha um layout válido." },
       { status: 400 },
     );
-  const overrides = { grid: promoLayoutGrid(layout) },
-    theme = isUuid(themeId) ? await getTheme(themeId) : null;
-  if (themeId && !theme)
+  const overrides = {
+      grid: promoLayoutGrid(layout),
+      ...(model ? { model } : {}),
+    },
+    theme = !model && isUuid(themeId) ? await getTheme(themeId) : null;
+  if (!model && themeId && !theme)
     return NextResponse.json(
       { error: "O tema selecionado não está mais disponível." },
       { status: 422 },
@@ -104,14 +141,12 @@ export async function POST(req: Request) {
         ok: true,
         preview: {
           report: ready.report,
-          rows: ready.rows
-            .slice(0, 100)
-            .map((r) => ({
-              ean: r.ean,
-              name: r.name,
-              price: r.price,
-              photo_id: r.photo_id,
-            })),
+          rows: ready.rows.slice(0, 100).map((r) => ({
+            ean: r.ean,
+            name: r.name,
+            price: r.price,
+            photo_id: r.photo_id,
+          })),
           missingPhotos: ready.missingPhotos,
           missingCatalog: ready.missingCatalog,
           skipped: ready.skippedCount,
@@ -124,7 +159,7 @@ export async function POST(req: Request) {
 
   const r = await createCampaignFromRows({
     name,
-    themeId: isUuid(themeId) ? themeId : null,
+    themeId: !model && isUuid(themeId) ? themeId : null,
     title:
       String(fd.get("title") ?? "")
         .trim()

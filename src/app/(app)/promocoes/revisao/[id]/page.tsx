@@ -5,16 +5,24 @@ import { readReview } from "@/lib/promo/review-store";
 import { listThemes } from "@/lib/promo/store";
 import { PromoTabs } from "../../promo-tabs";
 import { ReviewEditor } from "./review-editor";
+import { pharmacyModel } from "@/lib/domain/pharmacy-models";
+import { modelBrandColors } from "@/lib/promo/model-selection";
 export default async function Page({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ modelo?: string }>;
 }) {
   const user = await requireUser(),
     { id } = await params,
     r = await readReview(id, user);
   if (!r) notFound();
-  const themes = await listThemes();
+  const [themes, brandColors, query] = await Promise.all([
+    listThemes(),
+    modelBrandColors(r.brand_id),
+    searchParams,
+  ]);
   return (
     <>
       <PromoTabs />
@@ -27,7 +35,13 @@ export default async function Page({
       <a className="btn" href={`/api/promocoes/revisao/${id}/original`}>
         Baixar planilha original
       </a>
-      <ReviewEditor data={r} themes={themes} canEdit={canWrite(user.role)} />
+      <ReviewEditor
+        data={r}
+        themes={themes}
+        canEdit={canWrite(user.role)}
+        initialModel={pharmacyModel(query.modelo)?.key}
+        brandColors={brandColors}
+      />
     </>
   );
 }

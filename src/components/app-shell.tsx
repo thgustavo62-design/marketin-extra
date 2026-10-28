@@ -20,6 +20,7 @@ import {
   Menu,
   Radar,
   Settings,
+  ChevronDown,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -32,14 +33,12 @@ type Item = {
   admin?: boolean;
   /** só aparece para quem pode editar */ write?: boolean;
 };
-type Group = { title: string; items: Item[] };
+type Group = { title: string; collapsible?: boolean; items: Item[] };
 
 const GROUPS: Group[] = [
   {
-    title: "Workspace",
-    items: [
-      { href: "/", label: "Visão geral", icon: LayoutDashboard, exact: true },
-    ],
+    title: "Seu espaço",
+    items: [{ href: "/", label: "Início", icon: LayoutDashboard, exact: true }],
   },
   {
     title: "Criar e comunicar",
@@ -47,10 +46,12 @@ const GROUPS: Group[] = [
       { href: "/criacao", label: "Design", icon: PenTool },
       { href: "/promocoes", label: "Promoções automáticas", icon: Sparkles },
       { href: "/produtos", label: "Produtos", icon: PackageSearch },
+      { href: "/resultados", label: "Resultados", icon: BarChart3 },
     ],
   },
   {
     title: "Organizar",
+    collapsible: true,
     items: [
       {
         href: "/planejamento/calendario",
@@ -67,11 +68,8 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    title: "Acompanhar",
-    items: [{ href: "/resultados", label: "Resultados", icon: BarChart3 }],
-  },
-  {
-    title: "Workspace e acesso",
+    title: "Empresas e acesso",
+    collapsible: true,
     items: [
       {
         href: "/admin/proprietarios",
@@ -80,6 +78,7 @@ const GROUPS: Group[] = [
         admin: true,
       },
       { href: "/empresas", label: "Minhas Empresas", icon: BookOpen },
+      { href: "/criacao/marcas", label: "Kit de marca", icon: PenTool },
       { href: "/gestao", label: "Cadastros", icon: BookOpen },
       { href: "/configuracoes", label: "Configurações", icon: Settings },
     ],
@@ -100,6 +99,7 @@ export function AppShell({
     username: string;
     role: string;
     roleLabel: string;
+    isPlatformAdmin?: boolean;
   };
   logout: () => Promise<void>;
   topbar: React.ReactNode;
@@ -109,6 +109,7 @@ export function AppShell({
   const path = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
+  const [sections, setSections] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     try {
@@ -130,6 +131,8 @@ export function AppShell({
     });
   };
   const isActive = (i: Item) => {
+    if (i.href === "/criacao" && path.startsWith("/criacao/marcas"))
+      return false;
     if (i.href === "/resultados" && path.startsWith("/inteligencia"))
       return true;
     if (i.href === "/planejamento/calendario")
@@ -147,12 +150,27 @@ export function AppShell({
     >
       <aside id="main-navigation" className="sidebar" aria-label="Menu lateral">
         <div className="side-head">
-          {open && <button type="button" className="side-close" onClick={() => setOpen(false)} aria-label="Fechar menu"><X size={18} /></button>}
+          {open && (
+            <button
+              type="button"
+              className="side-close"
+              onClick={() => setOpen(false)}
+              aria-label="Fechar menu"
+            >
+              <X size={18} />
+            </button>
+          )}
           <div className="side-logo">
             <img src="/brand/encartiva/simbolo.png" alt="" />
           </div>
           <div className="side-title">
-            <img className="side-wordmark" src="/brand/encartiva/branca.png" alt="Encartiva" width="154" height="51" />
+            <img
+              className="side-wordmark"
+              src="/brand/encartiva/branca.png"
+              alt="Encartiva"
+              width="154"
+              height="51"
+            />
             <small>Promoções inteligentes</small>
           </div>
         </div>
@@ -161,37 +179,66 @@ export function AppShell({
           {GROUPS.map((g) => {
             const items = g.items.filter(
               (i) =>
-                (!i.admin || user.role === "admin") &&
+                (!i.admin || user.isPlatformAdmin) &&
                 !(i.write && user.role === "viewer"),
             );
             if (!items.length) return null;
+            const expanded =
+              collapsed ||
+              !g.collapsible ||
+              (sections[g.title] ?? items.some(isActive));
             return (
               <div key={g.title}>
-                <div className="nav-group">{g.title}</div>
-                {items.map((i) => {
-                  const Icon = i.icon;
-                  const active = isActive(i);
-                  return (
-                    <Link
-                      key={i.href}
-                      href={
-                        i.href === "/configuracoes"
-                          ? user.role === "admin"
-                            ? "/configuracoes/usuarios"
-                            : "/configuracoes/conta"
-                          : i.href === "/gestao"
-                            ? "/gestao/base"
-                            : i.href
-                      }
-                      className={`nav-item${active ? " active" : ""}`}
-                      aria-current={active ? "page" : undefined}
-                      title={i.label}
-                    >
-                      <Icon size={18} aria-hidden />
-                      <span>{i.label}</span>
-                    </Link>
-                  );
-                })}
+                {g.collapsible ? (
+                  <button
+                    type="button"
+                    className="nav-group nav-group-toggle"
+                    aria-expanded={expanded}
+                    aria-controls={`nav-${g.title.replace(/\s/g, "-")}`}
+                    onClick={() =>
+                      setSections((s) => ({ ...s, [g.title]: !expanded }))
+                    }
+                  >
+                    {g.title}
+                    <ChevronDown
+                      size={13}
+                      style={{
+                        transform: expanded ? "rotate(180deg)" : undefined,
+                      }}
+                    />
+                  </button>
+                ) : (
+                  <div className="nav-group">{g.title}</div>
+                )}
+                <div
+                  id={`nav-${g.title.replace(/\s/g, "-")}`}
+                  hidden={!expanded}
+                >
+                  {items.map((i) => {
+                    const Icon = i.icon;
+                    const active = isActive(i);
+                    return (
+                      <Link
+                        key={i.href}
+                        href={
+                          i.href === "/configuracoes"
+                            ? user.role === "admin"
+                              ? "/configuracoes/usuarios"
+                              : "/configuracoes/conta"
+                            : i.href === "/gestao"
+                              ? "/gestao/base"
+                              : i.href
+                        }
+                        className={`nav-item${active ? " active" : ""}`}
+                        aria-current={active ? "page" : undefined}
+                        title={i.label}
+                      >
+                        <Icon size={18} aria-hidden />
+                        <span>{i.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}

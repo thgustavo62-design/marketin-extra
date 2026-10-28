@@ -318,6 +318,15 @@ export function StudioEditor(
             <small className="studio-company">{c.brand_name}</small>
           )}
         </span>
+        {c.kind === "promocao" && (
+          <button
+            type="button"
+            onClick={() => void navigate(`/promocoes/${c.id}/ofertas`)}
+            title="Editar os dados das ofertas"
+          >
+            Ofertas
+          </button>
+        )}
         <button
           type="button"
           aria-label="Desfazer"

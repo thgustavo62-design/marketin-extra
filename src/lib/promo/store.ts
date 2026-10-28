@@ -1,5 +1,6 @@
 // Promoções: temas (artes), campanhas e itens. Importações com .ts para rodar também em scripts do Node.
 import { campaignAccess } from "./access";
+import { offerEditVersion } from "../domain/offer-editing.ts";
 import { getSession } from "../session";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
@@ -947,9 +948,10 @@ export async function approveCampaign(
       validity: data.campaign.validity,
       pageCount: pageCountsFor(
         data.items,
-        data.theme
-          ? applyOverrides(data.theme.config, data.campaign.overrides)
-          : null,
+        applyOverrides(
+          data.theme?.config ?? normalizeTheme({}),
+          data.campaign.overrides,
+        ),
       ),
     });
     const bl = issues.filter((i) => i.severity === "bloqueio");
@@ -975,6 +977,7 @@ export async function approveCampaign(
 
 export type SizeEdit = { label: string; units: number | null };
 export type ItemPatch = {
+  expectedOfferVersion?: string;
   name?: string;
   price?: number;
   photoImageId?: string | null;
@@ -992,11 +995,21 @@ export async function patchItem(
   itemId: string,
   p: ItemPatch,
   userId: string | null = null,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{
+  ok: boolean;
+  error?: string;
+  conflict?: boolean;
+  version?: string;
+}> {
   return withTx(async (db) => {
+    // Same lock order as Studio saves: campaign first, then item.
+    await db.query(
+      "select id from promo_campaigns where id=(select campaign_id from promo_items where id=$1) for update",
+      [itemId],
+    );
     const cur = (
       await db.query(
-        `select campaign_id, name, price::float8 as price, variants, old_price::float8 as old_price, note, style, photo_image_id from promo_items where id = $1 for update`,
+        `select campaign_id, product_id, name, price::float8 as price, variants, old_price::float8 as old_price, note, style, photo_image_id,photo_image_ids from promo_items where id = $1 for update`,
         [itemId],
       )
     ).rows[0];
@@ -1017,6 +1030,24 @@ export async function patchItem(
       p.note === undefined
         ? (cur.note as string | null)
         : (p.note ?? "").trim().replace(/\s+/g, " ").slice(0, 100) || null;
+    if (
+      p.expectedOfferVersion !== undefined &&
+      p.expectedOfferVersion !== offerEditVersion(cur)
+    ) {
+      if (
+        name === cur.name &&
+        price === cur.price &&
+        note === cur.note &&
+        (p.photoImageId === undefined || p.photoImageId === cur.photo_image_id)
+      )
+        return { ok: true, version: offerEditVersion(cur) };
+      return {
+        ok: false,
+        conflict: true,
+        error:
+          "Esta oferta mudou em outra aba. Recarregue para conferir antes de salvar.",
+      };
+    }
     const style =
       p.style === undefined
         ? normalizeItemStyle(cur.style)
@@ -1056,6 +1087,19 @@ export async function patchItem(
       variants = { ...variants, show: p.showVariants } as Variants;
     // a foto escolhida precisa ser do mesmo produto
     const photo = p.photoImageId === undefined ? undefined : p.photoImageId;
+    if (
+      photo &&
+      !(
+        await db.query(
+          "select 1 from product_images where id=$1 and product_id=$2",
+          [photo, cur.product_id],
+        )
+      ).rowCount
+    )
+      return {
+        ok: false,
+        error: "A foto não pertence ao produto desta oferta.",
+      };
     await db.query(
       `update promo_items i set name = $2, price = $3, old_price = $4, note = $5, style = $6::jsonb, variants = $7::jsonb where i.id = $1`,
       [
@@ -1097,7 +1141,17 @@ export async function patchItem(
         photo ? "foto escolhida trocada" : "foto padrão do produto",
       );
     await touch(db, cur.campaign_id);
-    return { ok: true };
+    return {
+      ok: true,
+      version: offerEditVersion({
+        ...cur,
+        name,
+        price,
+        note,
+        photo_image_id: photo === undefined ? cur.photo_image_id : photo,
+        photo_image_ids: photo === undefined ? cur.photo_image_ids : [],
+      }),
+    };
   });
 }
 

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/promocoes", label: "Promoções" },
   { href: "/promocoes/importar", label: "Importar e revisar" },
+  { href: "/promocoes/modelos", label: "Modelos de farmácia" },
   { href: "/promocoes/regras", label: "Regras inteligentes" },
   { href: "/promocoes/temas", label: "Layouts e modelos" },
   { href: "/promocoes/biblioteca", label: "Elementos gráficos" },
@@ -21,6 +22,7 @@ export function PromoTabs() {
           "/promocoes/biblioteca",
           "/promocoes/importar",
           "/promocoes/regras",
+          "/promocoes/modelos",
         ].some((p) => path.startsWith(p))
       : path === href || path.startsWith(href + "/");
   return (

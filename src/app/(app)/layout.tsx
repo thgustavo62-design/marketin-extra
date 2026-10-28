@@ -22,6 +22,7 @@ export default async function AppLayout({
         displayName: user.displayName,
         username: user.username,
         role: user.role,
+        isPlatformAdmin: user.isPlatformAdmin,
         roleLabel: roleLabel(user.role),
       }}
       logout={logoutAction}

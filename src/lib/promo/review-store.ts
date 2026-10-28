@@ -21,6 +21,7 @@ import {
 import { normalizeTheme, normalizeOverrides } from "../domain/promo";
 import { promoLayoutGrid } from "../domain/promo-layouts";
 import { getTheme } from "./store";
+import { campaignModel, type ModelSelection } from "./model-selection";
 const memoryKey = (signature: string) =>
   createHash("sha256").update(signature).digest("hex");
 export type ReviewImport = {
@@ -318,7 +319,7 @@ export async function generateReviewed(
   id: string,
   revision: number,
   user: SessionUser,
-  opts: {
+  opts: ModelSelection & {
     themeId?: string;
     layout: string;
     title: string;
@@ -328,10 +329,12 @@ export async function generateReviewed(
 ) {
   if (!canWrite(user.role)) throw Error("Seu perfil é somente leitura.");
   let theme =
-    opts.themeId && isUuid(opts.themeId) ? await getTheme(opts.themeId) : null;
-  if (opts.themeId && (!theme || theme.active === false))
+    !opts.modelKey && opts.themeId && isUuid(opts.themeId)
+      ? await getTheme(opts.themeId)
+      : null;
+  if (!opts.modelKey && opts.themeId && (!theme || theme.active === false))
     throw Error("Modelo não encontrado ou desativado.");
-  if (!opts.themeId) {
+  if (!opts.themeId && !opts.modelKey) {
     const source = (
       await pool.query("select name,brand_id from promo_imports where id=$1", [
         id,
@@ -359,6 +362,7 @@ export async function generateReviewed(
     if (r.campaign_id) return r.campaign_id;
     if (r.revision !== revision)
       throw Error("Revisão alterada. Recarregue antes de gerar.");
+    const model = await campaignModel(opts, r.brand_id, db);
     if (!r.groups.length) throw Error("Nenhuma oferta para gerar.");
     for (const g of r.groups) {
       const err = validateReviewedGroup(g, r.rules);
@@ -409,6 +413,7 @@ export async function generateReviewed(
       reviewImport: id,
       rules: r.rules,
       modelVersion: theme?.version ?? null,
+      globalModel: model ? { key: model.key, version: model.version } : null,
     };
     const c = (
       await db.query(
@@ -422,6 +427,7 @@ export async function generateReviewed(
           JSON.stringify(report),
           JSON.stringify(
             normalizeOverrides({
+              ...(model ? { model } : {}),
               grid: theme?.config.offerIdentity
                 ? theme.config.grid
                 : promoLayoutGrid(opts.layout),

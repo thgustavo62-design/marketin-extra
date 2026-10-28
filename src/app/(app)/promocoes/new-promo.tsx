@@ -11,6 +11,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { PROMO_LAYOUTS } from "@/lib/domain/promo-layouts";
+import { CampaignModelPicker } from "@/components/campaign-model-picker";
 import type { ImportReport } from "@/lib/promo/store";
 type Preview = {
   report: ImportReport;
@@ -24,8 +25,12 @@ const money = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 export function NewPromo({
   themes,
+  company,
+  brandColors,
 }: {
   themes: { id: string; name: string }[];
+  company: { id: string; name: string } | null;
+  brandColors: string[];
 }) {
   const router = useRouter(),
     fileRef = useRef<HTMLInputElement>(null),
@@ -99,7 +104,18 @@ export function NewPromo({
           setOnlyMissing(false);
         }}
       >
-        <fieldset disabled={busy}>
+        <input type="hidden" name="brand_id" value={company?.id ?? ""} />
+        {!company && (
+          <p className="notice info">
+            Selecione a empresa no cabeçalho para criar uma promoção.
+          </p>
+        )}
+        {company && (
+          <p className="muted">
+            Campanha de <b>{company.name}</b>
+          </p>
+        )}
+        <fieldset disabled={busy || !company}>
           <div className="promo-setup-grid">
             <section>
               <h3>
@@ -182,6 +198,10 @@ export function NewPromo({
                   </option>
                 ))}
               </select>
+              <CampaignModelPicker
+                brandColors={brandColors}
+                onChange={() => setPreview(null)}
+              />
               <label>Produtos por página</label>
               <div
                 className="promo-layout-choices"

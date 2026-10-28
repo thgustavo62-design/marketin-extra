@@ -4,6 +4,7 @@ import { PROMO_FORMATS } from "@/lib/domain/promo";
 import { canWrite } from "@/lib/perms";
 import { listTemplates } from "@/lib/promo/store";
 import { TemplateGallery } from "./template-gallery";
+import { PharmacyModelGallery } from "@/components/pharmacy-model-gallery";
 
 export default async function Modelos() {
   const user = await requireUser();
@@ -19,6 +20,14 @@ export default async function Modelos() {
           modelo&quot; em Modelos e arquivos no editor.
         </p>
       </header>
+      <PharmacyModelGallery canEdit={canWrite(user.role)} compact />
+      <div className="design-section-head">
+        <div>
+          <span className="design-kicker">BIBLIOTECA DA EMPRESA</span>
+          <h2>Seus modelos salvos</h2>
+          <p>Artes reutilizáveis criadas pela sua equipe.</p>
+        </div>
+      </div>
       <TemplateGallery
         canEdit={canWrite(user.role)}
         userId={user.id}

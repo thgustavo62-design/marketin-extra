@@ -414,6 +414,21 @@ export async function officialPromotionFlow({
       check();
     }
   }
+  if (process.env.ENCARTIVA_MODEL_TEST === "1") {
+    const { pharmacyModelFlow } = await import("./lib/pharmacy-model-flow.mjs");
+    await pharmacyModelFlow({
+      db,
+      page,
+      context,
+      base,
+      companyId: company.id,
+      otherId: other,
+      staffId,
+      bytes,
+      prices,
+      check,
+    });
+  }
   const token = randomBytes(32).toString("base64url");
   await db.query(
     "insert into sessions(user_id,token_hash,expires_at)values($1,$2,now()+interval '1 hour')",

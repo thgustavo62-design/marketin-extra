@@ -279,7 +279,7 @@ export function PromoStudio({
   const fotoRef = useRef<HTMLInputElement>(null);
   const imgCache = useRef(new Map<string, HTMLImageElement | null>());
 
-  const baseCfg = theme?.config;
+  const baseCfg = theme?.config ?? campaign.overrides.model?.theme;
   const cfg = useMemo(
     () => (baseCfg ? applyOverrides(baseCfg, campaign.overrides) : undefined),
     [baseCfg, campaign.overrides],
@@ -459,16 +459,16 @@ export function PromoStudio({
       idx: number,
       withLayers = false,
     ): Promise<Geo | null> => {
-      if (!theme || !cfg) return null;
+      if (!cfg) return null;
       await loadPromoFonts();
       const find = (role: string) =>
-        theme.assets.find((a) => a.role === role && a.format === fmt);
+        theme?.assets.find((a) => a.role === role && a.format === fmt);
       const url = (role: string, a: ThemeAsset | undefined) =>
         a
-          ? `/api/promocoes/tema/${theme.id}/${role}/${a.format}?v=${a.width}x${a.height}`
+          ? `/api/promocoes/tema/${theme?.id}/${role}/${a.format}?v=${a.width}x${a.height}`
           : "";
       const shared = (role: string) => {
-        const a = find(role) ?? theme.assets.find((x) => x.role === role);
+        const a = find(role) ?? theme?.assets.find((x) => x.role === role);
         return url(role, a);
       };
       const assets: RenderAssets = {
@@ -516,7 +516,7 @@ export function PromoStudio({
       const fx = isDesign
         ? []
         : layersForPage(
-            (theme.fixed?.[fmt] ?? []).filter((l) => !hide.includes(l.id)),
+            (theme?.fixed?.[fmt] ?? []).filter((l) => !hide.includes(l.id)),
             pageNo,
             ps.length,
           );
@@ -578,7 +578,7 @@ export function PromoStudio({
 
   useEffect(() => {
     const c = canvasRef.current;
-    if (!c || !theme) return;
+    if (!c || !cfg) return;
     let cancel = false;
     setRendering(true);
     renderTo(c, format, pageIdx)
@@ -595,7 +595,7 @@ export function PromoStudio({
 
   // miniaturas das peças do formato (faixa de baixo)
   useEffect(() => {
-    if (!theme || (!items.length && !isDesign)) {
+    if (!cfg || (!items.length && !isDesign)) {
       setThumbs([]);
       return;
     }
@@ -632,7 +632,7 @@ export function PromoStudio({
   // miniatura da primeira peça para as listas (enviada alguns segundos depois da última mudança; só se a imagem mudou)
   const lastThumb = useRef<string>("");
   useEffect(() => {
-    if (!canEdit || !theme || (!items.length && !isDesign)) return;
+    if (!canEdit || !cfg || (!items.length && !isDesign)) return;
     const fmt: PromoFormat = isDesign
       ? (campaign.design_format ?? "story")
       : "story";
@@ -1376,7 +1376,7 @@ export function PromoStudio({
             className="secondary"
             onClick={() => setHistOpen((v) => !v)}
             aria-expanded={histOpen}
-            disabled={!theme}
+            disabled={!cfg}
           >
             Histórico
           </button>
@@ -1385,7 +1385,7 @@ export function PromoStudio({
             className={`secondary canva-check-btn${checkSum.bloqueio ? " bad" : checkSum.revisao ? " warn" : ""}`}
             onClick={() => setCheckOpen((v) => !v)}
             aria-expanded={checkOpen}
-            disabled={!theme}
+            disabled={!cfg}
           >
             Verificar arte{issues.length ? ` (${issues.length})` : " ✓"}
           </button>
@@ -1393,7 +1393,7 @@ export function PromoStudio({
             type="button"
             className="primary"
             onClick={downloadPage}
-            disabled={(!items.length && !isDesign) || !theme}
+            disabled={(!items.length && !isDesign) || !cfg}
           >
             <Download size={14} /> Baixar esta peça (PNG)
           </button>
@@ -1401,7 +1401,7 @@ export function PromoStudio({
             type="button"
             className="secondary"
             onClick={() => downloadZip([format])}
-            disabled={(!items.length && !isDesign) || !theme}
+            disabled={(!items.length && !isDesign) || !cfg}
           >
             {isDesign ? "Todas as peças (ZIP)" : "Todas do formato (ZIP)"}
           </button>
@@ -1410,7 +1410,7 @@ export function PromoStudio({
               type="button"
               className="secondary"
               onClick={() => downloadZip(PROMO_FORMAT_KEYS)}
-              disabled={!items.length || !theme}
+              disabled={!items.length || !cfg}
             >
               Todos os formatos (ZIP)
             </button>
@@ -1420,7 +1420,7 @@ export function PromoStudio({
               type="button"
               className="secondary"
               onClick={downloadPdf}
-              disabled={(!items.length && !isDesign) || !theme}
+              disabled={(!items.length && !isDesign) || !cfg}
             >
               A4 em PDF
             </button>
@@ -2009,7 +2009,7 @@ export function PromoStudio({
             guideCount={guidesApi.guides[format].length}
             onClearGuides={() => guidesApi.clear(format)}
           />
-          {!theme ? (
+          {!cfg ? (
             <p className="empty">
               Escolha um tema na aba &quot;Tema&quot; para ver a peça.
             </p>
