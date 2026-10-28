@@ -81,6 +81,25 @@ export async function POST(
   } catch (e) {
     if (e instanceof SyntaxError)
       return reply({ ok: false, error: "Documento inválido." }, 400);
+    const code = (e as { code?: string }).code;
+    if (code === "P0001")
+      return reply(
+        {
+          ok: false,
+          error:
+            "A empresa ou os vínculos desta arte precisam ser revisados pela administração. Sua edição foi preservada.",
+        },
+        422,
+      );
+    if (code === "42501")
+      return reply(
+        {
+          ok: false,
+          error:
+            "Seu acesso não permite salvar esta arte no escopo atual. Sua edição foi preservada.",
+        },
+        403,
+      );
     // No scene, credentials or commercial data in runtime logs.
     console.error("studio_save_failed", {
       campaignId: id,
