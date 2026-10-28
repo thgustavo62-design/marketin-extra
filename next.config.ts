@@ -80,11 +80,11 @@ const config: NextConfig = {
       { source: "/:path*", headers: security },
       // Páginas e API são privadas (nunca em cache). Arquivos estáticos ficam de fora para serem cacheados.
       {
-        source: "/((?!_next/static|_next/image|brand/|icon\\.png).*)",
+        source: "/((?!_next/static|_next/image|brand/|fonts/|icon\\.png).*)",
         headers: [{ key: "Cache-Control", value: "private, no-store" }],
       },
       {
-        source: "/brand/:path*",
+        source: "/:asset(brand|fonts)/:path*",
         headers: [
           {
             key: "Cache-Control",

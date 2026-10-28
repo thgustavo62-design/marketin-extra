@@ -1,4 +1,6 @@
 "use client";
+import dynamic from "next/dynamic";
+import { ToolPanel } from "./components/tool-panel";
 import { blankDesignScene } from "@/lib/domain/design-presets";
 import { fabric } from "fabric";
 import { useRouter } from "next/navigation";
@@ -27,19 +29,9 @@ import { addStudioPageAction } from "@/app/studio/[id]/actions";
 import { Sidebar } from "./components/sidebar";
 import { Toolbar } from "./components/toolbar";
 import { Footer } from "./components/footer";
-import { ShapeSidebar } from "./components/shape-sidebar";
-import { FillColorSidebar } from "./components/fill-color-sidebar";
-import { StrokeColorSidebar } from "./components/stroke-color-sidebar";
-import { StrokeWidthSidebar } from "./components/stroke-width-sidebar";
-import { OpacitySidebar } from "./components/opacity-sidebar";
-import { TextSidebar } from "./components/text-sidebar";
-import { FontSidebar } from "./components/font-sidebar";
-import { FilterSidebar } from "./components/filter-sidebar";
-import { DrawSidebar } from "./components/draw-sidebar";
-import { SettingsSidebar } from "./components/settings-sidebar";
 import { useEditor } from "./hooks/use-editor";
 import { type ActiveTool } from "./types";
-import { promotionPageCount, promotionScene } from "./promotion-scene";
+import { promotionPageCount } from "./page-count";
 import { useStudioPersistence } from "./use-persistence";
 import {
   dataUrlBlob,
@@ -47,8 +39,13 @@ import {
   uploadStudioImage,
 } from "./image-assets";
 import { studioCanvasJson } from "./scene-json";
-import { AiPanel } from "./ai-panel";
+const AiPanel = dynamic(() => import("./ai-panel").then((m) => m.AiPanel));
 import type { StudioLoaderProps } from "./studio-loader";
+async function promotionScene(
+  ...args: Parameters<typeof import("./promotion-scene").promotionScene>
+) {
+  return (await import("./promotion-scene")).promotionScene(...args);
+}
 export function StudioEditor(
   props: StudioLoaderProps & { initialScene: StudioScene },
 ) {
@@ -263,7 +260,12 @@ export function StudioEditor(
           src="/brand/encartiva/branca.png"
           alt="Encartiva Studio"
         />
-        <span className="studio-title">{c.name}</span>
+        <span className="studio-title">
+          {c.name}
+          {c.brand_name && (
+            <small className="studio-company">{c.brand_name}</small>
+          )}
+        </span>
         <button
           type="button"
           aria-label="Desfazer"
@@ -373,16 +375,12 @@ export function StudioEditor(
         )}
         {canEdit && (
           <>
-            <ShapeSidebar {...common} />
-            <FillColorSidebar {...common} />
-            <StrokeColorSidebar {...common} />
-            <StrokeWidthSidebar {...common} />
-            <OpacitySidebar {...common} />
-            <TextSidebar {...common} />
-            <FontSidebar {...common} />
-            <FilterSidebar {...common} />
-            <DrawSidebar {...common} />
-            <SettingsSidebar {...common} />
+            <ToolPanel
+              {...common}
+              companyId={c.brand_id}
+              companyName={c.brand_name}
+              campaignId={c.id}
+            />
             {activeTool === "images" && (
               <aside className="studio-panel">
                 <h2>Imagens e biblioteca</h2>
@@ -455,7 +453,8 @@ export function StudioEditor(
               <aside className="studio-panel">
                 <h2>Modelos e arquivos</h2>
                 <p className="studio-muted">
-                  Modelos da sua biblioteca, com os arquivos e o login da Encartiva.
+                  Modelos da sua biblioteca, com os arquivos e o login da
+                  Encartiva.
                 </p>
                 <label>
                   Importar JSON do editor

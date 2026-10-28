@@ -26,7 +26,7 @@ export type StudioLoaderProps = {
   sourceHash: string;
   canEdit: boolean;
   needsMigration: boolean;
-  aiConfigured: {generate:boolean;removeBg:boolean};
+  aiConfigured: { generate: boolean; removeBg: boolean };
   templates?: TemplateLite[];
 };
 export function StudioLoader(props: StudioLoaderProps) {
@@ -37,11 +37,12 @@ export function StudioLoader(props: StudioLoaderProps) {
     (async () => {
       if (props.saved) {
         const { loadPromoFonts, loadFonts } = await import(
-            "@/lib/promo/render"
+            "@/lib/promo/fonts-loader"
           ),
           { PROMO_FONTS } = await import("@/lib/domain/promo-fonts");
-        await loadPromoFonts();
         const families = JSON.stringify(props.saved.scene);
+        if (families.includes("PromoDisplay") || families.includes("PromoText"))
+          await loadPromoFonts();
         await loadFonts(
           PROMO_FONTS.filter(
             (f) => f.family && families.includes(f.family),

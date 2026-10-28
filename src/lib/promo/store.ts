@@ -354,6 +354,8 @@ export type ImportReport = {
 };
 export type Campaign = {
   id: string;
+  brand_id?: string | null;
+  brand_name?: string | null;
   name: string;
   theme_id: string | null;
   title: string | null;
@@ -838,7 +840,7 @@ export async function getCampaign(
   if (!(await campaignAccess(id))) return null;
   const c = (
     await pool.query(
-      `select c.id, c.name, c.theme_id, c.title, c.validity, c.status, u.display_name as approved_by_name, c.approved_at::text as approved_at, c.import_report, c.group_variants, c.overrides, c.layers, c.layers_rev, c.kind, c.design_format, c.design_pages
+      `select c.id, c.name, c.brand_id, (select co.name from companies co where co.id=c.brand_id) as brand_name, c.theme_id, c.title, c.validity, c.status, u.display_name as approved_by_name, c.approved_at::text as approved_at, c.import_report, c.group_variants, c.overrides, c.layers, c.layers_rev, c.kind, c.design_format, c.design_pages
        from promo_campaigns c left join users u on u.id = c.approved_by where c.id = $1`,
       [id],
     )

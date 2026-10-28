@@ -33,21 +33,73 @@ export async function officialPromotionFlow({
     "insert into sessions(user_id,token_hash,expires_at)values($1,$2,now()+interval '1 hour')",
     [ownerId, createHash("sha256").update(ownerToken).digest("hex")],
   );
-  await context.addCookies([{
-    name: "__Host-extra_session", value: ownerToken, url: base,
-    secure: true, httpOnly: true, sameSite: "Lax",
-  }]);
+  await context.addCookies([
+    {
+      name: "__Host-extra_session",
+      value: ownerToken,
+      url: base,
+      secure: true,
+      httpOnly: true,
+      sameSite: "Lax",
+    },
+  ]);
   const identity = await (await context.request.get(base + "/api/me")).json();
   assert.equal(identity.role, "owner");
   check();
   const other = (
     await db.query("select id from companies where slug='company-b'")
   ).rows[0].id;
+  if (process.env.ENCARTIVA_STYLE_TEST === "1") {
+    await db.query(
+      "insert into brand_kits(brand_id,colors,fonts,texts)values($1,$2::jsonb,$3::jsonb,'[]') on conflict(brand_id)do update set colors=excluded.colors,fonts=excluded.fonts",
+      [
+        company.id,
+        JSON.stringify([{ name: "Azul oficial de teste", hex: "#075985" }]),
+        JSON.stringify(["poppins"]),
+      ],
+    );
+    await db.query(
+      "insert into brand_kits(brand_id,colors,fonts,texts)values($1,$2::jsonb,'[]','[]') on conflict(brand_id)do update set colors=excluded.colors",
+      [
+        other,
+        JSON.stringify([{ name: "Nunca outra empresa", hex: "#be185d" }]),
+      ],
+    );
+    const logo = await sharp({
+      create: {
+        width: 80,
+        height: 40,
+        channels: 4,
+        background: { r: 7, g: 89, b: 133, alpha: 1 },
+      },
+    })
+      .png()
+      .toBuffer();
+    const r = await context.request.post(base + "/api/promocoes/biblioteca", {
+      headers: { origin: base },
+      multipart: {
+        brand_id: company.id,
+        file: {
+          name: "Logo de teste.png",
+          mimeType: "image/png",
+          buffer: logo,
+        },
+      },
+    });
+    assert.equal(r.status(), 200, await r.text());
+    check();
+  }
   const deniedCompany = await context.request.get(base + "/empresas/" + other);
   const deniedBody = await deniedCompany.text();
   // Next can stream a not-found response with HTTP 200 after the layout flushes.
-  assert.ok(deniedCompany.status() === 404 || deniedBody.includes("NEXT_HTTP_ERROR_FALLBACK;404"));
-  assert.ok(!deniedBody.includes("company-b"), "Another company's data must not render");
+  assert.ok(
+    deniedCompany.status() === 404 ||
+      deniedBody.includes("NEXT_HTTP_ERROR_FALLBACK;404"),
+  );
+  assert.ok(
+    !deniedBody.includes("company-b"),
+    "Another company's data must not render",
+  );
   check();
   const prices = [0.99, 4.99, 29.99, 199.99, 1299.99];
   const names = [
@@ -101,21 +153,75 @@ export async function officialPromotionFlow({
   }
   // Real folder picker -> batch uploads -> company-isolated image records.
   await page.goto(base + "/produtos/importar");
-  await page.getByRole("heading", { name: "Importar produtos e imagens", exact: true }).waitFor();
-  await page.locator('input[webkitdirectory]').setInputFiles(photoDirectory);
-  await page.getByRole("button", { name: "Importar 5 imagens", exact: true }).click();
-  await page.getByText("Processamento concluído. As imagens aceitas já estão salvas no banco.", { exact: false }).waitFor({ timeout: 60000 });
-  const savedPhotos = (await db.query("select i.company_id,i.product_id,i.fundo,i.is_primary from product_images i where i.product_id=any($1::uuid[])", [photoFiles.map(f => f.productId)])).rows;
+  await page
+    .getByRole("heading", { name: "Importar produtos e imagens", exact: true })
+    .waitFor();
+  await page.locator("input[webkitdirectory]").setInputFiles(photoDirectory);
+  await page
+    .getByRole("button", { name: "Importar 5 imagens", exact: true })
+    .click();
+  await page
+    .getByText(
+      "Processamento concluído. As imagens aceitas já estão salvas no banco.",
+      { exact: false },
+    )
+    .waitFor({ timeout: 60000 });
+  const savedPhotos = (
+    await db.query(
+      "select i.company_id,i.product_id,i.fundo,i.is_primary from product_images i where i.product_id=any($1::uuid[])",
+      [photoFiles.map((f) => f.productId)],
+    )
+  ).rows;
   assert.equal(savedPhotos.length, 5);
-  assert.ok(savedPhotos.every(i => i.company_id === company.id && i.fundo === "transparente" && i.is_primary));
+  assert.ok(
+    savedPhotos.every(
+      (i) =>
+        i.company_id === company.id &&
+        i.fundo === "transparente" &&
+        i.is_primary,
+    ),
+  );
   check();
-  const resend = await context.request.post(base + "/api/produtos/imagens", { headers: { origin: base }, multipart: { company_id: company.id, preserve_cutout: "1", file: { name: photoFiles[0].ean + ".png", mimeType: "image/png", buffer: photoFiles[0].image } } });
+  const resend = await context.request.post(base + "/api/produtos/imagens", {
+    headers: { origin: base },
+    multipart: {
+      company_id: company.id,
+      preserve_cutout: "1",
+      file: {
+        name: photoFiles[0].ean + ".png",
+        mimeType: "image/png",
+        buffer: photoFiles[0].image,
+      },
+    },
+  });
   assert.equal(resend.status(), 200, await resend.text());
   assert.equal((await resend.json()).results[0].status, "duplicada");
   check();
-  const wrongCompany = await context.request.post(base + "/api/produtos/imagens", { headers: { origin: base }, multipart: { company_id: other, preserve_cutout: "1", file: { name: "wrong.png", mimeType: "image/png", buffer: photoFiles[0].image } } });
+  const wrongCompany = await context.request.post(
+    base + "/api/produtos/imagens",
+    {
+      headers: { origin: base },
+      multipart: {
+        company_id: other,
+        preserve_cutout: "1",
+        file: {
+          name: "wrong.png",
+          mimeType: "image/png",
+          buffer: photoFiles[0].image,
+        },
+      },
+    },
+  );
   assert.equal(wrongCompany.status(), 409);
-  assert.equal((await db.query("select count(*)::int n from product_images where product_id=any($1::uuid[])", [photoFiles.map(f => f.productId)])).rows[0].n, 5);
+  assert.equal(
+    (
+      await db.query(
+        "select count(*)::int n from product_images where product_id=any($1::uuid[])",
+        [photoFiles.map((f) => f.productId)],
+      )
+    ).rows[0].n,
+    5,
+  );
   check();
   await fs.rm(photoDirectory, { recursive: true, force: true });
   const bytes = Buffer.from(await workbook.xlsx.writeBuffer());
@@ -250,10 +356,22 @@ export async function officialPromotionFlow({
       "Descriptions must remain visible after SVG/Fabric import",
     );
     check();
+    if (format === "story" && process.env.ENCARTIVA_METRICS) {
+      const { measureStudio } = await import("./lib/studio-metrics.mjs");
+      await measureStudio(context, page.url(), process.env.ENCARTIVA_METRICS);
+    }
     if (format === "feed") {
       if (process.env.ENCARTIVA_PHOTO_TEST === "1") {
-        const { photoEditingFlow } = await import("./lib/photo-editing-flow.mjs");
+        const { photoEditingFlow } = await import(
+          "./lib/photo-editing-flow.mjs"
+        );
         await photoEditingFlow({ db, page, campaign, format, check });
+      }
+      if (process.env.ENCARTIVA_STYLE_TEST === "1") {
+        const { designStylesFlow } = await import(
+          "./lib/design-styles-flow.mjs"
+        );
+        await designStylesFlow({ db, page, campaign, format, check });
       }
       await page.getByText("Exportar", { exact: true }).click();
       const [download] = await Promise.all([
