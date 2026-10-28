@@ -1,5 +1,4 @@
 // Adapted from canva-clone, Copyright 2025 Alimardon Davronov, Apache-2.0. See THIRD_PARTY_NOTICES.md.
-import { useState } from "react";
 
 import {
   Bold as FaBold,
@@ -57,9 +56,13 @@ export const Toolbar = ({
   const initialTextAlign = editor?.getActiveTextAlign();
   const initialFontSize = editor?.getActiveFontSize() || FONT_SIZE;
 
-  const [properties, setProperties] = useState({
-    fillColor: initialFillColor,
-    strokeColor: initialStrokeColor,
+  const properties = {
+    fillColor:
+      typeof initialFillColor === "string" ? initialFillColor : "transparent",
+    strokeColor:
+      typeof initialStrokeColor === "string"
+        ? initialStrokeColor
+        : "transparent",
     fontFamily: initialFontFamily,
     fontWeight: initialFontWeight,
     fontStyle: initialFontStyle,
@@ -67,7 +70,7 @@ export const Toolbar = ({
     fontUnderline: initialFontUnderline,
     textAlign: initialTextAlign,
     fontSize: initialFontSize,
-  });
+  };
 
   const selectedObject = editor?.selectedObjects[0];
   const selectedObjectType = editor?.selectedObjects[0]?.type;
@@ -81,10 +84,6 @@ export const Toolbar = ({
     }
 
     editor?.changeFontSize(value);
-    setProperties((current) => ({
-      ...current,
-      fontSize: value,
-    }));
   };
 
   const onChangeTextAlign = (value: string) => {
@@ -93,10 +92,6 @@ export const Toolbar = ({
     }
 
     editor?.changeTextAlign(value);
-    setProperties((current) => ({
-      ...current,
-      textAlign: value,
-    }));
   };
 
   const toggleBold = () => {
@@ -107,10 +102,6 @@ export const Toolbar = ({
     const newValue = properties.fontWeight > 500 ? 500 : 700;
 
     editor?.changeFontWeight(newValue);
-    setProperties((current) => ({
-      ...current,
-      fontWeight: newValue,
-    }));
   };
 
   const toggleItalic = () => {
@@ -122,10 +113,6 @@ export const Toolbar = ({
     const newValue = isItalic ? "normal" : "italic";
 
     editor?.changeFontStyle(newValue);
-    setProperties((current) => ({
-      ...current,
-      fontStyle: newValue,
-    }));
   };
 
   const toggleLinethrough = () => {
@@ -136,10 +123,6 @@ export const Toolbar = ({
     const newValue = properties.fontLinethrough ? false : true;
 
     editor?.changeFontLinethrough(newValue);
-    setProperties((current) => ({
-      ...current,
-      fontLinethrough: newValue,
-    }));
   };
 
   const toggleUnderline = () => {
@@ -150,10 +133,6 @@ export const Toolbar = ({
     const newValue = properties.fontUnderline ? false : true;
 
     editor?.changeFontUnderline(newValue);
-    setProperties((current) => ({
-      ...current,
-      fontUnderline: newValue,
-    }));
   };
 
   if (editor?.selectedObjects.length === 0) {
@@ -179,7 +158,11 @@ export const Toolbar = ({
           <Hint label="Cor" side="bottom" sideOffset={5}>
             <Button
               aria-label="Cor de preenchimento"
-              onClick={() => onChangeActiveTool("fill")}
+              onClick={() =>
+                onChangeActiveTool(
+                  selectedObjectType === "group" ? "styles" : "fill",
+                )
+              }
               size="icon"
               variant="ghost"
               className={cn(activeTool === "fill" && "bg-gray-100")}
@@ -192,7 +175,7 @@ export const Toolbar = ({
           </Hint>
         </div>
       )}
-      {!isText && (
+      {!isText && selectedObjectType !== "group" && (
         <div className="flex items-center h-full justify-center">
           <Hint label="Cor da borda" side="bottom" sideOffset={5}>
             <Button
@@ -210,7 +193,7 @@ export const Toolbar = ({
           </Hint>
         </div>
       )}
-      {!isText && (
+      {!isText && selectedObjectType !== "group" && (
         <div className="flex items-center h-full justify-center">
           <Hint label="Espessura da borda" side="bottom" sideOffset={5}>
             <Button

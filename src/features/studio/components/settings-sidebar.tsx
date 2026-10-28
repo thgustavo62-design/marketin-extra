@@ -25,11 +25,17 @@ export const SettingsSidebar = ({
 }: SettingsSidebarProps) => {
   const workspace = editor?.getWorkspace();
 
-  const initialWidth = useMemo(() => `${workspace?.width ?? 0}`, [workspace]);
-  const initialHeight = useMemo(() => `${workspace?.height ?? 0}`, [workspace]);
+  const initialWidth = useMemo(
+    () => `${workspace?.width ?? 0}`,
+    [workspace?.width],
+  );
+  const initialHeight = useMemo(
+    () => `${workspace?.height ?? 0}`,
+    [workspace?.height],
+  );
   const initialBackground = useMemo(
-    () => workspace?.fill ?? "#ffffff",
-    [workspace],
+    () => (typeof workspace?.fill === "string" ? workspace.fill : "#ffffff"),
+    [workspace?.fill],
   );
 
   const [width, setWidth] = useState(initialWidth);
@@ -76,8 +82,12 @@ export const SettingsSidebar = ({
       <ScrollArea>
         <form className="space-y-4 p-4" onSubmit={onSubmit}>
           <div className="space-y-2">
-            <Label>Altura</Label>
+            <Label htmlFor="studio-page-height">Altura</Label>
             <Input
+              id="studio-page-height"
+              required
+              min={8}
+              max={8192}
               placeholder="Altura"
               value={height}
               type="number"
@@ -85,8 +95,12 @@ export const SettingsSidebar = ({
             />
           </div>
           <div className="space-y-2">
-            <Label>Largura</Label>
+            <Label htmlFor="studio-page-width">Largura</Label>
             <Input
+              id="studio-page-width"
+              required
+              min={8}
+              max={8192}
               placeholder="Largura"
               value={width}
               type="number"

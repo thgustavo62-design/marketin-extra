@@ -1,5 +1,9 @@
 // Adapted from canva-clone, Copyright 2025 Alimardon Davronov, Apache-2.0. See THIRD_PARTY_NOTICES.md.
-import { deleteSelection } from "../layout-operations";
+import {
+  deleteSelection,
+  orderSelection,
+  canvasEditable,
+} from "../layout-operations";
 import { withStudioTextDefaults } from "@/lib/domain/studio";
 import { designPrintPoints } from "@/lib/domain/design-presets";
 import { fabric } from "fabric";
@@ -189,7 +193,8 @@ const buildEditor = ({
     canvas.loadFromJSON(data, () => {
       autoZoom();
       (canvas as any).__studioRestoring = false;
-      save();
+      canvas.fire("object:modified");
+      canvas.fire("studio:ready");
     });
   };
 
@@ -214,6 +219,7 @@ const buildEditor = ({
   };
 
   return {
+    commit: () => save(true),
     savePdf,
     savePng,
     saveJpg,
@@ -230,7 +236,7 @@ const buildEditor = ({
       const center = canvas.getCenter();
       canvas.zoomToPoint(
         new fabric.Point(center.left, center.top),
-        zoomRatio > 1 ? 1 : zoomRatio,
+        Math.min(8, Math.max(0.02, zoomRatio)),
       );
     },
     zoomOut: () => {
@@ -239,7 +245,7 @@ const buildEditor = ({
       const center = canvas.getCenter();
       canvas.zoomToPoint(
         new fabric.Point(center.left, center.top),
-        zoomRatio < 0.2 ? 0.2 : zoomRatio,
+        Math.min(8, Math.max(0.02, zoomRatio)),
       );
     },
     changeSize: (value: { width: number; height: number }) => {
@@ -250,13 +256,13 @@ const buildEditor = ({
         height: Math.max(8, Math.min(8192, Number(value.height) || 1920)),
       });
       autoZoom();
-      save();
+      canvas.fire("object:modified");
     },
     changeBackground: (value: string) => {
       const workspace = getWorkspace();
       workspace?.set({ fill: value });
       canvas.renderAll();
-      save();
+      canvas.fire("object:modified");
     },
     enableDrawingMode: () => {
       canvas.discardActiveObject();
@@ -286,26 +292,52 @@ const buildEditor = ({
         }
       });
     },
-    addImage: (value: string) => {
-      fabric.Image.fromURL(
-        value,
-        (image) => {
-          const workspace = getWorkspace();
+    addImage: (value: string) =>
+      new Promise<void>((resolve, reject) => {
+        let finished = false;
+        const deadline = setTimeout(() => {
+          finished = true;
+          reject(Error("A imagem demorou para carregar. Tente novamente."));
+        }, 25000);
+        fabric.Image.fromURL(
+          value,
+          (image: fabric.Image, error?: boolean) => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(deadline);
+            if (error || !image?.width || !image?.height) {
+              reject(
+                Error(
+                  "Não foi possível abrir a imagem. Confira o arquivo e tente novamente.",
+                ),
+              );
+              return;
+            }
+            if (!canvasEditable(canvas)) {
+              resolve();
+              return;
+            }
+            const workspace = getWorkspace();
 
-          image.scale(
-            Math.min(
-              ((workspace?.width || 1080) * 0.75) / (image.width || 1),
-              ((workspace?.height || 1920) * 0.75) / (image.height || 1),
-            ),
-          );
+            image.scale(
+              Math.min(
+                ((workspace?.width || 1080) * 0.75) / (image.width || 1),
+                ((workspace?.height || 1920) * 0.75) / (image.height || 1),
+              ),
+            );
 
-          addToCanvas(image);
-        },
-        {
-          crossOrigin: "anonymous",
-        },
-      );
-    },
+            try {
+              addToCanvas(image);
+              resolve();
+            } catch (e) {
+              reject(e);
+            }
+          },
+          {
+            crossOrigin: "anonymous",
+          },
+        );
+      }),
     delete: () => {
       deleteSelection(canvas);
     },
@@ -330,6 +362,8 @@ const buildEditor = ({
       return value;
     },
     changeFontSize: (value: number) => {
+      if (!Number.isFinite(value)) return;
+      value = Math.max(1, Math.min(1000, value));
       canvas.getActiveObjects().forEach((object) => {
         if (isTextType(object.type)) {
           // @ts-ignore
@@ -461,23 +495,10 @@ const buildEditor = ({
       canvas.renderAll();
     },
     bringForward: () => {
-      canvas.getActiveObjects().forEach((object) => {
-        canvas.bringForward(object);
-      });
-
-      canvas.renderAll();
-
-      const workspace = getWorkspace();
-      workspace?.sendToBack();
+      orderSelection(canvas, "forward");
     },
     sendBackwards: () => {
-      canvas.getActiveObjects().forEach((object) => {
-        canvas.sendBackwards(object);
-      });
-
-      canvas.renderAll();
-      const workspace = getWorkspace();
-      workspace?.sendToBack();
+      orderSelection(canvas, "backward");
     },
     changeFontFamily: (value: string) => {
       setFontFamily(value);
@@ -671,7 +692,7 @@ const buildEditor = ({
         return strokeWidth;
       }
 
-      const value = selectedObject.get("strokeWidth") || strokeWidth;
+      const value = selectedObject.get("strokeWidth") ?? strokeWidth;
 
       return value;
     },
@@ -697,6 +718,7 @@ export const useEditor = ({
   defaultWidth,
   clearSelectionCallback,
   saveCallback,
+  flushCallback,
 }: EditorHookProps) => {
   const initialState = useRef(defaultState);
   const initialWidth = useRef(defaultWidth);
@@ -741,6 +763,7 @@ export const useEditor = ({
     copy,
     paste,
     save,
+    persist: flushCallback,
     canvas,
   });
 
@@ -798,10 +821,38 @@ export const useEditor = ({
       ]) {
         const fn = (built as any)[key];
         (built as any)[key] = (...args: any[]) => {
-          if (readOnly) return;
+          if (readOnly || !canvasEditable(canvas)) return;
           const out = fn(...args);
-          save();
+          // Sliders render previews; commit on release so one gesture is one undo.
+          if (
+            args[1] !== false &&
+            ![
+              "changeSize",
+              "changeBackground",
+              "delete",
+              "bringForward",
+              "sendBackwards",
+            ].includes(key)
+          )
+            canvas.fire("object:modified");
           return out;
+        };
+      }
+      for (const key of [
+        "addText",
+        "addImage",
+        "addCircle",
+        "addRectangle",
+        "addSoftRectangle",
+        "addTriangle",
+        "addInverseTriangle",
+        "addDiamond",
+        "loadJson",
+        "enableDrawingMode",
+      ]) {
+        const fn = (built as any)[key];
+        (built as any)[key] = (...args: any[]) => {
+          if (!readOnly && canvasEditable(canvas)) return fn(...args);
         };
       }
       return built;

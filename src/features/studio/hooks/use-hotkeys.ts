@@ -15,11 +15,13 @@ export function useHotkeys({
   save,
   copy,
   paste,
+  persist,
 }: {
   canvas: fabric.Canvas | null;
   undo: () => void;
   redo: () => void;
   save: (force?: boolean) => void;
+  persist?: () => void;
   copy: () => void;
   paste: () => void;
 }) {
@@ -31,6 +33,13 @@ export function useHotkeys({
           .__studioReadOnly
       )
         return;
+      const mod = e.ctrlKey || e.metaKey,
+        k = e.key.toLowerCase();
+      if (mod && k === "s") {
+        e.preventDefault();
+        persist ? persist() : save(true);
+        return;
+      }
       if (
         (e.target as HTMLElement).closest(
           'input,textarea,select,[contenteditable="true"]',
@@ -38,8 +47,6 @@ export function useHotkeys({
         (canvas.getActiveObject() as fabric.IText)?.isEditing
       )
         return;
-      const mod = e.ctrlKey || e.metaKey,
-        k = e.key.toLowerCase();
       if (
         !mod &&
         !e.altKey &&
@@ -128,5 +135,5 @@ export function useHotkeys({
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [canvas, undo, redo, save, copy, paste]);
+  }, [canvas, undo, redo, save, copy, paste, persist]);
 }

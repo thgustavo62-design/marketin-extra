@@ -19,6 +19,7 @@ const Editor = dynamic(
   },
 );
 export type StudioLoaderProps = {
+  actorId: string;
   source: StudioSource;
   format: PromoFormat;
   page: number;

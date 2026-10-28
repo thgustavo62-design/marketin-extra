@@ -39,26 +39,41 @@ export const ShapeSidebar = ({
     >
       <ToolSidebarHeader
         title="Elementos"
-        description="Add shapes to your canvas"
+        description="Adicione formas à sua arte"
       />
       <ScrollArea>
         <div className="grid grid-cols-3 gap-4 p-4">
-          <ShapeTool onClick={() => editor?.addCircle()} icon={FaCircle} />
           <ShapeTool
+            label="Adicionar círculo"
+            onClick={() => editor?.addCircle()}
+            icon={FaCircle}
+          />
+          <ShapeTool
+            label="Adicionar retângulo arredondado"
             onClick={() => editor?.addSoftRectangle()}
             icon={FaSquare}
           />
           <ShapeTool
+            label="Adicionar retângulo"
             onClick={() => editor?.addRectangle()}
             icon={FaSquareFull}
           />
-          <ShapeTool onClick={() => editor?.addTriangle()} icon={IoTriangle} />
           <ShapeTool
+            label="Adicionar triângulo"
+            onClick={() => editor?.addTriangle()}
+            icon={IoTriangle}
+          />
+          <ShapeTool
+            label="Adicionar triângulo invertido"
             onClick={() => editor?.addInverseTriangle()}
             icon={IoTriangle}
             iconClassName="rotate-180"
           />
-          <ShapeTool onClick={() => editor?.addDiamond()} icon={FaDiamond} />
+          <ShapeTool
+            label="Adicionar losango"
+            onClick={() => editor?.addDiamond()}
+            icon={FaDiamond}
+          />
         </div>
       </ScrollArea>
       <ToolSidebarClose onClick={onClose} />

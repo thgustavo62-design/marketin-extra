@@ -229,7 +229,7 @@ export function StylesSidebar({
                       throw new Error(
                         r.error || "Não foi possível inserir o logo.",
                       );
-                    editor?.addImage(`/api/promocoes/asset/${r.id}`);
+                    await editor?.addImage(`/api/promocoes/asset/${r.id}`);
                     setNotice("Logo inserido na arte.");
                   })
                 }

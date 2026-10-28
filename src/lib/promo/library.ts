@@ -7,8 +7,8 @@ import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_ITEMS, isLibraryCategory, libraryNa
 
 export type LibraryItem = { id: string; name: string; category: LibraryCategory; width: number; height: number; created_at: string; brand_id: string | null }
 
-export async function listLibrary(category?: string): Promise<LibraryItem[]> {
-  const rows = (await pool.query(
+export async function listLibrary(category?: string, db: Pick<typeof pool, "query"> = pool): Promise<LibraryItem[]> {
+  const rows = (await db.query(
     `select id, name, category, width, height, created_at::text as created_at, brand_id from promo_library ${isLibraryCategory(category) ? 'where category = $1' : ''} order by created_at desc limit 600`,
     isLibraryCategory(category) ? [category] : [])).rows
   return rows

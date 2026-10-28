@@ -167,6 +167,7 @@ export const TEXT_OPTIONS = {
 };
 
 export interface EditorHookProps {
+  flushCallback?: () => void;
   readOnly?: boolean;
   defaultState?: string;
   defaultWidth?: number;
@@ -203,11 +204,12 @@ export type BuildEditorProps = {
 };
 
 export interface Editor {
+  commit: () => void;
   savePng: () => void;
   savePdf: () => Promise<void>;
   saveJpg: () => void;
   saveSvg: () => void;
-  saveJson: () => void;
+  saveJson: () => Promise<void>;
   loadJson: (json: string) => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -224,7 +226,7 @@ export interface Editor {
   onCopy: () => void;
   onPaste: () => void;
   changeImageFilter: (value: string) => void;
-  addImage: (value: string) => void;
+  addImage: (value: string) => Promise<void>;
   delete: () => void;
   changeFontSize: (value: number) => void;
   getActiveFontSize: () => number;
@@ -242,10 +244,10 @@ export interface Editor {
   changeFontFamily: (value: string) => void;
   addText: (value: string, options?: ITextboxOptions) => void;
   getActiveOpacity: () => number;
-  changeOpacity: (value: number) => void;
+  changeOpacity: (value: number, commit?: boolean) => void;
   bringForward: () => void;
   sendBackwards: () => void;
-  changeStrokeWidth: (value: number) => void;
+  changeStrokeWidth: (value: number, commit?: boolean) => void;
   changeFillColor: (value: string) => void;
   changeStrokeColor: (value: string) => void;
   changeStrokeDashArray: (value: number[]) => void;

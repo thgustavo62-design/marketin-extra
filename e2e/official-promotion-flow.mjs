@@ -361,6 +361,10 @@ export async function officialPromotionFlow({
       await measureStudio(context, page.url(), process.env.ENCARTIVA_METRICS);
     }
     if (format === "feed") {
+      if (process.env.ENCARTIVA_AUDIT_TEST === "1") {
+        const { studioAuditFlow } = await import("./lib/studio-audit-flow.mjs");
+        await studioAuditFlow({ db, page, campaign, check });
+      }
       if (process.env.ENCARTIVA_PHOTO_TEST === "1") {
         const { photoEditingFlow } = await import(
           "./lib/photo-editing-flow.mjs"

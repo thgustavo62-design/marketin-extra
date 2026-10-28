@@ -26,7 +26,7 @@ export const DrawSidebar = ({
   onChangeActiveTool,
 }: DrawSidebarProps) => {
   const colorValue = editor?.getActiveStrokeColor() || STROKE_COLOR;
-  const widthValue = editor?.getActiveStrokeWidth() || STROKE_WIDTH;
+  const widthValue = editor?.getActiveStrokeWidth() ?? STROKE_WIDTH;
 
   const onClose = () => {
     editor?.disableDrawingMode();
@@ -38,7 +38,7 @@ export const DrawSidebar = ({
   };
 
   const onWidthChange = (value: number) => {
-    editor?.changeStrokeWidth(value);
+    editor?.changeStrokeWidth(value, false);
   };
 
   return (
@@ -53,6 +53,11 @@ export const DrawSidebar = ({
         <div className="p-4 space-y-6 border-b">
           <Label className="text-sm">Espessura do pincel</Label>
           <Slider
+            aria-label="Espessura do pincel"
+            min={0}
+            max={100}
+            step={1}
+            onValueCommit={(values) => editor?.changeStrokeWidth(values[0])}
             value={[widthValue]}
             onValueChange={(values) => onWidthChange(values[0])}
           />

@@ -4,6 +4,7 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "@/features/studio/utils-css";
 
 interface ShapeToolProps {
+  label: string;
   onClick: () => void;
   icon: LucideIcon;
   iconClassName?: string;
@@ -11,11 +12,17 @@ interface ShapeToolProps {
 
 export const ShapeTool = ({
   onClick,
+  label,
   icon: Icon,
   iconClassName,
 }: ShapeToolProps) => {
   return (
-    <button onClick={onClick} className="aspect-square border rounded-md p-5">
+    <button
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="aspect-square border rounded-md p-5"
+    >
       <Icon className={cn("h-full w-full", iconClassName)} />
     </button>
   );

@@ -26,19 +26,20 @@ export default async function StudioPage({
       : PROMO_FORMAT_KEYS.includes(sp.formato as PromoFormat)
         ? (sp.formato as PromoFormat)
         : "story";
-  const page = Math.max(0, Math.min(199, Math.floor(Number(sp.pagina) || 0))),
-    templates = await listTemplates();
-  let saved = null,
-    needsMigration = false;
-  try {
-    saved = await getStudioPage(id, format, page);
-  } catch (e) {
-    if ((e as { code?: string }).code === "42P01") needsMigration = true;
-    else throw e;
-  }
+  const page = Math.max(0, Math.min(199, Math.floor(Number(sp.pagina) || 0)));
+  let needsMigration = false;
+  const savedPromise = getStudioPage(id, format, page).catch((e) => {
+    if ((e as { code?: string }).code === "42P01") {
+      needsMigration = true;
+      return null;
+    }
+    throw e;
+  });
+  const [templates, saved] = await Promise.all([listTemplates(), savedPromise]);
   return (
     <StudioLoader
       key={`${id}:${format}:${page}`}
+      actorId={user.id}
       source={source}
       format={format}
       page={page}

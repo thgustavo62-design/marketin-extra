@@ -35,6 +35,7 @@ export const useLoadState = ({
         setHistoryIndex(0);
         autoZoom();
         (canvas as any).__studioRestoring = false;
+        canvas.fire("studio:ready");
         if ((canvas as any).__studioReadOnly)
           canvas.getObjects().forEach((o) => (o.selectable = false));
       });

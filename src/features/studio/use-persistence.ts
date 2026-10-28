@@ -6,9 +6,21 @@ import {
   useState,
   type RefObject,
 } from "react";
-import { saveStudioAction } from "@/app/studio/[id]/actions";
+import {
+  StudioSaveQueue,
+  type StudioSaveState,
+  type StudioSaveResult,
+} from "@/lib/domain/studio-save-queue";
+import {
+  readStudioDraft,
+  writeStudioDraft,
+  deleteStudioDraft,
+  type StudioDraft,
+} from "./local-drafts";
 export function useStudioPersistence(o: {
   id: string;
+  actorId: string;
+  hasSaved: boolean;
   format: string;
   page: number;
   revision: number;
@@ -16,101 +28,218 @@ export function useStudioPersistence(o: {
   documentSourceHash: RefObject<string>;
   canEdit: boolean;
 }) {
-  const [status, setStatus] = useState("Salvo"),
-    [error, setError] = useState(""),
-    pending = useRef<string | null>(null),
-    lastSaved = useRef(""),
-    rev = useRef(o.revision),
-    conflict = useRef(false),
-    timer = useRef<ReturnType<typeof setTimeout> | null>(null),
-    running = useRef<Promise<boolean> | null>(null),
-    active = useRef(true);
-  const flush = useCallback((): Promise<boolean> => {
-    if (timer.current) {
-      clearTimeout(timer.current);
-      timer.current = null;
+  const options = useRef(o);
+  options.current = o;
+  const [tabId] = useState(() => {
+    try {
+      const existing = sessionStorage.getItem("encartiva-studio-tab");
+      if (existing) return existing;
+      const id = crypto.randomUUID();
+      sessionStorage.setItem("encartiva-studio-tab", id);
+      return id;
+    } catch {
+      return crypto.randomUUID();
     }
-    if (running.current)
-      return running.current.then((ok) => (ok ? flush() : false));
-    if (conflict.current) return Promise.resolve(false);
-    const json = pending.current;
-    if (!json || !o.canEdit) return Promise.resolve(true);
-    pending.current = null;
-    const job = (async () => {
-      if (active.current) setStatus("Salvando…");
-      try {
-        const r = await saveStudioAction({
-          id: o.id,
-          format: o.format,
-          page: o.page,
-          scene: JSON.parse(json),
-          expectedRevision: rev.current,
-          expectedSourceHash: o.sourceHash,
-          documentSourceHash: o.documentSourceHash.current,
+  });
+  const touched = useRef(false);
+  const active = useRef(true),
+    timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retry = useRef<ReturnType<typeof setTimeout> | null>(null),
+    attempts = useRef(0);
+  const draftWrites = useRef<Promise<unknown>>(Promise.resolve());
+  const [draft, setDraft] = useState<StudioDraft | null>(null);
+  const [recoveryChecked, setRecoveryChecked] = useState(false);
+  const [backupError, setBackupError] = useState("");
+  const [state, setState] = useState<StudioSaveState>({
+    status: o.hasSaved ? "Salvo" : "Alterações pendentes",
+    error: "",
+    conflict: false,
+    retryable: false,
+    revision: o.revision,
+    pending: null,
+  });
+  const key = `${o.actorId}:${o.id}:${o.format}:${o.page}:${tabId}`;
+  const queueRef = useRef<StudioSaveQueue | null>(null);
+  if (!queueRef.current)
+    queueRef.current = new StudioSaveQueue(
+      o.revision,
+      async (json, revision): Promise<StudioSaveResult> => {
+        const p = options.current;
+        const response = await fetch(`/api/studio/${p.id}/document`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          signal: AbortSignal.timeout(25000),
+          body: JSON.stringify({
+            format: p.format,
+            page: p.page,
+            scene: JSON.parse(json),
+            expectedRevision: revision,
+            expectedSourceHash: p.sourceHash,
+            documentSourceHash: p.documentSourceHash.current,
+          }),
         });
-        if (!r.ok) {
-          if (!pending.current) pending.current = json;
-          if ("conflict" in r && r.conflict) conflict.current = true;
-          if (active.current) {
-            setStatus("Não salvo");
-            setError(r.error ?? "Não foi possível salvar.");
+        let result: StudioSaveResult;
+        try {
+          result = await response.json();
+        } catch {
+          return {
+            ok: false,
+            retryable: response.status >= 500,
+            error: "O servidor não confirmou o salvamento. Tente novamente.",
+          };
+        }
+        if (!response.ok || !result.ok)
+          return {
+            ok: false,
+            error:
+              "error" in result ? result.error : "Não foi possível salvar.",
+            conflict: response.status === 409,
+            retryable: response.status >= 500 || response.status === 429,
+          };
+        if (!Number.isSafeInteger(result.revision))
+          throw Error("Resposta de salvamento inválida.");
+        return result;
+      },
+      (next) => {
+        if (active.current) setState(next);
+      },
+    );
+  const queue = queueRef.current;
+  const persistDraft = useCallback(
+    (snapshot: StudioSaveState) => {
+      const p = options.current;
+      const record = snapshot.pending
+        ? {
+            key,
+            json: snapshot.pending,
+            revision: snapshot.revision,
+            sourceHash: p.sourceHash,
+            documentSourceHash: p.documentSourceHash.current,
+            updatedAt: Date.now(),
           }
-          return false;
-        }
-        if ("revision" in r && typeof r.revision === "number")
-          rev.current = r.revision;
-        lastSaved.current = json;
-        if (active.current) {
-          setError("");
-          setStatus(pending.current ? "Alterações pendentes" : "Salvo");
-        }
-        return true;
-      } catch {
-        if (!pending.current) pending.current = json;
-        if (active.current) {
-          setStatus("Não salvo");
-          setError(
-            "Sem conexão. Sua edição continua aberta. Tente salvar novamente.",
-          );
-        }
-        return false;
-      }
-    })();
-    running.current = job;
-    void job.finally(() => {
-      running.current = null;
-    });
-    return job.then((ok) => (ok && pending.current ? flush() : ok));
-  }, [o.id, o.format, o.page, o.sourceHash, o.documentSourceHash, o.canEdit]);
+        : null;
+      const operation = () =>
+        record
+          ? writeStudioDraft(record)
+          : snapshot.status === "Salvo"
+            ? deleteStudioDraft(key)
+            : Promise.resolve();
+      // Serialize storage too: a late delete must never erase a newer edit.
+      draftWrites.current = draftWrites.current
+        .catch(() => {})
+        .then(async () => {
+          await operation();
+        })
+        .catch(() => {
+          if (active.current)
+            setBackupError(
+              "A cópia de recuperação neste dispositivo está indisponível. Mantenha a página aberta até salvar.",
+            );
+        });
+    },
+    [key],
+  );
+  const flush = useCallback(async () => {
+    if (timer.current) clearTimeout(timer.current);
+    if (retry.current) clearTimeout(retry.current);
+    timer.current = retry.current = null;
+    if (!options.current.canEdit) return true;
+    const ok = await queue.flush();
+    if (ok) attempts.current = 0;
+    return ok;
+  }, [queue]);
   const schedule = useCallback(
     ({ json }: { json: string }) => {
-      if (!o.canEdit || conflict.current) return;
-      if (json === lastSaved.current && !running.current) {
-        pending.current = null;
-        if (timer.current) clearTimeout(timer.current);
-        setStatus("Salvo");
-        return;
-      }
-      pending.current = json;
-      setStatus("Alterações pendentes");
+      if (!options.current.canEdit) return;
+      touched.current = true;
+      queue.enqueue(json);
+      persistDraft(queue.snapshot);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => {
         void flush();
       }, 900);
     },
-    [flush, o.canEdit],
+    [queue, flush, persistDraft],
   );
   useEffect(() => {
+    // Keep a failed request's latest document, and update its baseline after an in-flight save.
+    if (touched.current && (state.pending || state.status === "Salvo"))
+      persistDraft(state);
+    if (
+      state.status === "Não salvo" &&
+      state.retryable &&
+      attempts.current < 5
+    ) {
+      retry.current = setTimeout(
+        () => {
+          attempts.current++;
+          void flush();
+        },
+        Math.min(30000, 2000 * 2 ** attempts.current),
+      );
+    }
+    return () => {
+      if (retry.current) clearTimeout(retry.current);
+    };
+  }, [state, flush, persistDraft]);
+  useEffect(() => {
     active.current = true;
+    let cancelled = false;
+    void readStudioDraft(key)
+      .then((v) => {
+        if (
+          !cancelled &&
+          v &&
+          v.updatedAt > Date.now() - 30 * 86400000 &&
+          !queue.dirty
+        )
+          setDraft(v);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setRecoveryChecked(true);
+      });
     const before = (e: BeforeUnloadEvent) => {
-      if (pending.current || running.current) e.preventDefault();
+      if (queue.dirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    const online = () => {
+      attempts.current = 0;
+      void flush();
+    };
+    const hidden = () => {
+      if (document.visibilityState === "hidden" && queue.dirty) void flush();
     };
     window.addEventListener("beforeunload", before);
+    window.addEventListener("online", online);
+    document.addEventListener("visibilitychange", hidden);
     return () => {
       active.current = false;
+      cancelled = true;
       window.removeEventListener("beforeunload", before);
+      window.removeEventListener("online", online);
+      document.removeEventListener("visibilitychange", hidden);
       if (timer.current) clearTimeout(timer.current);
+      if (retry.current) clearTimeout(retry.current);
     };
-  }, []);
-  return { status, error, schedule, flush };
+  }, [key, queue, flush]);
+  const discardDraft = useCallback(() => {
+    setDraft(null);
+    void deleteStudioDraft(key).catch(() => {});
+  }, [key]);
+  return {
+    revision: state.revision,
+    status: state.status,
+    error: state.error,
+    conflict: state.conflict,
+    backupError,
+    schedule,
+    flush,
+    draft,
+    recoveryChecked,
+    discardDraft,
+  };
 }
