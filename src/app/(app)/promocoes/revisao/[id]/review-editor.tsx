@@ -464,7 +464,7 @@ export function ReviewEditor({
                     confirmed: fd.get("confirmed") === "1",
                   });
                   if (r.error) setError(r.error);
-                  else if (r.id) router.push(`/studio/${r.id}`);
+                  else if (r.id) router.push(`/promocoes/${r.id}/gerar`);
                 });
               }}
             >

@@ -146,6 +146,15 @@ export async function pharmacyModelFlow({
   await page.waitForURL(/\/studio\//);
   await page.locator("[data-editor-ready=true]").waitFor({ timeout: 60000 });
   const reviewedId = page.url().split("/studio/")[1].split("?")[0];
+  const generatedFormats = (
+    await db.query(
+      "select distinct format from studio_pages where campaign_id=$1 order by format",
+      [reviewedId],
+    )
+  ).rows.map((r) => r.format);
+  assert.deepEqual(generatedFormats, ["a4", "feed", "story"]);
+  check();
+
   const reviewed = (
     await db.query(
       "select brand_id,overrides from promo_campaigns where id=$1",
@@ -277,7 +286,7 @@ export async function pharmacyModelFlow({
       )
     ).rows[0]?.scene;
     assert.ok(
-      scene?.objects.some(
+      (key === "ofertas-impacto" && scene?.objects.some(o=>o.type === "image")) || scene?.objects.some(
         (o) =>
           o.type === "i-text" &&
           /OFERTAS|PEQUENOS|SUA ROTINA|CUIDADO|ECONOMIA|FRESCOR|MAIS|BLACK/.test(

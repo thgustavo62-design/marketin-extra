@@ -66,6 +66,11 @@ export default async function Promocoes() {
             scope.brand ? { id: scope.brand.id, name: scope.brand.name } : null
           }
           brandColors={brandColors}
+          companies={scope.brands.map(({ id, name, slug }) => ({
+            id,
+            name,
+            slug,
+          }))}
         />
       )}
       <h2 style={{ marginTop: 22 }}>Promoções criadas</h2>

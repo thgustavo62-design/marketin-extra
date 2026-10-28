@@ -159,6 +159,7 @@ export function parsePromoRows(
 export type GridSpec = { cols: number; rows: number };
 export type GridArea = { top: number; bottom: number };
 export type ThemeConfig = {
+  referencePackage?: "minas-corta-20261028";
   priceLabel?: PriceLabelId;
   visual?: CampaignVisual;
   offerIdentity?: OfferIdentity;
@@ -320,6 +321,9 @@ export function normalizeTheme(raw: unknown): ThemeConfig {
     ...(isPriceLabel(t.priceLabel) ? { priceLabel: t.priceLabel } : {}),
     ...(normalizeOfferIdentity(t.offerIdentity)
       ? { offerIdentity: normalizeOfferIdentity(t.offerIdentity) }
+      : {}),
+    ...(t.referencePackage === "minas-corta-20261028"
+      ? { referencePackage: "minas-corta-20261028" as const }
       : {}),
     colors,
     grid,

@@ -76,10 +76,11 @@ export const PHARMACY_MODELS = [
     title: "OFERTAS EM DESTAQUE",
     eyebrow: "ESCOLHA. COMPARE. APROVEITE.",
     description: "Vermelho e amarelo com hierarquia forte de produto e preço.",
-    primary: "#A61B32",
+    primary: "#0C2A86",
     accent: "#FFE067",
     surface: "#FFF2D8",
     style: "impact",
+    artwork: "corta-preco-v1",
   },
   {
     key: "mercado-economia",
@@ -143,7 +144,11 @@ export const modelSegment = (key: string) =>
       ? "Ambos"
       : "Farmácias";
 export type PharmacyModel = (typeof PHARMACY_MODELS)[number];
-export type CampaignVisual = { style: PharmacyModel["style"]; eyebrow: string };
+export type CampaignVisual = {
+  style: PharmacyModel["style"];
+  eyebrow: string;
+  artwork?: "corta-preco-v1";
+};
 export type ModelSnapshot = { key: string; version: 1; theme: ThemeConfig };
 export const pharmacyModel = (key: unknown): PharmacyModel | undefined =>
   typeof key === "string"
@@ -181,7 +186,11 @@ export function pharmacyModelTheme(
     ...structuredClone(base),
     priceLabel: recommendedPriceLabel(key),
     offerIdentity: undefined,
-    visual: { style: m.style, eyebrow: m.eyebrow },
+    visual: {
+      style: m.style,
+      eyebrow: m.eyebrow,
+      ...("artwork" in m ? { artwork: m.artwork } : {}),
+    },
     colors: {
       skyTop: primary,
       skyBottom: m.surface,
@@ -225,6 +234,9 @@ export function normalizeCampaignVisual(
   if (!PHARMACY_MODELS.some((m) => m.style === v.style)) return undefined;
   return {
     style: v.style as CampaignVisual["style"],
+    ...(v.artwork === "corta-preco-v1"
+      ? { artwork: "corta-preco-v1" as const }
+      : {}),
     eyebrow: typeof v.eyebrow === "string" ? v.eyebrow.trim().slice(0, 60) : "",
   };
 }
