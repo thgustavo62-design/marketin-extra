@@ -296,6 +296,7 @@ export async function pharmacyModelFlow({
   await page
     .getByLabel("Informações complementares")
     .fill("APRESENTAÇÃO CONFERIDA");
+  await page.getByLabel('Etiqueta desta oferta').selectOption('premium');
   await page
     .getByRole("button", { name: "Salvar oferta", exact: true })
     .click();
