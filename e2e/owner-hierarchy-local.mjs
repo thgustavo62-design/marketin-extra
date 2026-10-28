@@ -127,7 +127,10 @@ try {
   // Regression: real PostgreSQL INSERT ... RETURNING evaluates SELECT policy
   // before a STABLE existence lookup can see the new branch.
   await as(a, "company-a", null, async () => {
-    const created = await one("insert into branches(brand_id,name)values($1,'Owner-created A3')returning id", [ca]);
+    const created = await one(
+      "insert into branches(brand_id,name)values($1,'Owner-created A3')returning id",
+      [ca],
+    );
     assert.ok(created.id);
     await db.query("delete from branches where id=$1", [created.id]);
   });
@@ -450,6 +453,20 @@ try {
     "select nova7_private.record('products',$1)",
     [pa],
   );
+  if (process.env.ENCARTIVA_DB_PERF_TEST === "1") {
+    const { scopePerformanceRegression } = await import(
+      "./lib/scope-performance-regression.mjs"
+    );
+    await scopePerformanceRegression({
+      db,
+      as,
+      admin,
+      owner: a,
+      legacy,
+      check: () => checks++,
+      baseline: process.env.ENCARTIVA_DB_BASELINE === "1",
+    });
+  }
   if (process.env.NOVA7_BROWSER_TEST === "1") {
     let socket;
     if (db.kind === "pglite") {
@@ -557,7 +574,9 @@ try {
         await new Promise((r) => setTimeout(r, 500));
       }
       browserRuntime = await browserTestRuntime(mods);
-      browser = await require("playwright-core").chromium.launch(browserRuntime.options);
+      browser = await require("playwright-core").chromium.launch(
+        browserRuntime.options,
+      );
       const context = await browser.newContext({
         ignoreHTTPSErrors: true,
         viewport: { width: 1440, height: 1100 },
@@ -586,8 +605,26 @@ try {
         checks++;
       }
       if (process.env.ENCARTIVA_BRAND_TEST === "1") {
-        const { checkEncartivaBrand } = await import("./lib/encartiva-brand-flow.mjs");
-        checks += await checkEncartivaBrand(browser, page, "https://127.0.0.1:3142");
+        const { checkEncartivaBrand } = await import(
+          "./lib/encartiva-brand-flow.mjs"
+        );
+        checks += await checkEncartivaBrand(
+          browser,
+          page,
+          "https://127.0.0.1:3142",
+        );
+      }
+      if (process.env.ENCARTIVA_DB_PERF_TEST === "1") {
+        const { legacyStudioBrowser } = await import(
+          "./lib/scope-performance-regression.mjs"
+        );
+        await legacyStudioBrowser({
+          db,
+          page,
+          base: "https://127.0.0.1:3142",
+          legacy,
+          check: () => checks++,
+        });
       }
       await page.goto("https://127.0.0.1:3142/admin/proprietarios");
       await page

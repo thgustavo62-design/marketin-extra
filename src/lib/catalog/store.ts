@@ -22,7 +22,7 @@ export const invalidateCatalogIndex = () => {};
 export async function catalogIndex(): Promise<NameIndex> {
   const rows = (
     await pool.query(
-      `select id, description, aliases from products where active and company_id=nova7_private.active_company() and (branch_id is null or branch_id=nova7_private.active_branch())`,
+      `select id, description, aliases from products where active and company_id=(select nova7_private.active_company()) and (branch_id is null or branch_id=(select nova7_private.active_branch()))`,
     )
   ).rows as { id: string; description: string; aliases: string[] }[];
   const entries: { id: string; description: string }[] = [];
@@ -332,7 +332,7 @@ export async function ingestImage(o: {
     const ean = parseEan(base);
     if (ean) {
       const hit = (
-        await pool.query(`select id from products where ean = $1 and active and company_id=nova7_private.active_company() and (branch_id is null or branch_id=nova7_private.active_branch())`, [
+        await pool.query(`select id from products where ean = $1 and active and company_id=(select nova7_private.active_company()) and (branch_id is null or branch_id=(select nova7_private.active_branch()))`, [
           ean,
         ])
       ).rows[0];

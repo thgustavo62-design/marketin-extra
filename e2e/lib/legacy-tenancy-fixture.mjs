@@ -45,10 +45,30 @@ export async function seedLegacyTenancy(db) {
     );
     campaigns.push(campaign);
   }
+  let unassignedCampaign;
+  if (process.env.ENCARTIVA_DB_PERF_TEST === "1") {
+    await db.query(
+      "insert into products(description,name_key,search)select 'PRODUTO LEGADO '||n,'perf-legacy-'||n,'perf legacy '||n from generate_series(1,8871)n",
+    );
+    unassignedCampaign = (
+      await db.query(
+        "insert into promo_campaigns(name,kind,design_format)values('Campanha legada sem empresa','promocao','feed')returning id",
+      )
+    ).rows[0].id;
+  }
   const inventory = await tenancyInventory(db);
   assert.equal(inventory.readOnly, true);
   assert.equal(inventory.catalog.shared_between_companies, 1);
-  return { brands, user, product, image, campaigns, branches, inventory };
+  return {
+    brands,
+    user,
+    product,
+    image,
+    campaigns,
+    branches,
+    inventory,
+    unassignedCampaign,
+  };
 }
 
 export async function verifyLegacyTenancy(db, old) {
