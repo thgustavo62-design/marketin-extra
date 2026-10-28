@@ -401,3 +401,12 @@
 .price-label-grid .btn {
   font-size: 12px;
 }
+
+.campaign-appearance-editor { margin-bottom: 24px; }
+.campaign-appearance-editor fieldset { border: 0; padding: 0; margin: 18px 0; min-width: 0; }
+.campaign-appearance-fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(100px, 1fr) minmax(100px, 1fr); gap: 16px; margin-bottom: 16px; }
+.campaign-appearance-fields label { display: grid; align-content: start; gap: 8px; min-width: 0; font-size: 13px; font-weight: 600; }
+.campaign-appearance-fields select { width: 100%; min-width: 0; }
+.campaign-appearance-fields input[type="color"] { width: 100%; height: 40px; padding: 3px; }
+@media (max-width: 900px) { .campaign-appearance-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+@media (max-width: 520px) { .campaign-appearance-fields { grid-template-columns: minmax(0, 1fr); } }

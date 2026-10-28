@@ -3,10 +3,16 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Save, ArrowUpRight } from "lucide-react";
-import { parsePrice, type ThemeConfig } from "@/lib/domain/promo";
+import {
+  applyOverrides,
+  parsePrice,
+  type ThemeConfig,
+} from "@/lib/domain/promo";
 import { offerEditVersion } from "@/lib/domain/offer-editing";
 import type { Campaign, PromoItem } from "@/lib/promo/store";
 import { OfferPreview } from "@/components/offer-preview";
+import { CampaignAppearanceEditor } from "./campaign-appearance-editor";
+import type { ModelSnapshot } from "@/lib/domain/pharmacy-models";
 import { PRICE_LABELS, type PriceLabelId } from "@/lib/domain/price-labels";
 
 type Props = {
@@ -17,10 +23,19 @@ type Props = {
 };
 export function OfferEditor({
   campaign,
-  theme,
+  theme: initialTheme,
   items: initial,
   canEdit,
 }: Props) {
+  const [overrides, setOverrides] = useState(campaign.overrides);
+  const [draftModel, setDraftModel] = useState<ModelSnapshot>();
+  const [appearanceDirty, setAppearanceDirty] = useState(false);
+  const [appearanceBusy, setAppearanceBusy] = useState(false);
+  const [appearanceRevision, setAppearanceRevision] = useState(0);
+  const theme = applyOverrides(initialTheme, overrides);
+  const previewTheme = draftModel
+    ? applyOverrides(initialTheme, { ...overrides, model: draftModel })
+    : undefined;
   const [items, setItems] = useState(initial),
     [selected, setSelected] = useState(initial[0]?.id ?? ""),
     [query, setQuery] = useState(""),
@@ -35,14 +50,14 @@ export function OfferEditor({
     .slice(0, 100);
   useEffect(() => {
     const protect = (e: BeforeUnloadEvent) => {
-      if (dirty) {
+      if (dirty || appearanceDirty || appearanceBusy) {
         e.preventDefault();
         e.returnValue = "";
       }
     };
     window.addEventListener("beforeunload", protect);
     return () => window.removeEventListener("beforeunload", protect);
-  }, [dirty]);
+  }, [dirty, appearanceDirty, appearanceBusy]);
   const leave = () =>
     !dirty ||
     confirm(
@@ -54,7 +69,14 @@ export function OfferEditor({
         <Link
           href="/promocoes"
           onClick={(e) => {
-            if (!leave()) e.preventDefault();
+            if (
+              appearanceBusy ||
+              ((dirty || appearanceDirty) &&
+                !confirm(
+                  "Há alterações não salvas. Sair e descartar essas alterações?",
+                ))
+            )
+              e.preventDefault();
           }}
         >
           ← Promoções
@@ -71,6 +93,21 @@ export function OfferEditor({
         sido editada no Studio, use “Regenerar página” para aplicar os novos
         dados à composição.
       </p>
+      {overrides.model && campaign.brand_id && (
+        <CampaignAppearanceEditor
+          id={campaign.id}
+          model={overrides.model}
+          canEdit={canEdit}
+          offerDirty={dirty}
+          onDirty={setAppearanceDirty}
+          onPreview={setDraftModel}
+          onBusy={setAppearanceBusy}
+          onApplied={(next) => {
+            setOverrides(next);
+            setAppearanceRevision((v) => v + 1);
+          }}
+        />
+      )}
       <div className="quick-offer-layout">
         <aside className="quick-offer-list" aria-label="Ofertas da campanha">
           <label className="design-search">
@@ -126,11 +163,13 @@ export function OfferEditor({
         </aside>
         {item ? (
           <OfferForm
-            key={item.id}
+            key={`${item.id}:${appearanceRevision}`}
             campaign={campaign}
             item={item}
             theme={theme}
-            canEdit={canEdit}
+            canEdit={canEdit && !appearanceDirty && !appearanceBusy}
+            navigationBlocked={appearanceDirty || appearanceBusy}
+            appearancePreview={previewTheme}
             onDirty={setDirty}
             onSaved={(next) =>
               setItems((all) => all.map((i) => (i.id === next.id ? next : i)))
@@ -150,6 +189,8 @@ function OfferForm({
   canEdit,
   onDirty,
   onSaved,
+  navigationBlocked,
+  appearancePreview,
 }: {
   campaign: Campaign;
   item: PromoItem;
@@ -157,6 +198,8 @@ function OfferForm({
   canEdit: boolean;
   onDirty: (value: boolean) => void;
   onSaved: (item: PromoItem) => void;
+  navigationBlocked: boolean;
+  appearancePreview?: ThemeConfig;
 }) {
   const router = useRouter();
   const [name, setName] = useState(item.name),
@@ -183,7 +226,13 @@ function OfferForm({
   const photoChanged = photoId !== (item.photo_image_id ?? "");
   const preview = {
     ...item,
-    style: { ...item.style, priceLabel: label },
+    style: {
+      ...item.style,
+      priceLabel:
+        appearancePreview && !item.style.priceLabel
+          ? appearancePreview.priceLabel
+          : label,
+    },
     name,
     note,
     price: parsed ?? item.price,
@@ -191,6 +240,7 @@ function OfferForm({
     photo_image_ids: photoChanged ? [] : item.photo_image_ids,
   };
   async function save(open: boolean) {
+    if (navigationBlocked || busy) return;
     if (!dirty) {
       if (open) router.push(`/studio/${campaign.id}`);
       return;
@@ -365,7 +415,7 @@ function OfferForm({
           <button
             type="button"
             className="btn"
-            disabled={busy || (dirty && !canEdit)}
+            disabled={busy || navigationBlocked || (dirty && !canEdit)}
             onClick={() => void save(true)}
           >
             {dirty ? "Salvar e abrir Studio" : "Abrir Studio"}
@@ -384,7 +434,7 @@ function OfferForm({
       </form>
       <OfferPreview
         item={preview}
-        theme={theme}
+        theme={appearancePreview ?? theme}
         title={campaign.title}
         validity={campaign.validity}
       />
