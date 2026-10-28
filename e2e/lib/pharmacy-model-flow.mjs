@@ -92,6 +92,16 @@ export async function pharmacyModelFlow({
   });
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.getByLabel("Formato da prévia dos modelos").selectOption("feed");
+  // Exercise lazy previews by visiting each card before the full-page capture.
+  for (const key of keys) {
+    await page.locator(`[data-model="${key}"]`).scrollIntoViewIfNeeded();
+    await page.waitForFunction((key) => {
+      const c = document.querySelector(`[data-model-preview="${key}"]`);
+      return c?.width === 1080 && c?.height === 1350 &&
+        c.getContext("2d").getImageData(30, 30, 1, 1).data[3] > 0;
+    }, key);
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: "/tmp/encartiva-pharmacy-models-desktop.png",
     fullPage: true,
@@ -440,6 +450,15 @@ export async function pharmacyModelFlow({
     .join(" ")
     .replace(/\s+/g, " ");
   assert.ok(refreshedText.includes("SABONETE EDITADO"), refreshedText);
+  assert.ok(refreshedText.includes("NOVA DESCRIÇÃO"), refreshedText);
+  assert.ok(!refreshedText.includes("SABONETE INFANTIL"));
+  const photos = refreshed.objects.filter((o) => o.type === "image");
+  assert.ok(photos.length > 0);
+  assert.ok(photos.every((o) => /^\/api\/promocoes\/asset\//.test(o.src)));
+  check();
+  await page.reload();
+  await page.locator("[data-editor-ready=true]").waitFor({ timeout: 60000 });
+  assert.equal(await page.getByText("Os produtos ou o tema mudaram desde esta edição.", { exact: false }).count(), 0);
   check();
   await page.screenshot({
     path: "/tmp/encartiva-pharmacy-studio.png",

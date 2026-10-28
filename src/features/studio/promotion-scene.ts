@@ -20,7 +20,7 @@ import {
   type RenderItem,
 } from "@/lib/promo/render";
 import type { StudioSource } from "@/lib/studio/store";
-import type { StudioScene } from "@/lib/domain/studio";
+import { relativeStudioImageSource, type StudioScene } from "@/lib/domain/studio";
 import { JSON_KEYS } from "./types";
 import { promotionPageCount } from "./page-count";
 export { promotionPageCount } from "./page-count";
@@ -175,6 +175,10 @@ export async function promotionScene(
     texts = new Map<string, number>();
   for (const o of objects) {
     const v = o.toObject(JSON_KEYS) as Record<string, unknown>;
+    if (o.type === "image") {
+      const local = relativeStudioImageSource(v.src, window.location.origin);
+      if (local) v.src = local;
+    }
     if (o.type === "text") {
       v.type = "i-text";
       const key = JSON.stringify([v.text, v.left, v.top, v.fontSize, v.angle]),

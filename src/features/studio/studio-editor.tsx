@@ -316,9 +316,10 @@ export function StudioEditor(
               editor?.getWorkspace()?.height ?? PROMO_FORMATS[format].h,
             )
           : await promotionScene(source, format, page);
+      await loadScene(scene, true);
       docHashRef.current = sourceHash;
       setDocumentSourceHash(sourceHash);
-      await loadScene(scene, true);
+      editor?.commit();
     });
   };
   const pageCount = promotionPageCount(source, format),
