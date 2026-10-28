@@ -6,10 +6,12 @@ export function ReviewUpload({
   brands,
   selected,
   modelKey,
+  labelKey,
 }: {
   brands: { id: string; name: string }[];
   selected: string;
   modelKey?: string;
+  labelKey?: string;
 }) {
   const router = useRouter(),
     [busy, setBusy] = useState(false),
@@ -30,7 +32,7 @@ export function ReviewUpload({
             r = await res.json();
           if (!res.ok) throw Error(r.error || "Falha na importação.");
           router.push(
-            `/promocoes/revisao/${r.id}${modelKey ? "?modelo=" + encodeURIComponent(modelKey) : ""}`,
+            `/promocoes/revisao/${r.id}${modelKey ? "?modelo=" + encodeURIComponent(modelKey) + (labelKey ? "&etiqueta=" + encodeURIComponent(labelKey) : "") : ""}`,
           );
         } catch (e) {
           setError(e instanceof Error ? e.message : "Falha no envio.");

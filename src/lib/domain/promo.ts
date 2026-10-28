@@ -4,6 +4,7 @@ import {
 } from "./offer-identity.ts";
 // Promoções montadas a partir de planilha: leitura de preço, colunas, tema e posição dos produtos em cada formato. Tudo puro e testado.
 import { parseEan } from "./catalog.ts";
+import { isPriceLabel, type PriceLabelId } from "./price-labels.ts";
 import {
   normalizeCampaignVisual,
   pharmacyModel,
@@ -158,6 +159,7 @@ export function parsePromoRows(
 export type GridSpec = { cols: number; rows: number };
 export type GridArea = { top: number; bottom: number };
 export type ThemeConfig = {
+  priceLabel?: PriceLabelId;
   visual?: CampaignVisual;
   offerIdentity?: OfferIdentity;
   dimensions?: Partial<Record<PromoFormat, { w: number; h: number }>>;
@@ -315,6 +317,7 @@ export function normalizeTheme(raw: unknown): ThemeConfig {
     ...(normalizeCampaignVisual(t.visual)
       ? { visual: normalizeCampaignVisual(t.visual) }
       : {}),
+    ...(isPriceLabel(t.priceLabel) ? { priceLabel: t.priceLabel } : {}),
     ...(normalizeOfferIdentity(t.offerIdentity)
       ? { offerIdentity: normalizeOfferIdentity(t.offerIdentity) }
       : {}),
@@ -498,6 +501,7 @@ export const TAG_PRESETS = [
   "Oferta",
 ] as const;
 export type ItemStyle = {
+  priceLabel?: PriceLabelId;
   offerIdentity?: OfferIdentity;
   /** texto da etiqueta: ausente = a do tema; "" = sem etiqueta neste encarte */
   tag?: string;
@@ -516,6 +520,7 @@ export function normalizeItemStyle(raw: unknown): ItemStyle {
     unknown
   >;
   const out: ItemStyle = {};
+  if (isPriceLabel(r.priceLabel)) out.priceLabel = r.priceLabel;
   const identity = normalizeOfferIdentity(r.offerIdentity);
   if (identity) out.offerIdentity = identity;
   if (typeof r.tag === "string") out.tag = r.tag.trim().slice(0, 24);

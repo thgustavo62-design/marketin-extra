@@ -13,11 +13,14 @@ import {
   paginateSections,
   PROMO_FORMAT_KEYS,
   parsePrice,
+  normalizeItemStyle,
 } from "../src/lib/domain/promo.ts";
 import { offerEditVersion } from "../src/lib/domain/offer-editing.ts";
+import { PRICE_LABELS, isPriceLabel } from "../src/lib/domain/price-labels.ts";
+import { drawPharmacyOffer } from "../src/lib/promo/pharmacy-offer-render.ts";
 
 test("Global models are generic, have unique identities and never carry private pharmacy assets", () => {
-  assert.equal(new Set(PHARMACY_MODELS.map((m) => m.key)).size, 6);
+  assert.equal(new Set(PHARMACY_MODELS.map((m) => m.key)).size, 10);
   assert.equal(pharmacyModel("../../minas-farma"), undefined);
   for (const model of PHARMACY_MODELS) {
     const cfg = pharmacyModelTheme(model.key, normalizeTheme({}));
@@ -69,6 +72,7 @@ test("Unknown models, unsupported versions and malformed snapshots cannot become
 test("Global campaign grids retain every imported offer and preserve prices in all formats", () => {
   const prices = ["0,99", "4,99", "29,99", "199,99", "1.299,99"].map(
     parsePrice,
+    normalizeItemStyle,
   );
   const offers = Array.from({ length: 31 }, (_, i) => ({
     id: i,
@@ -142,4 +146,94 @@ test("Quick-edit concurrency token notices changes to price, description and sel
     token,
   );
   assert.equal(offerEditVersion({ ...base, note: "" }), token);
+});
+
+test("Generic offers keep dynamic prices and proportional photos within their separate bands", () => {
+  for (const label of PRICE_LABELS)
+    for (const price of [0.99, 4.99, 29.99, 199.99, 1299.99]) {
+      const texts: { text: string; x: number; y: number; width: number }[] = [],
+        photos: number[][] = [];
+      const ctx = {
+        font: "",
+        save() {},
+        restore() {},
+        beginPath() {},
+        moveTo() {},
+        lineTo() {},
+        quadraticCurveTo() {},
+        closePath() {},
+        fill() {},
+        stroke() {},
+        arc() {},
+        fillRect() {},
+        createLinearGradient() {
+          return { addColorStop() {} };
+        },
+        measureText(value: string) {
+          return {
+            width:
+              value.length *
+              Number(this.font.match(/([\d.]+)px/)?.[1] ?? 12) *
+              0.52,
+          };
+        },
+        fillText(value: string, x: number, y: number) {
+          texts.push({
+            text: value,
+            x,
+            y,
+            width: this.measureText(value).width,
+          });
+        },
+        drawImage(_image: unknown, ...rect: number[]) {
+          photos.push(rect);
+        },
+      };
+      const r = { x: 20, y: 300, w: 450, h: 540 };
+      drawPharmacyOffer(
+        ctx as unknown as CanvasRenderingContext2D,
+        r,
+        {
+          name: "PRODUTO COM APRESENTAÇÃO 200 ML",
+          price,
+          note: "Informação complementar",
+          img: { width: 200, height: 400 } as HTMLImageElement,
+        },
+        {
+          ...pharmacyModelTheme("farma-essencial", normalizeTheme({})),
+          priceLabel: label.id,
+        },
+      );
+      assert.ok(texts.some((t) => t.text === "R$"));
+      assert.ok(
+        texts.some((t) => t.text === Math.floor(price).toLocaleString("pt-BR")),
+      );
+      assert.ok(texts.some((t) => t.text === ",99"));
+      const photo = photos[0];
+      assert.equal(photo[2] / photo[3], 0.5);
+      assert.ok(photo[1] + photo[3] < r.y + r.h * 0.54);
+      for (const t of texts) {
+        assert.ok(t.x >= r.x);
+        assert.ok(t.x <= r.x + r.w);
+        assert.ok(t.y >= r.y && t.y <= r.y + r.h);
+      }
+      for (const t of texts.filter((t) =>
+        ["R$", ",99", Math.floor(price).toLocaleString("pt-BR")].includes(
+          t.text,
+        ),
+      ))
+        assert.ok(t.x + t.width <= r.x + r.w);
+    }
+});
+
+test("Ten reusable price labels are validated independently from the company model", () => {
+  assert.equal(PRICE_LABELS.length, 10);
+  assert.equal(new Set(PRICE_LABELS.map((l) => l.id)).size, 10);
+  for (const l of PRICE_LABELS)
+    assert.equal(normalizeItemStyle({ priceLabel: l.id }).priceLabel, l.id);
+  assert.equal(isPriceLabel("unknown"), false);
+  assert.equal(
+    normalizeItemStyle({ priceLabel: "unknown" }).priceLabel,
+    undefined,
+  );
 });

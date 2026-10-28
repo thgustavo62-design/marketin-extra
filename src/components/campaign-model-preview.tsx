@@ -6,11 +6,13 @@ export function CampaignModelPreview({
   modelKey,
   primary,
   accent,
+  priceLabel,
   format = "feed",
 }: {
   modelKey: string;
   primary?: string;
   accent?: string;
+  priceLabel?: string;
   format?: PromoFormat;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -44,7 +46,7 @@ export function CampaignModelPreview({
         if (active && canvas.current)
           await drawModelPreview(
             canvas.current,
-            { modelKey, primary, accent, format },
+            { modelKey, primary, accent, format, priceLabel },
             () => active,
           );
       })
@@ -54,7 +56,7 @@ export function CampaignModelPreview({
     return () => {
       active = false;
     };
-  }, [visible, modelKey, primary, accent, format]);
+  }, [visible, modelKey, primary, accent, format, priceLabel]);
   return (
     <div className="campaign-model-preview">
       <canvas

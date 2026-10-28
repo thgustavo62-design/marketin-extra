@@ -20,19 +20,58 @@ export async function pharmacyModelFlow({
     "cuidado-diario",
     "energia-equilibrio",
     "ofertas-impacto",
+    "mercado-economia",
+    "hortifruti-fresco",
+    "atacado-inteligente",
+    "black-friday",
+  ];
+  const labels = [
+    "rounded",
+    "solid",
+    "outline",
+    "ticket",
+    "flag",
+    "slanted",
+    "gloss",
+    "burst",
+    "shelf",
+    "premium",
   ];
   const post = (path, data) =>
     context.request.post(base + path, { headers: { origin: base }, data });
+  await page.goto(base + "/promocoes/etiquetas");
+  await page
+    .getByRole("heading", { name: "Etiquetas de preço", exact: true })
+    .waitFor();
+  assert.equal(await page.locator("[data-price-label]").count(), 10);
+  check();
+  await page.getByLabel("Preço para prévia das etiquetas").fill("1.299,99");
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll("[data-price-label] canvas")].every(
+      (c) => c.getContext("2d").getImageData(250, 60, 1, 1).data[3] > 0,
+    ),
+  );
+  check();
+  await page.screenshot({
+    path: "/tmp/encartiva-ten-labels.png",
+    fullPage: true,
+  });
   await page.goto(base + "/promocoes/modelos");
   await page
-    .getByRole("heading", { name: "Modelos de farmácia", exact: true })
+    .getByRole("heading", { name: "Modelos de campanhas", exact: true })
     .waitFor();
-  assert.equal(await page.locator("[data-model]").count(), 6);
+  assert.equal(await page.locator("[data-model]").count(), 10);
   check();
-  await page.getByLabel("Buscar modelos de farmácia").fill("bebê");
+  await page
+    .getByLabel("Filtrar segmento dos modelos")
+    .selectOption("Supermercados");
+  assert.equal(await page.locator("[data-model]").count(), 5);
+  check();
+  await page.getByLabel("Filtrar segmento dos modelos").selectOption("Todos");
+  await page.getByLabel("Buscar modelos de campanhas").fill("bebê");
   assert.equal(await page.locator("[data-model]").count(), 1);
   check();
-  await page.getByLabel("Buscar modelos de farmácia").fill("");
+  await page.getByLabel("Buscar modelos de campanhas").fill("");
   await page.getByLabel("Formato da prévia dos modelos").selectOption("story");
   await page.waitForFunction(() =>
     [...document.querySelectorAll("[data-model-preview]")].some(
@@ -61,14 +100,12 @@ export async function pharmacyModelFlow({
   await page
     .getByLabel("Nome da campanha", { exact: true })
     .fill("Biblioteca bebê revisada");
-  await page
-    .getByLabel("Planilha para revisão inteligente")
-    .setInputFiles({
-      name: "ofertas.xlsx",
-      mimeType:
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      buffer: bytes,
-    });
+  await page.getByLabel("Planilha para revisão inteligente").setInputFiles({
+    name: "ofertas.xlsx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: bytes,
+  });
   await page
     .getByRole("button", { name: "Importar e revisar ofertas", exact: true })
     .click();
@@ -79,6 +116,9 @@ export async function pharmacyModelFlow({
   );
   check();
   await page.getByLabel("Cor principal do modelo").fill("#123456");
+  await page
+    .getByLabel("Etiqueta de preço", { exact: true })
+    .selectOption("ticket");
   await page
     .getByText("Conferi produtos, variações, preços e fotos antes de gerar.", {
       exact: true,
@@ -102,9 +142,65 @@ export async function pharmacyModelFlow({
   assert.equal(reviewed.brand_id, companyId);
   assert.equal(reviewed.overrides.model.key, "bebe-carinho");
   assert.equal(reviewed.overrides.model.theme.colors.skyTop, "#123456");
+  assert.equal(reviewed.overrides.model.theme.priceLabel, "ticket");
   check();
+  // Matching stays in the import's company even when the owner can read several companies.
+  const sibling = (
+    await db.query(
+      "select id from companies where owner_id=(select owner_id from companies where id=$1) and id<>$1 limit 1",
+      [companyId],
+    )
+  ).rows[0];
+  if (sibling) {
+    await db.query(
+      "insert into products(company_id,ean,description,name_key,search) select $2,ean,'NUNCA OUTRA EMPRESA','NUNCA OUTRA EMPRESA','NUNCA OUTRA EMPRESA' from products where company_id=$1 and ean is not null on conflict do nothing",
+      [companyId, sibling.id],
+    );
+    const cookies = await context.cookies(base);
+    const session = cookies.find((c) => c.name === "__Host-extra_session");
+    const imported = await context.request.post(
+      base + "/api/promocoes/revisao",
+      {
+        headers: {
+          origin: base,
+          cookie: `__Host-extra_session=${session.value}; extra_scope=%7C`,
+        },
+        multipart: {
+          brand_id: companyId,
+          name: "Mesmo EAN em empresas diferentes",
+          file: {
+            name: "ofertas.xlsx",
+            mimeType:
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            buffer: bytes,
+          },
+        },
+      },
+    );
+    assert.equal(imported.status(), 200, await imported.text());
+    const source = (
+      await db.query("select groups from promo_imports where id=$1", [
+        (await imported.json()).id,
+      ])
+    ).rows[0];
+    const ids = source.groups
+      .flatMap((g) => [...g.members, ...g.candidates])
+      .map((m) => m.productId)
+      .filter(Boolean);
+    const companies = (
+      await db.query(
+        "select distinct company_id from products where id=any($1::uuid[])",
+        [ids],
+      )
+    ).rows;
+    assert.deepEqual(
+      companies.map((c) => c.company_id),
+      [companyId],
+    );
+    check();
+  }
   const created = [];
-  for (const key of keys) {
+  for (const [index, key] of keys.entries()) {
     const response = await context.request.post(
       base + "/api/promocoes/importar",
       {
@@ -112,6 +208,7 @@ export async function pharmacyModelFlow({
         multipart: {
           brand_id: companyId,
           model_key: key,
+          price_label: labels[index],
           model_primary: "#075985",
           model_accent: "#D4F45A",
           name: "Modelo global QA " + key,
@@ -139,6 +236,7 @@ export async function pharmacyModelFlow({
     assert.equal(saved.theme_id, null);
     assert.equal(saved.overrides.model.key, key);
     assert.equal(saved.overrides.model.version, 1);
+    assert.equal(saved.overrides.model.theme.priceLabel, labels[index]);
     assert.equal(saved.overrides.model.theme.colors.skyTop, "#075985");
     assert.equal(saved.overrides.model.theme.offerIdentity, undefined);
     const rows = (
@@ -155,7 +253,9 @@ export async function pharmacyModelFlow({
     created.push(campaign);
     await page.goto(base + `/studio/${campaign}?formato=feed`);
     await page.locator("[data-editor-ready=true]").waitFor({ timeout: 60000 });
-    await page.getByRole("button", { name: "Salvar", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Salvar arte", exact: true })
+      .click();
     await page.getByText("Salvo", { exact: true }).waitFor({ timeout: 30000 });
     const scene = (
       await db.query(
@@ -167,7 +267,9 @@ export async function pharmacyModelFlow({
       scene?.objects.some(
         (o) =>
           o.type === "i-text" &&
-          /^OFERTAS|PEQUENOS|SUA ROTINA|CUIDADO/.test(o.text || ""),
+          /OFERTAS|PEQUENOS|SUA ROTINA|CUIDADO|ECONOMIA|FRESCOR|MAIS|BLACK/.test(
+            o.text || "",
+          ),
       ),
     );
     assert.ok(scene.objects.some((o) => o.type === "image"));
@@ -177,7 +279,9 @@ export async function pharmacyModelFlow({
   for (const format of ["story", "a4"]) {
     await page.goto(base + `/studio/${campaign}?formato=${format}`);
     await page.locator("[data-editor-ready=true]").waitFor({ timeout: 60000 });
-    await page.getByRole("button", { name: "Salvar", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Salvar arte", exact: true })
+      .click();
     await page.getByText("Salvo", { exact: true }).waitFor({ timeout: 30000 });
     check();
   }
@@ -207,6 +311,7 @@ export async function pharmacyModelFlow({
   assert.equal(item.name, "SABONETE EDITADO 200 ML");
   assert.equal(Number(item.price), 29.99);
   assert.equal(item.note, "APRESENTAÇÃO CONFERIDA");
+  assert.equal(item.style.priceLabel, "premium");
   check();
   await page.reload();
   assert.equal(
@@ -220,6 +325,7 @@ export async function pharmacyModelFlow({
     item.note || null,
     item.photo_image_id || null,
     item.photo_image_ids ?? [],
+    item.style?.priceLabel ?? null,
   ]);
   const path = `/api/promocoes/${campaign}/ofertas/${item.id}`;
   const data = {
@@ -315,7 +421,11 @@ export async function pharmacyModelFlow({
   await page
     .getByRole("button", { name: "Regenerar página", exact: true })
     .click();
-  await page.getByRole("button", { name: "Salvar", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Regenerar página", exact: true })
+    .waitFor({ state: "hidden" });
+  await page.locator("[data-editor-ready=true]").waitFor();
+  await page.getByRole("button", { name: "Salvar arte", exact: true }).click();
   await page.getByText("Salvo", { exact: true }).waitFor({ timeout: 30000 });
   const refreshed = (
     await db.query(
@@ -323,11 +433,12 @@ export async function pharmacyModelFlow({
       [campaign],
     )
   ).rows[0].scene;
-  assert.ok(
-    refreshed.objects.some(
-      (o) => o.type === "i-text" && /SABONETE EDITADO/.test(o.text || ""),
-    ),
-  );
+  const refreshedText = refreshed.objects
+    .filter((o) => o.type === "i-text")
+    .map((o) => o.text || "")
+    .join(" ")
+    .replace(/\s+/g, " ");
+  assert.ok(refreshedText.includes("SABONETE EDITADO"), refreshedText);
   check();
   await page.screenshot({
     path: "/tmp/encartiva-pharmacy-studio.png",

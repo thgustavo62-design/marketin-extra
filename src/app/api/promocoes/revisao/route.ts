@@ -38,6 +38,7 @@ export async function POST(req: Request) {
         await previewRules(
           Buffer.from(await file.arrayBuffer()),
           JSON.parse(String(fd.get("rules") || "{}")),
+          brandId,
         ),
       );
     }

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowUpRight, Search } from "lucide-react";
-import { PHARMACY_MODELS } from "@/lib/domain/pharmacy-models";
+import { PHARMACY_MODELS, modelSegment } from "@/lib/domain/pharmacy-models";
 import type { PromoFormat } from "@/lib/domain/promo";
 import { CampaignModelPreview } from "./campaign-model-preview";
 
@@ -14,6 +14,7 @@ export function PharmacyModelGallery({
   compact?: boolean;
 }) {
   const [query, setQuery] = useState(""),
+    [segment, setSegment] = useState("Todos"),
     [category, setCategory] = useState("todos"),
     [format, setFormat] = useState<PromoFormat>("feed");
   const norm = (s: string) =>
@@ -21,6 +22,9 @@ export function PharmacyModelGallery({
   const shown = PHARMACY_MODELS.filter(
     (m) =>
       (category === "todos" || category === m.category) &&
+      (segment === "Todos" ||
+        modelSegment(m.key) === "Ambos" ||
+        modelSegment(m.key) === segment) &&
       norm(`${m.name} ${m.description} ${m.label}`).includes(norm(query)),
   );
   const categories = [
@@ -29,7 +33,7 @@ export function PharmacyModelGallery({
   return (
     <section
       className="pharmacy-gallery"
-      aria-label="Biblioteca global de farmácia"
+      aria-label="Biblioteca global de campanhas"
     >
       <div className="design-section-head">
         <div>
@@ -44,7 +48,7 @@ export function PharmacyModelGallery({
           <Search size={17} />
           <input
             type="search"
-            aria-label="Buscar modelos de farmácia"
+            aria-label="Buscar modelos de campanhas"
             placeholder="Buscar modelo…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -52,6 +56,18 @@ export function PharmacyModelGallery({
         </label>
       </div>
       <div className="model-gallery-toolbar">
+        <label>
+          Segmento
+          <select
+            aria-label="Filtrar segmento dos modelos"
+            value={segment}
+            onChange={(e) => setSegment(e.target.value)}
+          >
+            <option>Todos</option>
+            <option>Farmácias</option>
+            <option>Supermercados</option>
+          </select>
+        </label>
         <div
           className="canva-chips"
           role="group"

@@ -6,6 +6,7 @@ import { isUuid } from "@/lib/form";
 import { parsePrice } from "@/lib/domain/promo";
 import { campaignAccess } from "@/lib/promo/access";
 import { patchItem } from "@/lib/promo/store";
+import { isPriceLabel } from "@/lib/domain/price-labels";
 
 const reply = (body: unknown, status = 200) =>
   NextResponse.json(body, {
@@ -64,6 +65,8 @@ export async function POST(
       !isUuid(input.photoId)
     )
       return reply({ error: "Foto inválida." }, 400);
+    if (input.priceLabel !== undefined && !isPriceLabel(input.priceLabel))
+      return reply({ error: "Etiqueta inválida." }, 400);
     const result = await patchItem(
       itemId,
       {
@@ -72,6 +75,7 @@ export async function POST(
         price,
         photoImageId: input.photoId,
         expectedOfferVersion: input.version,
+        priceLabel: input.priceLabel,
       },
       user.id,
     );

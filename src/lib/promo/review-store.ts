@@ -66,7 +66,10 @@ export async function readReview(
   ).rows[0] as ReviewImport | undefined;
   return r && brandAllowed(user, r.brand_id) ? r : null;
 }
-async function catalogFor(lines: ImportLine[]): Promise<CatalogSku[]> {
+async function catalogFor(
+  lines: ImportLine[],
+  companyId: string,
+): Promise<CatalogSku[]> {
   // Candidate lookup is bounded by exact name-family prefix; it never enrolls a catalog SKU by itself.
   const prefixes = [
     ...new Set(
@@ -79,8 +82,8 @@ async function catalogFor(lines: ImportLine[]): Promise<CatalogSku[]> {
   ];
   const p = (
     await pool.query(
-      `select id,ean,description as name,commercial_attributes as attributes from products where active and ean is not null and (ean=any($1::text[]) or name_key ilike any($2::text[])) order by ean limit 5000`,
-      [lines.map((l) => l.ean), prefixes],
+      `select id,ean,description as name,commercial_attributes as attributes from products where company_id=$3 and active and ean is not null and (ean=any($1::text[]) or name_key ilike any($2::text[])) order by ean limit 5000`,
+      [lines.map((l) => l.ean), prefixes, companyId],
     )
   ).rows;
   const photos = (
@@ -111,7 +114,7 @@ export async function importForReview(o: {
       ? normalizeGroupingRules(o.rulesOverride)
       : saved.config;
   const parsed = parseReviewWorkbook(o.bytes, rules.priceSource),
-    catalog = await catalogFor(parsed.rows),
+    catalog = await catalogFor(parsed.rows, o.brandId),
     groups = buildReview(parsed.rows, catalog, rules);
   const memory = (
     await pool.query(
@@ -469,10 +472,18 @@ export async function generateReviewed(
     return c as string;
   });
 }
-export async function previewRules(bytes: Buffer, rules: unknown) {
+export async function previewRules(
+  bytes: Buffer,
+  rules: unknown,
+  companyId: string,
+) {
   const config = normalizeGroupingRules(rules),
     parsed = parseReviewWorkbook(bytes, config.priceSource),
-    groups = buildReview(parsed.rows, await catalogFor(parsed.rows), config);
+    groups = buildReview(
+      parsed.rows,
+      await catalogFor(parsed.rows, companyId),
+      config,
+    );
   return {
     lines: parsed.rows.length,
     offers: groups.length,
@@ -489,7 +500,7 @@ export async function refreshReviewPhotos(
   const r = await readReview(id, user);
   if (!r || r.campaign_id)
     throw Error("Importação não disponível para revisão.");
-  const catalog = await catalogFor(r.original_rows),
+  const catalog = await catalogFor(r.original_rows, r.brand_id),
     byEan = new Map(catalog.map((s) => [s.ean, s]));
   for (const g of r.groups) {
     for (const m of [...g.members, ...g.candidates]) {

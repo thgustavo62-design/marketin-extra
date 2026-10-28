@@ -2,20 +2,30 @@
 import { useState } from "react";
 import { PHARMACY_MODELS, pharmacyModel } from "@/lib/domain/pharmacy-models";
 import { CampaignModelPreview } from "./campaign-model-preview";
+import {
+  PRICE_LABELS,
+  isPriceLabel,
+  recommendedPriceLabel,
+} from "@/lib/domain/price-labels";
 
 export function CampaignModelPicker({
   initial = "",
   brandColors = [],
   onChange,
+  initialLabel,
 }: {
   initial?: string;
   brandColors?: string[];
   onChange?: () => void;
+  initialLabel?: string;
 }) {
   const [key, setKey] = useState(pharmacyModel(initial)?.key ?? "");
   const [primary, setPrimary] = useState("");
   const [accent, setAccent] = useState("");
   const [useBrand, setUseBrand] = useState(false);
+  const [label, setLabel] = useState(
+    isPriceLabel(initialLabel) ? initialLabel : "",
+  );
   const model = pharmacyModel(key);
   const p =
     (useBrand ? brandColors[0] : undefined) || primary || model?.primary;
@@ -25,7 +35,7 @@ export function CampaignModelPicker({
       className="campaign-model-picker"
       aria-label="Modelo visual da campanha"
     >
-      <label htmlFor="campaign-model-key">Modelo global de farmácia</label>
+      <label htmlFor="campaign-model-key">Modelo global de campanha</label>
       <select
         id="campaign-model-key"
         name="model_key"
@@ -46,9 +56,34 @@ export function CampaignModelPicker({
       </select>
       {model && (
         <div className="campaign-model-customize">
-          <CampaignModelPreview modelKey={key} primary={p} accent={a} />
+          <CampaignModelPreview
+            modelKey={key}
+            primary={p}
+            accent={a}
+            priceLabel={label || recommendedPriceLabel(key)}
+          />
           <div>
             <p>{model.description}</p>
+            <label htmlFor="campaign-price-label">Etiqueta de preço</label>
+            <select
+              id="campaign-price-label"
+              name="price_label"
+              value={label || recommendedPriceLabel(key)}
+              onChange={(e) => {
+                setLabel(e.target.value);
+                onChange?.();
+              }}
+            >
+              {PRICE_LABELS.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+            <p className="muted">
+              Este modelo define o visual da campanha e substitui o tema
+              selecionado acima.
+            </p>
             <div className="campaign-model-colors">
               <label>
                 Cor principal

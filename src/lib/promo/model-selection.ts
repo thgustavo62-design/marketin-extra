@@ -6,12 +6,14 @@ import {
   pharmacyModelTheme,
 } from "../domain/pharmacy-models";
 import { pool } from "../db";
+import { isPriceLabel } from "../domain/price-labels";
 
 export type ModelSelection = {
   modelKey?: string;
   primary?: string;
   accent?: string;
   useBrandColors?: boolean;
+  priceLabel?: string;
 };
 
 export async function modelBrandColors(
@@ -62,6 +64,11 @@ export async function campaignModel(
     primary,
     accent,
   });
+  if (selection.priceLabel) {
+    if (!isPriceLabel(selection.priceLabel))
+      throw Error("Escolha uma etiqueta válida.");
+    theme.priceLabel = selection.priceLabel;
+  }
   theme.footerLines = [String(company.name).slice(0, 80)];
   return { key: model.key, version: 1, theme };
 }

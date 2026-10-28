@@ -1,6 +1,7 @@
 // Promoções: temas (artes), campanhas e itens. Importações com .ts para rodar também em scripts do Node.
 import { campaignAccess } from "./access";
 import { offerEditVersion } from "../domain/offer-editing.ts";
+import { isPriceLabel } from "../domain/price-labels.ts";
 import { getSession } from "../session";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
@@ -417,7 +418,7 @@ export async function listCampaigns(): Promise<CampaignLite[]> {
   if (!user) return [];
   return (
     await pool.query(
-      `select c.id, c.name, t.name as theme_name, (select count(*)::int from promo_items i where i.campaign_id = c.id) as items, c.status, c.created_at::text as created_at, c.thumb_at::text as thumb_at
+      `select c.id, c.name, coalesce(t.name,c.overrides->'model'->'theme'->>'title') as theme_name, (select count(*)::int from promo_items i where i.campaign_id = c.id) as items, c.status, c.created_at::text as created_at, c.thumb_at::text as thumb_at
        from promo_campaigns c left join promo_themes t on t.id = c.theme_id where c.kind = 'promocao' and (c.brand_id is null or $1::uuid[] is null or c.brand_id=any($1::uuid[])) order by c.created_at desc limit 100`,
       [user.role === "admin" ? null : user.brandIds],
     )
@@ -977,6 +978,7 @@ export async function approveCampaign(
 
 export type SizeEdit = { label: string; units: number | null };
 export type ItemPatch = {
+  priceLabel?: string;
   expectedOfferVersion?: string;
   name?: string;
   price?: number;
@@ -1038,6 +1040,8 @@ export async function patchItem(
         name === cur.name &&
         price === cur.price &&
         note === cur.note &&
+        (p.priceLabel === undefined ||
+          p.priceLabel === cur.style?.priceLabel) &&
         (p.photoImageId === undefined || p.photoImageId === cur.photo_image_id)
       )
         return { ok: true, version: offerEditVersion(cur) };
@@ -1052,6 +1056,11 @@ export async function patchItem(
       p.style === undefined
         ? normalizeItemStyle(cur.style)
         : normalizeItemStyle(p.style);
+    if (p.priceLabel !== undefined) {
+      if (!isPriceLabel(p.priceLabel))
+        return { ok: false, error: "Etiqueta inválida." };
+      style.priceLabel = p.priceLabel;
+    }
     let variants = cur.variants as Variants | null;
     if (variants && p.sizes && variants.kind === "sizes") {
       if (p.sizes.length !== variants.rows.length)
@@ -1140,11 +1149,18 @@ export async function patchItem(
         cur.photo_image_id ? "outra foto" : "sem foto escolhida",
         photo ? "foto escolhida trocada" : "foto padrão do produto",
       );
+    if (p.priceLabel !== undefined && p.priceLabel !== cur.style?.priceLabel)
+      await log(
+        "etiqueta",
+        cur.style?.priceLabel ?? "padrão da campanha",
+        p.priceLabel,
+      );
     await touch(db, cur.campaign_id);
     return {
       ok: true,
       version: offerEditVersion({
         ...cur,
+        style,
         name,
         price,
         note,

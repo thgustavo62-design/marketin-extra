@@ -21,6 +21,7 @@ import {
   drawPharmacyBackground,
   drawPharmacyHeader,
 } from "./pharmacy-visual-render.ts";
+import { drawPharmacyOffer } from "./pharmacy-offer-render.ts";
 
 export type RenderAssets = {
   background?: HTMLImageElement | null;
@@ -815,6 +816,10 @@ function drawCell(
       it.price,
       identity,
     );
+    return;
+  }
+  if (theme.visual) {
+    drawPharmacyOffer(ctx, r, it, theme);
     return;
   }
   const badgeR = Math.min(r.w * 0.24, r.h * 0.22);

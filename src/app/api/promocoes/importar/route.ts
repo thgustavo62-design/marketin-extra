@@ -78,6 +78,7 @@ export async function POST(req: Request) {
         primary: String(fd.get("model_primary") ?? ""),
         accent: String(fd.get("model_accent") ?? ""),
         useBrandColors: fd.get("model_brand_colors") === "1",
+        priceLabel: String(fd.get("price_label") || ""),
       },
       companyId,
     );

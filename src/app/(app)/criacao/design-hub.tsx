@@ -117,7 +117,7 @@ export function DesignHub({
           <LayoutTemplate size={20} />
           <span>
             <b>Modelos prontos</b>
-            <small>Farmácia e {models} modelos salvos</small>
+            <small>10 visuais e {models} modelos salvos</small>
           </span>
           <ArrowUpRight size={15} />
         </Link>

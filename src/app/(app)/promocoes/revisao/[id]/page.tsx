@@ -5,6 +5,7 @@ import { readReview } from "@/lib/promo/review-store";
 import { listThemes } from "@/lib/promo/store";
 import { PromoTabs } from "../../promo-tabs";
 import { ReviewEditor } from "./review-editor";
+import { isPriceLabel } from "@/lib/domain/price-labels";
 import { pharmacyModel } from "@/lib/domain/pharmacy-models";
 import { modelBrandColors } from "@/lib/promo/model-selection";
 export default async function Page({
@@ -12,7 +13,7 @@ export default async function Page({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ modelo?: string }>;
+  searchParams: Promise<{ modelo?: string; etiqueta?: string }>;
 }) {
   const user = await requireUser(),
     { id } = await params,
@@ -40,6 +41,7 @@ export default async function Page({
         themes={themes}
         canEdit={canWrite(user.role)}
         initialModel={pharmacyModel(query.modelo)?.key}
+        initialLabel={isPriceLabel(query.etiqueta) ? query.etiqueta : undefined}
         brandColors={brandColors}
       />
     </>

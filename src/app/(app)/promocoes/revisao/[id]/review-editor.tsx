@@ -262,12 +262,14 @@ export function ReviewEditor({
   themes,
   canEdit,
   initialModel = "",
+  initialLabel,
   brandColors = [],
 }: {
   data: ReviewImport;
   themes: { id: string; name: string }[];
   canEdit: boolean;
   initialModel?: string;
+  initialLabel?: string;
   brandColors?: string[];
 }) {
   const router = useRouter(),
@@ -455,6 +457,7 @@ export function ReviewEditor({
                     primary: String(fd.get("model_primary") || ""),
                     accent: String(fd.get("model_accent") || ""),
                     useBrandColors: fd.get("model_brand_colors") === "1",
+                    priceLabel: String(fd.get("price_label") || ""),
                     title: String(fd.get("title") || ""),
                     validity: String(fd.get("validity") || ""),
                     square: fd.get("square") === "1",
@@ -468,6 +471,7 @@ export function ReviewEditor({
               <h2>Gerar artes revisadas</h2>
               <CampaignModelPicker
                 initial={initialModel}
+                initialLabel={initialLabel}
                 brandColors={brandColors}
               />
               <label>

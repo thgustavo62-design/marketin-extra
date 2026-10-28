@@ -7,6 +7,7 @@ import { parsePrice, type ThemeConfig } from "@/lib/domain/promo";
 import { offerEditVersion } from "@/lib/domain/offer-editing";
 import type { Campaign, PromoItem } from "@/lib/promo/store";
 import { OfferPreview } from "@/components/offer-preview";
+import { PRICE_LABELS, type PriceLabelId } from "@/lib/domain/price-labels";
 
 type Props = {
   campaign: Campaign;
@@ -162,6 +163,9 @@ function OfferForm({
     [note, setNote] = useState(item.note ?? ""),
     [price, setPrice] = useState(item.price.toFixed(2).replace(".", ",")),
     [photoId, setPhotoId] = useState(item.photo_image_id ?? ""),
+    [label, setLabel] = useState<PriceLabelId>(
+      item.style.priceLabel ?? theme.priceLabel ?? "rounded",
+    ),
     [version, setVersion] = useState(offerEditVersion(item)),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
@@ -171,6 +175,7 @@ function OfferForm({
     name !== item.name ||
     note !== (item.note ?? "") ||
     parsed !== item.price ||
+    label !== (item.style.priceLabel ?? theme.priceLabel ?? "rounded") ||
     photoId !== (item.photo_image_id ?? "");
   useEffect(() => {
     onDirty(dirty);
@@ -178,6 +183,7 @@ function OfferForm({
   const photoChanged = photoId !== (item.photo_image_id ?? "");
   const preview = {
     ...item,
+    style: { ...item.style, priceLabel: label },
     name,
     note,
     price: parsed ?? item.price,
@@ -209,6 +215,10 @@ function OfferForm({
             note,
             price,
             version,
+            ...(label !==
+            (item.style.priceLabel ?? theme.priceLabel ?? "rounded")
+              ? { priceLabel: label }
+              : {}),
             ...(photoChanged ? { photoId: photoId || null } : {}),
           }),
         },
@@ -222,6 +232,7 @@ function OfferForm({
         string | null,
         string | null,
         string[],
+        PriceLabelId | null,
       ];
       const next = {
         ...preview,
@@ -230,6 +241,7 @@ function OfferForm({
         note: saved[2],
         photo_image_id: saved[3],
         photo_image_ids: saved[4],
+        style: { ...item.style, priceLabel: saved[5] ?? undefined },
       };
       onSaved(next);
       onDirty(false);
@@ -238,6 +250,7 @@ function OfferForm({
       setNote(next.note ?? "");
       setPrice(next.price.toFixed(2).replace(".", ","));
       setPhotoId(next.photo_image_id ?? "");
+      setLabel(next.style.priceLabel ?? theme.priceLabel ?? "rounded");
       setMessage("Oferta salva.");
       if (open) router.push(`/studio/${campaign.id}`);
     } catch (e) {
@@ -268,6 +281,22 @@ function OfferForm({
         </div>
         <h2>Produto, preço e apresentação</h2>
         <fieldset disabled={!canEdit || busy}>
+          {theme.visual && (
+            <>
+              <label htmlFor="offer-label">Etiqueta desta oferta</label>
+              <select
+                id="offer-label"
+                value={label}
+                onChange={(e) => setLabel(e.target.value as PriceLabelId)}
+              >
+                {PRICE_LABELS.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
           <label htmlFor="offer-name">Descrição do produto</label>
           <textarea
             id="offer-name"

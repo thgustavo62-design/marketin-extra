@@ -5,6 +5,7 @@ export function offerEditVersion(item: {
   note?: string | null;
   photo_image_id?: string | null;
   photo_image_ids?: string[];
+  style?: { priceLabel?: string } | null;
 }): string {
   return JSON.stringify([
     item.name,
@@ -12,5 +13,6 @@ export function offerEditVersion(item: {
     item.note || null,
     item.photo_image_id || null,
     item.photo_image_ids ?? [],
+    item.style?.priceLabel ?? null,
   ]);
 }

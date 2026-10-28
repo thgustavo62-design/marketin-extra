@@ -1,4 +1,5 @@
 import type { ThemeConfig } from "./promo.ts";
+import { recommendedPriceLabel } from "./price-labels.ts";
 
 /** Original, public platform definitions. Never include customer assets or data here. */
 export const PHARMACY_MODELS = [
@@ -80,7 +81,67 @@ export const PHARMACY_MODELS = [
     surface: "#FFF2D8",
     style: "impact",
   },
+  {
+    key: "mercado-economia",
+    name: "Mercado da Economia",
+    category: "mercado",
+    label: "Supermercado",
+    title: "ECONOMIA NO CARRINHO",
+    eyebrow: "OFERTAS PARA SUA DESPENSA",
+    description: "Vermelho e creme para alimentos e ofertas da semana.",
+    primary: "#9E2333",
+    accent: "#FFE177",
+    surface: "#FFF5E6",
+    style: "market",
+  },
+  {
+    key: "hortifruti-fresco",
+    name: "Hortifruti Fresco",
+    category: "hortifruti",
+    label: "Hortifruti",
+    title: "FRESCOR NA SUA MESA",
+    eyebrow: "HORTIFRUTI DA SEMANA",
+    description: "Verde e laranja para frutas, verduras e produtos frescos.",
+    primary: "#245537",
+    accent: "#FFCC80",
+    surface: "#EEF5E7",
+    style: "fresh",
+  },
+  {
+    key: "atacado-inteligente",
+    name: "Atacado Inteligente",
+    category: "mercado",
+    label: "Supermercado",
+    title: "MAIS ECONOMIA TODO DIA",
+    eyebrow: "SUA SELEÇÃO DE OFERTAS",
+    description:
+      "Azul e amarelo com composição prática para ofertas em volume.",
+    primary: "#173C78",
+    accent: "#FFE16B",
+    surface: "#EEF2FA",
+    style: "wholesale",
+  },
+  {
+    key: "black-friday",
+    name: "Black Friday",
+    category: "sazonal",
+    label: "Black Friday",
+    title: "BLACK FRIDAY",
+    eyebrow: "OFERTAS EM DESTAQUE",
+    description:
+      "Preto e dourado para campanhas sazonais de farmácias e supermercados.",
+    primary: "#111214",
+    accent: "#F3CD75",
+    surface: "#EDEAE4",
+    style: "black",
+  },
 ] as const;
+export const modelSegment = (key: string) =>
+  ["mercado-economia", "hortifruti-fresco", "atacado-inteligente"].includes(key)
+    ? "Supermercados"
+    : ["black-friday", "ofertas-impacto"].includes(key)
+      ? "Ambos"
+      : "Farmácias";
 export type PharmacyModel = (typeof PHARMACY_MODELS)[number];
 export type CampaignVisual = { style: PharmacyModel["style"]; eyebrow: string };
 export type ModelSnapshot = { key: string; version: 1; theme: ThemeConfig };
@@ -118,6 +179,7 @@ export function pharmacyModelTheme(
   const accent = isModelColor(colors.accent) ? colors.accent : m.accent;
   return {
     ...structuredClone(base),
+    priceLabel: recommendedPriceLabel(key),
     offerIdentity: undefined,
     visual: { style: m.style, eyebrow: m.eyebrow },
     colors: {

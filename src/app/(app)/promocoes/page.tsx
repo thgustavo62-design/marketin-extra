@@ -37,7 +37,7 @@ export default async function Promocoes() {
               Importar e revisar campanha
             </Link>{" "}
             <Link className="btn" href="/promocoes/modelos">
-              Explorar modelos de farmácia
+              Explorar os 10 modelos
             </Link>
           </span>
         </div>

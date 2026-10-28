@@ -9,10 +9,11 @@ export default async function CampaignModels() {
     <>
       <PromoTabs />
       <header className="page-head">
-        <h1>Modelos de farmácia</h1>
+        <h1>Modelos de campanhas</h1>
         <p>
-          Escolha uma composição, importe sua planilha e personalize a campanha
-          com a identidade da empresa.
+          Farmácias, supermercados e Black Friday. Escolha uma composição,
+          importe sua planilha e personalize a campanha com a identidade da
+          empresa.
         </p>
       </header>
       <PharmacyModelGallery canEdit={canWrite(user.role)} />
