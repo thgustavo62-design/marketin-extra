@@ -32,3 +32,11 @@ Pesquisa pública no Pinterest: https://br.pinterest.com/pin/701717185729404616/
 `tests/pharmacy-models.test.ts` verifica isolamento das definições, snapshot e round-trip, normalização de entradas, contraste de cores, paginação com preservação de todos os valores, identidade oficial e token de concorrência.
 
 `ENCARTIVA_MODEL_TEST=1 NOVA7_PROMOTION_TEST=1 NOVA7_BROWSER_TEST=1 NOVA7_TEST_DB=postgres` no harness `e2e/owner-hierarchy-local.mjs` exercita a galeria, busca, celular, planilha real de teste, revisão, dez campanhas, três formatos no Studio, edição rápida, persistência, conflitos, repetição, origem inválida e acesso entre empresas. O banco é descartável e o aplicativo de teste recebe somente conexões locais.
+
+## Ajustar uma campanha já criada
+
+Em `/promocoes/[id]/ofertas`, campanhas que já usam modelo genérico oferecem o painel “Visual da campanha”. É possível trocar o modelo, as duas cores e a etiqueta geral, com prévia do produto selecionado, sem reenviar a planilha. Ao recolorir o mesmo modelo, grade, tipografia, rodapé e título personalizados são preservados. Ao trocar a composição, o rodapé da empresa permanece. A etiqueta geral não substitui as escolhas individuais das ofertas.
+
+O endpoint `POST /api/promocoes/[id]/visual` valida sessão, perfil, origem, entrada limitada a 24 KB e acesso real à campanha sob RLS. A transação bloqueia a campanha, confere o token da configuração, cria uma versão restaurável e registra modelo, cores e etiqueta no histórico. Repetir uma gravação já concluída é idempotente; alterações divergentes de outra aba recebem 409. Não há alteração de produtos, preços, fotos, empresa, filial ou cenas salvas. Campanhas com identidade própria, como CP-MF-006, não são convertidas por esse endpoint.
+
+Alterações de visual e de oferta não são gravadas simultaneamente pela interface. As páginas existentes permanecem editáveis no Studio e recebem o aviso de regeneração. A versão anterior fica no histórico existente. O teste `e2e/lib/campaign-appearance-flow.mjs` verifica o fluxo completo, persistência, conflitos, repetição, preservação de exceções, bloqueios de acesso e a nova composição no Studio.

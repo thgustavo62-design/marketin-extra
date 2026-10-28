@@ -97,8 +97,11 @@ export async function pharmacyModelFlow({
     await page.locator(`[data-model="${key}"]`).scrollIntoViewIfNeeded();
     await page.waitForFunction((key) => {
       const c = document.querySelector(`[data-model-preview="${key}"]`);
-      return c?.width === 1080 && c?.height === 1350 &&
-        c.getContext("2d").getImageData(30, 30, 1, 1).data[3] > 0;
+      return (
+        c?.width === 1080 &&
+        c?.height === 1350 &&
+        c.getContext("2d").getImageData(30, 30, 1, 1).data[3] > 0
+      );
     }, key);
   }
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -306,7 +309,7 @@ export async function pharmacyModelFlow({
   await page
     .getByLabel("Informações complementares")
     .fill("APRESENTAÇÃO CONFERIDA");
-  await page.getByLabel('Etiqueta desta oferta').selectOption('premium');
+  await page.getByLabel("Etiqueta desta oferta").selectOption("premium");
   await page
     .getByRole("button", { name: "Salvar oferta", exact: true })
     .click();
@@ -458,11 +461,31 @@ export async function pharmacyModelFlow({
   check();
   await page.reload();
   await page.locator("[data-editor-ready=true]").waitFor({ timeout: 60000 });
-  assert.equal(await page.getByText("Os produtos ou o tema mudaram desde esta edição.", { exact: false }).count(), 0);
+  assert.equal(
+    await page
+      .getByText("Os produtos ou o tema mudaram desde esta edição.", {
+        exact: false,
+      })
+      .count(),
+    0,
+  );
   check();
   await page.screenshot({
     path: "/tmp/encartiva-pharmacy-studio.png",
     fullPage: true,
+  });
+  const { campaignAppearanceFlow } = await import(
+    "./campaign-appearance-flow.mjs"
+  );
+  await campaignAppearanceFlow({
+    db,
+    page,
+    context,
+    base,
+    campaign,
+    companyId,
+    staffId,
+    check,
   });
   console.log(
     "PASS global pharmacy models, real imports, all formats, quick editing, conflicts and tenant isolation",
