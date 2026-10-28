@@ -1,4 +1,5 @@
 import { studioCanvasJson } from "../scene-json";
+import { withStudioTextDefaults } from "@/lib/domain/studio";
 // Adapted from canva-clone, Copyright 2025 Alimardon Davronov, Apache-2.0. See THIRD_PARTY_NOTICES.md.
 import { fabric } from "fabric";
 import { useEffect, useRef } from "react";
@@ -24,7 +25,7 @@ export const useLoadState = ({
 
   useEffect(() => {
     if (initialized.current !== canvas && initialState?.current && canvas) {
-      const data = JSON.parse(initialState.current);
+      const data = withStudioTextDefaults(JSON.parse(initialState.current));
 
       (canvas as any).__studioRestoring = true;
       canvas.loadFromJSON(data, () => {

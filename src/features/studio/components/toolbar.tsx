@@ -11,6 +11,7 @@ import {
   Blend as RxTransparencyGrid,
 } from "lucide-react";
 import {
+  Move,
   ArrowUp,
   ArrowDown,
   ChevronDown,
@@ -163,6 +164,16 @@ export const Toolbar = ({
 
   return (
     <div className="shrink-0 h-[56px] border-b bg-white w-full flex items-center overflow-x-auto z-[49] p-2 gap-x-2">
+      <Button
+        aria-label="Posição"
+        onClick={() => onChangeActiveTool("position")}
+        size="sm"
+        variant="ghost"
+        className={cn(activeTool === "position" && "bg-gray-100")}
+      >
+        <Move size={16} />
+        <span>Posição</span>
+      </Button>
       {!isImage && (
         <div className="flex items-center h-full justify-center">
           <Hint label="Cor" side="bottom" sideOffset={5}>

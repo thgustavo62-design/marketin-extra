@@ -58,6 +58,11 @@ const Styles = dynamic(
   { loading },
 );
 
+const Position = dynamic(
+  () => import("./position-sidebar").then((m) => m.PositionSidebar),
+  { loading },
+);
+
 export function ToolPanel(props: {
   editor: Editor | undefined;
   activeTool: ActiveTool;
@@ -69,6 +74,13 @@ export function ToolPanel(props: {
   const { activeTool, companyId, companyName, campaignId, ...rest } = props;
   const common = { ...rest, activeTool };
   switch (activeTool) {
+    case "position":
+      return (
+        <Position
+          editor={props.editor}
+          onClose={() => props.onChangeActiveTool("select")}
+        />
+      );
     case "shapes":
       return <Shape {...common} />;
     case "fill":

@@ -1,0 +1,197 @@
+.n7-studio .studio-layout-panel {
+  width: 310px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #fff;
+  border-right: 1px solid #e4dfeb;
+  position: relative;
+}
+.n7-studio .layout-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 16px;
+  border-bottom: 1px solid #e4dfeb;
+  flex: none;
+}
+.n7-studio .layout-heading h2 {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 17px;
+  margin: 0;
+  font-weight: 750;
+}
+.n7-studio .layout-heading p,
+.n7-studio .layout-help {
+  font-size: 11px;
+  color: #756c82;
+  line-height: 1.6;
+  margin: 7px 0;
+}
+.n7-studio .layout-heading > button {
+  padding: 8px;
+  border-radius: 8px;
+  background: #f3f0fa;
+}
+.n7-studio .layout-scroll {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  padding: 16px;
+}
+.n7-studio .layout-scroll section {
+  border-bottom: 1px solid #eeeaf5;
+  padding-bottom: 18px;
+  margin-bottom: 18px;
+}
+.n7-studio .layout-scroll h3 {
+  font-size: 12px;
+  font-weight: 750;
+  margin: 0 0 12px;
+}
+.n7-studio .layout-scroll p {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #756c82;
+  margin: 8px 0;
+}
+.n7-studio .layout-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin: 10px 0;
+}
+.n7-studio .layout-buttons button,
+.n7-studio .layer-rename button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 9px 7px;
+  background: #f8f6fc;
+  border: 1px solid #ded8e9;
+  border-radius: 8px;
+  font-size: 11px;
+  min-height: 35px;
+}
+.n7-studio .layout-buttons button:hover {
+  border-color: #6754d8;
+}
+.n7-studio .layout-field select,
+.n7-studio .layout-grid input,
+.n7-studio .layer-rename input {
+  width: 100%;
+  min-width: 0;
+  display: block;
+  min-height: 35px;
+  border: 1px solid #ded8e9;
+  border-radius: 8px;
+  background: white;
+  padding: 7px;
+  margin-top: 5px;
+  font-size: 11px;
+}
+.n7-studio .layout-field {
+  display: block;
+  font-size: 11px;
+  margin: 9px 0;
+}
+.n7-studio .layout-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.n7-studio .layout-grid label {
+  font-size: 11px;
+  margin: 0;
+}
+.n7-studio .layout-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.n7-studio .layout-check input,
+.n7-studio .studio-layer input {
+  accent-color: #6754d8;
+}
+.n7-studio .layout-primary {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #6754d8;
+  color: white;
+  font-weight: 650;
+}
+.n7-studio .layout-status {
+  padding: 12px 16px;
+  border-top: 1px solid #e4dfeb;
+  font-size: 11px;
+  color: #5542bb;
+  background: #f8f5ea;
+  line-height: 1.5;
+  flex: none;
+}
+.n7-studio .studio-layers > .layout-heading {
+  padding: 0 0 10px;
+}
+.n7-studio .layer-rename {
+  margin: 12px 0;
+  padding: 10px;
+  background: #f8f6fc;
+  border-radius: 8px;
+}
+.n7-studio .layer-rename label {
+  margin: 0;
+  font-size: 11px;
+}
+.n7-studio .layer-rename button {
+  width: 100%;
+  margin-top: 7px;
+  background: white;
+}
+.n7-studio .studio-layer > button:first-child {
+  min-width: 0;
+  max-width: none;
+  font-size: 11px;
+}
+.n7-studio .studio-layer input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin: 0;
+}
+@media (max-width: 1100px) {
+  .n7-studio .studio-body > aside.studio-layout-panel[aria-label] {
+    position: absolute;
+    left: 100px;
+    top: 0;
+    bottom: 0;
+    z-index: 70;
+    box-shadow: 8px 0 24px #11121420;
+  }
+}
+@media (max-width: 700px) {
+  .n7-studio .studio-body > aside.studio-layout-panel[aria-label] {
+    left: 80px;
+    right: auto;
+    width: min(310px, calc(100vw - 80px));
+    max-width: calc(100vw - 80px);
+    z-index: 70;
+  }
+}
+
+@media (max-width: 1100px) {
+  .n7-studio .studio-body > aside.studio-layers[aria-label] {
+    z-index: 52;
+    left: auto;
+    right: 0;
+    width: min(270px, calc(100vw - 80px));
+    max-width: calc(100vw - 80px);
+  }
+}
