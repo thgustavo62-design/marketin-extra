@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   studioKey,
   studioImageSource,
+  relativeStudioImageSource,
   validateStudioScene,
   studioSourceChanged,
 } from "../src/lib/domain/studio.ts";
@@ -103,4 +104,35 @@ test("Studio rejects excessive object counts", () => {
 test("Studio detects stale generated sources without changing saved artwork", () => {
   assert.equal(studioSourceChanged("a", "b"), true);
   assert.equal(studioSourceChanged("a", "a"), false);
+});
+
+test("Generated Fabric images retain authorized relative URLs after SVG import", () => {
+  const origin = "https://encartiva.example";
+  for (const path of [
+    "/api/produtos/imagem/12345678-1234-1234-1234-123456789012",
+    "/api/promocoes/asset/12345678-1234-1234-1234-123456789012",
+    "/api/promocoes/tema/12345678-1234-1234-1234-123456789012/header/feed",
+  ]) {
+    const src = relativeStudioImageSource(origin + path, origin);
+    assert.equal(src, path);
+    assert.equal(validateStudioScene(scene([{ type: "image", src }])).ok, true);
+  }
+});
+test("Generated image normalization preserves the Studio image trust boundary", () => {
+  const origin = "https://encartiva.example";
+  const path = "/api/produtos/imagem/12345678-1234-1234-1234-123456789012";
+  for (const src of [
+    "https://external.example" + path,
+    "http://encartiva.example" + path,
+    "https://encartiva.example:8443" + path,
+    "https://user:secret@encartiva.example" + path,
+    origin + "/api/admin/users",
+    origin + path + "#fragment",
+    "javascript:alert(1)",
+    "data:image/svg+xml;base64,AAAA",
+    null,
+  ])
+    assert.equal(relativeStudioImageSource(src, origin), null);
+  // User-imported absolute sources remain rejected by the main validator.
+  assert.equal(validateStudioScene(scene([{ type: "image", src: origin + path }])).ok, false);
 });

@@ -8,6 +8,7 @@ import {
 } from "@/lib/promo/review-store";
 import { isUuid } from "@/lib/form";
 import { promoLayout } from "@/lib/domain/promo-layouts";
+import type { ModelSelection } from "@/lib/promo/model-selection";
 export async function changeReview(
   id: string,
   revision: number,
@@ -42,7 +43,7 @@ export async function changeReview(
 export async function generateReview(
   id: string,
   revision: number,
-  opts: {
+  opts: ModelSelection & {
     themeId?: string;
     layout: string;
     title: string;

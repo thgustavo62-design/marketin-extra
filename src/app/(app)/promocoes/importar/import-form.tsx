@@ -1,12 +1,17 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { pharmacyModel } from "@/lib/domain/pharmacy-models";
 export function ReviewUpload({
   brands,
   selected,
+  modelKey,
+  labelKey,
 }: {
   brands: { id: string; name: string }[];
   selected: string;
+  modelKey?: string;
+  labelKey?: string;
 }) {
   const router = useRouter(),
     [busy, setBusy] = useState(false),
@@ -26,7 +31,9 @@ export function ReviewUpload({
             }),
             r = await res.json();
           if (!res.ok) throw Error(r.error || "Falha na importação.");
-          router.push(`/promocoes/revisao/${r.id}`);
+          router.push(
+            `/promocoes/revisao/${r.id}${modelKey ? "?modelo=" + encodeURIComponent(modelKey) + (labelKey ? "&etiqueta=" + encodeURIComponent(labelKey) : "") : ""}`,
+          );
         } catch (e) {
           setError(e instanceof Error ? e.message : "Falha no envio.");
         } finally {
@@ -34,6 +41,12 @@ export function ReviewUpload({
         }
       }}
     >
+      {pharmacyModel(modelKey) && (
+        <p className="notice info">
+          Modelo escolhido: <b>{pharmacyModel(modelKey)!.name}</b>. Você poderá
+          personalizar as cores depois de revisar as ofertas.
+        </p>
+      )}
       <label htmlFor="review-company">Empresa da campanha</label>
       <select
         id="review-company"

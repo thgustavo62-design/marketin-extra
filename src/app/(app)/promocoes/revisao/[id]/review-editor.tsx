@@ -1,4 +1,5 @@
 "use client";
+import { CampaignModelPicker } from "@/components/campaign-model-picker";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -260,10 +261,16 @@ export function ReviewEditor({
   data,
   themes,
   canEdit,
+  initialModel = "",
+  initialLabel,
+  brandColors = [],
 }: {
   data: ReviewImport;
   themes: { id: string; name: string }[];
   canEdit: boolean;
+  initialModel?: string;
+  initialLabel?: string;
+  brandColors?: string[];
 }) {
   const router = useRouter(),
     [filter, setFilter] = useState("all"),
@@ -446,6 +453,11 @@ export function ReviewEditor({
                   const r = await generateReview(data.id, data.revision, {
                     layout: String(fd.get("layout")),
                     themeId: String(fd.get("theme_id") || ""),
+                    modelKey: String(fd.get("model_key") || ""),
+                    primary: String(fd.get("model_primary") || ""),
+                    accent: String(fd.get("model_accent") || ""),
+                    useBrandColors: fd.get("model_brand_colors") === "1",
+                    priceLabel: String(fd.get("price_label") || ""),
                     title: String(fd.get("title") || ""),
                     validity: String(fd.get("validity") || ""),
                     square: fd.get("square") === "1",
@@ -457,6 +469,11 @@ export function ReviewEditor({
               }}
             >
               <h2>Gerar artes revisadas</h2>
+              <CampaignModelPicker
+                initial={initialModel}
+                initialLabel={initialLabel}
+                brandColors={brandColors}
+              />
               <label>
                 Layout e identidade
                 <select name="theme_id">

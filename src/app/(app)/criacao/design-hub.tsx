@@ -84,7 +84,7 @@ export function DesignHub({
             dê vida à próxima campanha.
           </p>
           <Link href="/criacao/modelos" className="design-hero-link">
-            Explorar meus modelos <ArrowUpRight size={17} />
+            Explorar modelos prontos <ArrowUpRight size={17} />
           </Link>
         </div>
         <div className="design-hero-art" aria-hidden="true">
@@ -116,8 +116,8 @@ export function DesignHub({
         <Link href="/criacao/modelos">
           <LayoutTemplate size={20} />
           <span>
-            <b>{models}</b>
-            <small>modelos da sua biblioteca</small>
+            <b>Modelos prontos</b>
+            <small>10 visuais e {models} modelos salvos</small>
           </span>
           <ArrowUpRight size={15} />
         </Link>

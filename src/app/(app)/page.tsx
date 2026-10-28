@@ -74,6 +74,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
       {sp['sem-permissao'] && <div className="notice" role="alert"><AlertTriangle size={18} /> Seu perfil não tem permissão para essa área.</div>}
 
+      <section className="creation-shortcuts" aria-label="Comece sua próxima campanha">
+        <Link href="/promocoes/modelos"><b>Escolher um modelo</b><small>Composições prontas para suas ofertas.</small></Link>
+        <Link href="/promocoes/importar"><b>Importar e revisar ofertas</b><small>Planilha, produtos e preços em um só fluxo.</small></Link>
+        <Link href="/criacao/projetos"><b>Continuar um design</b><small>Retome as artes salvas pela sua equipe.</small></Link>
+      </section>
+
       <div className="panel">
         <div className="panel-banner">
           <div className="tile"><CalendarDays size={20} /></div>

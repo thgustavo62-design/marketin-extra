@@ -45,6 +45,26 @@ export function studioImageSource(v: unknown): v is string {
       /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v))
   );
 }
+// Fabric's SVG importer resolves local image paths against the page origin.
+// Only generated same-origin images on our existing allowlist may be made relative.
+export function relativeStudioImageSource(
+  value: unknown,
+  origin: string,
+): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const base = new URL(origin), url = new URL(value, base);
+    const path = url.pathname + url.search;
+    return (
+      ["http:", "https:"].includes(base.protocol) &&
+      url.origin === base.origin &&
+      !url.username && !url.password && !url.hash &&
+      imagePath.test(path)
+    ) ? path : null;
+  } catch {
+    return null;
+  }
+}
 export function validateStudioScene(
   raw: unknown,
 ): { ok: true; scene: StudioScene } | { ok: false; error: string } {

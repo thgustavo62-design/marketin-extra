@@ -108,8 +108,14 @@ export function StudioEditor(
     !!editor &&
     !(editor.canvas as fabric.Canvas & { __studioRestoring?: boolean })
       .__studioRestoring;
-  const saveNow = async () => {
-    if (!editor || (editor.canvas as any).__studioRestoring) return false;
+  const operationRunning = useRef(false);
+  const saveNow = async (internal = false) => {
+    if (
+      (!internal && operationRunning.current) ||
+      !editor ||
+      (editor.canvas as any).__studioRestoring
+    )
+      return false;
     editor.commit();
     return persistence.flush();
   };
@@ -226,7 +232,7 @@ export function StudioEditor(
     return () => clearTimeout(t);
   }, [ready, canEdit, c.id, page, persistence.status, persistence.revision]);
   const navigate = async (url: string) => {
-    if (busy) {
+    if (operationRunning.current) {
       setMessage("Aguarde a operação atual terminar antes de sair.");
       return;
     }
@@ -245,7 +251,8 @@ export function StudioEditor(
     [activeTool, editor, canEdit],
   );
   const run = async (fn: () => Promise<void>) => {
-    if (busy) return;
+    if (operationRunning.current) return;
+    operationRunning.current = true;
     setBusy(true);
     setMessage("");
     try {
@@ -253,6 +260,7 @@ export function StudioEditor(
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Não foi possível concluir.");
     } finally {
+      operationRunning.current = false;
       setBusy(false);
     }
   };
@@ -262,7 +270,32 @@ export function StudioEditor(
     const normalized = await persistSceneImages(valid.scene, c.id, copyLocal),
       again = validateStudioScene(normalized);
     if (!again.ok) throw new Error(again.error);
-    editor?.loadJson(JSON.stringify(again.scene));
+    if (!editor) throw Error("O editor ainda está abrindo.");
+    await new Promise<void>((resolve, reject) => {
+      const canvas = editor.canvas;
+      const cleanup = () => {
+        clearTimeout(timer);
+        canvas.off("studio:ready", done);
+        canvas.off("studio:error", failed);
+      };
+      const done = () => {
+        cleanup();
+        resolve();
+      };
+      const failed = () => {
+        cleanup();
+        reject(Error("Não foi possível atualizar os elementos da arte."));
+      };
+      const timer = setTimeout(failed, 30000);
+      canvas.on("studio:ready", done);
+      canvas.on("studio:error", failed);
+      try {
+        editor.loadJson(JSON.stringify(again.scene));
+      } catch (e) {
+        cleanup();
+        reject(e);
+      }
+    });
     setActiveTool("select");
   };
   const regenerate = () => {
@@ -283,9 +316,10 @@ export function StudioEditor(
               editor?.getWorkspace()?.height ?? PROMO_FORMATS[format].h,
             )
           : await promotionScene(source, format, page);
+      await loadScene(scene, true);
       docHashRef.current = sourceHash;
       setDocumentSourceHash(sourceHash);
-      await loadScene(scene, true);
+      editor?.commit();
     });
   };
   const pageCount = promotionPageCount(source, format),
@@ -318,6 +352,15 @@ export function StudioEditor(
             <small className="studio-company">{c.brand_name}</small>
           )}
         </span>
+        {c.kind === "promocao" && (
+          <button
+            type="button"
+            onClick={() => void navigate(`/promocoes/${c.id}/ofertas`)}
+            title="Editar os dados das ofertas"
+          >
+            Ofertas
+          </button>
+        )}
         <button
           type="button"
           aria-label="Desfazer"
@@ -671,7 +714,7 @@ export function StudioEditor(
                       disabled={busy || templateName.trim().length < 2}
                       onClick={() =>
                         void run(async () => {
-                          if (!(await saveNow())) return;
+                          if (!(await saveNow(true))) return;
                           const r = await createTemplateAction(
                             c.id,
                             templateName,
@@ -776,7 +819,7 @@ export function StudioEditor(
               <button
                 onClick={() =>
                   void run(async () => {
-                    if (!(await saveNow())) return;
+                    if (!(await saveNow(true))) return;
                     const r = await addStudioPageAction(c.id);
                     if (!r.ok || typeof r.page !== "number")
                       throw new Error(r.error);

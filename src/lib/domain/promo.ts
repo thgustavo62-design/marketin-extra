@@ -4,6 +4,13 @@ import {
 } from "./offer-identity.ts";
 // Promoções montadas a partir de planilha: leitura de preço, colunas, tema e posição dos produtos em cada formato. Tudo puro e testado.
 import { parseEan } from "./catalog.ts";
+import { isPriceLabel, type PriceLabelId } from "./price-labels.ts";
+import {
+  normalizeCampaignVisual,
+  pharmacyModel,
+  type CampaignVisual,
+  type ModelSnapshot,
+} from "./pharmacy-models.ts";
 
 export type PromoFormat = "story" | "feed" | "a4";
 export const PROMO_FORMATS: Record<
@@ -152,6 +159,8 @@ export function parsePromoRows(
 export type GridSpec = { cols: number; rows: number };
 export type GridArea = { top: number; bottom: number };
 export type ThemeConfig = {
+  priceLabel?: PriceLabelId;
+  visual?: CampaignVisual;
   offerIdentity?: OfferIdentity;
   dimensions?: Partial<Record<PromoFormat, { w: number; h: number }>>;
   colors: {
@@ -305,6 +314,10 @@ export function normalizeTheme(raw: unknown): ThemeConfig {
     typeof v === "string" ? v.trim().slice(0, max) : def;
   const gap = Number(t.cardGap);
   return {
+    ...(normalizeCampaignVisual(t.visual)
+      ? { visual: normalizeCampaignVisual(t.visual) }
+      : {}),
+    ...(isPriceLabel(t.priceLabel) ? { priceLabel: t.priceLabel } : {}),
     ...(normalizeOfferIdentity(t.offerIdentity)
       ? { offerIdentity: normalizeOfferIdentity(t.offerIdentity) }
       : {}),
@@ -488,6 +501,7 @@ export const TAG_PRESETS = [
   "Oferta",
 ] as const;
 export type ItemStyle = {
+  priceLabel?: PriceLabelId;
   offerIdentity?: OfferIdentity;
   /** texto da etiqueta: ausente = a do tema; "" = sem etiqueta neste encarte */
   tag?: string;
@@ -506,6 +520,7 @@ export function normalizeItemStyle(raw: unknown): ItemStyle {
     unknown
   >;
   const out: ItemStyle = {};
+  if (isPriceLabel(r.priceLabel)) out.priceLabel = r.priceLabel;
   const identity = normalizeOfferIdentity(r.offerIdentity);
   if (identity) out.offerIdentity = identity;
   if (typeof r.tag === "string") out.tag = r.tag.trim().slice(0, 24);
@@ -670,6 +685,8 @@ export function normalizeBackground(
 }
 
 export type PromoOverrides = {
+  /** Versioned private copy of a public model; later catalogue changes never alter this campaign. */
+  model?: ModelSnapshot;
   dimensions?: Partial<Record<PromoFormat, { w: number; h: number }>>;
   grid?: Partial<Record<PromoFormat, GridSpec>>;
   tagText?: string;
@@ -685,6 +702,21 @@ export function normalizeOverrides(raw: unknown): PromoOverrides {
     unknown
   >;
   const out: PromoOverrides = {};
+  if (r.model && typeof r.model === "object") {
+    const m = r.model as Record<string, unknown>;
+    if (
+      pharmacyModel(m.key) &&
+      m.version === 1 &&
+      m.theme &&
+      typeof m.theme === "object" &&
+      !Array.isArray(m.theme)
+    )
+      out.model = {
+        key: String(m.key),
+        version: 1,
+        theme: normalizeTheme(m.theme),
+      };
+  }
   if (r.dimensions && typeof r.dimensions === "object") {
     const dims = r.dimensions as Record<string, { w?: unknown; h?: unknown }>;
     for (const f of PROMO_FORMAT_KEYS) {
@@ -754,6 +786,7 @@ export function applyOverrides(
   theme: ThemeConfig,
   o: PromoOverrides,
 ): ThemeConfig {
+  theme = o.model?.theme ?? theme;
   return {
     ...theme,
     ...(o.dimensions ? { dimensions: o.dimensions } : {}),

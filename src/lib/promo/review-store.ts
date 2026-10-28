@@ -21,6 +21,7 @@ import {
 import { normalizeTheme, normalizeOverrides } from "../domain/promo";
 import { promoLayoutGrid } from "../domain/promo-layouts";
 import { getTheme } from "./store";
+import { campaignModel, type ModelSelection } from "./model-selection";
 const memoryKey = (signature: string) =>
   createHash("sha256").update(signature).digest("hex");
 export type ReviewImport = {
@@ -65,7 +66,10 @@ export async function readReview(
   ).rows[0] as ReviewImport | undefined;
   return r && brandAllowed(user, r.brand_id) ? r : null;
 }
-async function catalogFor(lines: ImportLine[]): Promise<CatalogSku[]> {
+async function catalogFor(
+  lines: ImportLine[],
+  companyId: string,
+): Promise<CatalogSku[]> {
   // Candidate lookup is bounded by exact name-family prefix; it never enrolls a catalog SKU by itself.
   const prefixes = [
     ...new Set(
@@ -78,8 +82,8 @@ async function catalogFor(lines: ImportLine[]): Promise<CatalogSku[]> {
   ];
   const p = (
     await pool.query(
-      `select id,ean,description as name,commercial_attributes as attributes from products where active and ean is not null and (ean=any($1::text[]) or name_key ilike any($2::text[])) order by ean limit 5000`,
-      [lines.map((l) => l.ean), prefixes],
+      `select id,ean,description as name,commercial_attributes as attributes from products where company_id=$3 and active and ean is not null and (ean=any($1::text[]) or name_key ilike any($2::text[])) order by ean limit 5000`,
+      [lines.map((l) => l.ean), prefixes, companyId],
     )
   ).rows;
   const photos = (
@@ -110,7 +114,7 @@ export async function importForReview(o: {
       ? normalizeGroupingRules(o.rulesOverride)
       : saved.config;
   const parsed = parseReviewWorkbook(o.bytes, rules.priceSource),
-    catalog = await catalogFor(parsed.rows),
+    catalog = await catalogFor(parsed.rows, o.brandId),
     groups = buildReview(parsed.rows, catalog, rules);
   const memory = (
     await pool.query(
@@ -318,7 +322,7 @@ export async function generateReviewed(
   id: string,
   revision: number,
   user: SessionUser,
-  opts: {
+  opts: ModelSelection & {
     themeId?: string;
     layout: string;
     title: string;
@@ -328,10 +332,12 @@ export async function generateReviewed(
 ) {
   if (!canWrite(user.role)) throw Error("Seu perfil é somente leitura.");
   let theme =
-    opts.themeId && isUuid(opts.themeId) ? await getTheme(opts.themeId) : null;
-  if (opts.themeId && (!theme || theme.active === false))
+    !opts.modelKey && opts.themeId && isUuid(opts.themeId)
+      ? await getTheme(opts.themeId)
+      : null;
+  if (!opts.modelKey && opts.themeId && (!theme || theme.active === false))
     throw Error("Modelo não encontrado ou desativado.");
-  if (!opts.themeId) {
+  if (!opts.themeId && !opts.modelKey) {
     const source = (
       await pool.query("select name,brand_id from promo_imports where id=$1", [
         id,
@@ -359,6 +365,7 @@ export async function generateReviewed(
     if (r.campaign_id) return r.campaign_id;
     if (r.revision !== revision)
       throw Error("Revisão alterada. Recarregue antes de gerar.");
+    const model = await campaignModel(opts, r.brand_id, db);
     if (!r.groups.length) throw Error("Nenhuma oferta para gerar.");
     for (const g of r.groups) {
       const err = validateReviewedGroup(g, r.rules);
@@ -409,6 +416,7 @@ export async function generateReviewed(
       reviewImport: id,
       rules: r.rules,
       modelVersion: theme?.version ?? null,
+      globalModel: model ? { key: model.key, version: model.version } : null,
     };
     const c = (
       await db.query(
@@ -422,6 +430,7 @@ export async function generateReviewed(
           JSON.stringify(report),
           JSON.stringify(
             normalizeOverrides({
+              ...(model ? { model } : {}),
               grid: theme?.config.offerIdentity
                 ? theme.config.grid
                 : promoLayoutGrid(opts.layout),
@@ -463,10 +472,18 @@ export async function generateReviewed(
     return c as string;
   });
 }
-export async function previewRules(bytes: Buffer, rules: unknown) {
+export async function previewRules(
+  bytes: Buffer,
+  rules: unknown,
+  companyId: string,
+) {
   const config = normalizeGroupingRules(rules),
     parsed = parseReviewWorkbook(bytes, config.priceSource),
-    groups = buildReview(parsed.rows, await catalogFor(parsed.rows), config);
+    groups = buildReview(
+      parsed.rows,
+      await catalogFor(parsed.rows, companyId),
+      config,
+    );
   return {
     lines: parsed.rows.length,
     offers: groups.length,
@@ -483,7 +500,7 @@ export async function refreshReviewPhotos(
   const r = await readReview(id, user);
   if (!r || r.campaign_id)
     throw Error("Importação não disponível para revisão.");
-  const catalog = await catalogFor(r.original_rows),
+  const catalog = await catalogFor(r.original_rows, r.brand_id),
     byEan = new Map(catalog.map((s) => [s.ean, s]));
   for (const g of r.groups) {
     for (const m of [...g.members, ...g.candidates]) {

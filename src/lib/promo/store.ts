@@ -1,5 +1,7 @@
 // Promoções: temas (artes), campanhas e itens. Importações com .ts para rodar também em scripts do Node.
 import { campaignAccess } from "./access";
+import { offerEditVersion } from "../domain/offer-editing.ts";
+import { isPriceLabel } from "../domain/price-labels.ts";
 import { getSession } from "../session";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
@@ -416,7 +418,7 @@ export async function listCampaigns(): Promise<CampaignLite[]> {
   if (!user) return [];
   return (
     await pool.query(
-      `select c.id, c.name, t.name as theme_name, (select count(*)::int from promo_items i where i.campaign_id = c.id) as items, c.status, c.created_at::text as created_at, c.thumb_at::text as thumb_at
+      `select c.id, c.name, coalesce(t.name,c.overrides->'model'->'theme'->>'title') as theme_name, (select count(*)::int from promo_items i where i.campaign_id = c.id) as items, c.status, c.created_at::text as created_at, c.thumb_at::text as thumb_at
        from promo_campaigns c left join promo_themes t on t.id = c.theme_id where c.kind = 'promocao' and (c.brand_id is null or $1::uuid[] is null or c.brand_id=any($1::uuid[])) order by c.created_at desc limit 100`,
       [user.role === "admin" ? null : user.brandIds],
     )
@@ -947,9 +949,10 @@ export async function approveCampaign(
       validity: data.campaign.validity,
       pageCount: pageCountsFor(
         data.items,
-        data.theme
-          ? applyOverrides(data.theme.config, data.campaign.overrides)
-          : null,
+        applyOverrides(
+          data.theme?.config ?? normalizeTheme({}),
+          data.campaign.overrides,
+        ),
       ),
     });
     const bl = issues.filter((i) => i.severity === "bloqueio");
@@ -975,6 +978,8 @@ export async function approveCampaign(
 
 export type SizeEdit = { label: string; units: number | null };
 export type ItemPatch = {
+  priceLabel?: string;
+  expectedOfferVersion?: string;
   name?: string;
   price?: number;
   photoImageId?: string | null;
@@ -992,11 +997,21 @@ export async function patchItem(
   itemId: string,
   p: ItemPatch,
   userId: string | null = null,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{
+  ok: boolean;
+  error?: string;
+  conflict?: boolean;
+  version?: string;
+}> {
   return withTx(async (db) => {
+    // Same lock order as Studio saves: campaign first, then item.
+    await db.query(
+      "select id from promo_campaigns where id=(select campaign_id from promo_items where id=$1) for update",
+      [itemId],
+    );
     const cur = (
       await db.query(
-        `select campaign_id, name, price::float8 as price, variants, old_price::float8 as old_price, note, style, photo_image_id from promo_items where id = $1 for update`,
+        `select campaign_id, product_id, name, price::float8 as price, variants, old_price::float8 as old_price, note, style, photo_image_id,photo_image_ids from promo_items where id = $1 for update`,
         [itemId],
       )
     ).rows[0];
@@ -1017,10 +1032,35 @@ export async function patchItem(
       p.note === undefined
         ? (cur.note as string | null)
         : (p.note ?? "").trim().replace(/\s+/g, " ").slice(0, 100) || null;
+    if (
+      p.expectedOfferVersion !== undefined &&
+      p.expectedOfferVersion !== offerEditVersion(cur)
+    ) {
+      if (
+        name === cur.name &&
+        price === cur.price &&
+        note === cur.note &&
+        (p.priceLabel === undefined ||
+          p.priceLabel === cur.style?.priceLabel) &&
+        (p.photoImageId === undefined || p.photoImageId === cur.photo_image_id)
+      )
+        return { ok: true, version: offerEditVersion(cur) };
+      return {
+        ok: false,
+        conflict: true,
+        error:
+          "Esta oferta mudou em outra aba. Recarregue para conferir antes de salvar.",
+      };
+    }
     const style =
       p.style === undefined
         ? normalizeItemStyle(cur.style)
         : normalizeItemStyle(p.style);
+    if (p.priceLabel !== undefined) {
+      if (!isPriceLabel(p.priceLabel))
+        return { ok: false, error: "Etiqueta inválida." };
+      style.priceLabel = p.priceLabel;
+    }
     let variants = cur.variants as Variants | null;
     if (variants && p.sizes && variants.kind === "sizes") {
       if (p.sizes.length !== variants.rows.length)
@@ -1056,6 +1096,19 @@ export async function patchItem(
       variants = { ...variants, show: p.showVariants } as Variants;
     // a foto escolhida precisa ser do mesmo produto
     const photo = p.photoImageId === undefined ? undefined : p.photoImageId;
+    if (
+      photo &&
+      !(
+        await db.query(
+          "select 1 from product_images where id=$1 and product_id=$2",
+          [photo, cur.product_id],
+        )
+      ).rowCount
+    )
+      return {
+        ok: false,
+        error: "A foto não pertence ao produto desta oferta.",
+      };
     await db.query(
       `update promo_items i set name = $2, price = $3, old_price = $4, note = $5, style = $6::jsonb, variants = $7::jsonb where i.id = $1`,
       [
@@ -1096,8 +1149,25 @@ export async function patchItem(
         cur.photo_image_id ? "outra foto" : "sem foto escolhida",
         photo ? "foto escolhida trocada" : "foto padrão do produto",
       );
+    if (p.priceLabel !== undefined && p.priceLabel !== cur.style?.priceLabel)
+      await log(
+        "etiqueta",
+        cur.style?.priceLabel ?? "padrão da campanha",
+        p.priceLabel,
+      );
     await touch(db, cur.campaign_id);
-    return { ok: true };
+    return {
+      ok: true,
+      version: offerEditVersion({
+        ...cur,
+        style,
+        name,
+        price,
+        note,
+        photo_image_id: photo === undefined ? cur.photo_image_id : photo,
+        photo_image_ids: photo === undefined ? cur.photo_image_ids : [],
+      }),
+    };
   });
 }
 
