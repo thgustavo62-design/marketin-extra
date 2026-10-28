@@ -1,4 +1,5 @@
 // Existing automatic layout -> SVG -> editable Fabric objects (not a flattened screenshot).
+import { campaignArtwork } from "@/lib/promo/campaign-artwork";
 import { fabric } from "fabric";
 import { Context } from "svgcanvas";
 import {
@@ -58,6 +59,7 @@ export async function promotionScene(
       ["background", "header", "footer", "badge", "tag"].map(get),
     ),
     assets: RenderAssets = { background, header, footer, badge, tag };
+  assets.header = (await campaignArtwork(config)) ?? assets.header;
   const g = config.grid[format],
     pages = design
       ? []

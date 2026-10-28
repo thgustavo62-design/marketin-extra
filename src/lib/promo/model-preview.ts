@@ -1,3 +1,4 @@
+import { campaignArtwork } from "./campaign-artwork";
 import { normalizeTheme, type PromoFormat } from "../domain/promo";
 import { pharmacyModelTheme } from "../domain/pharmacy-models";
 import { drawPage, loadPromoFonts } from "./render";
@@ -94,7 +95,7 @@ export async function drawModelPreview(
     theme,
     title: null,
     validity: "VALIDADE DA SUA CAMPANHA",
-    assets: {},
+    assets: {header: await campaignArtwork(theme)},
     items: (kind === "fresh"
       ? ["BANANA PRATA 1 KG", "MAÇÃ GALA 1 KG", "TOMATE 1 KG", "CENOURA 1 KG"]
       : kind === "market"

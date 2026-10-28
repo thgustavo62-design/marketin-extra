@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { setScopeAction } from "../scope-actions";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import {
@@ -27,10 +28,12 @@ export function NewPromo({
   themes,
   company,
   brandColors,
+  companies,
 }: {
   themes: { id: string; name: string }[];
   company: { id: string; name: string } | null;
   brandColors: string[];
+  companies: { id: string; name: string; slug: string }[];
 }) {
   const router = useRouter(),
     fileRef = useRef<HTMLInputElement>(null),
@@ -43,12 +46,12 @@ export function NewPromo({
     [msg, setMsg] = useState(""),
     [preview, setPreview] = useState<Preview | null>(null),
     [onlyMissing, setOnlyMissing] = useState(false);
-  const send = async (analyze: boolean) => {
-    if (!formRef.current || !file) {
+  const send = async (analyze: boolean, chosen = file) => {
+    if (!formRef.current || !chosen) {
       setMsg("Escolha a planilha (.xlsx).");
       return;
     }
-    if (file.size > 4 * 1024 * 1024) {
+    if (chosen.size > 4 * 1024 * 1024) {
       setMsg("A planilha precisa ter até 4 MB.");
       return;
     }
@@ -56,7 +59,7 @@ export function NewPromo({
     setMsg("");
     try {
       const fd = new FormData(formRef.current);
-      fd.set("file", file);
+      fd.set("file", chosen);
       fd.set("preview", analyze ? "1" : "0");
       fd.set("layout", layout);
       if (!fd.get("group")) fd.set("group", "0");
@@ -70,7 +73,8 @@ export function NewPromo({
         return;
       }
       if (analyze) setPreview(data.preview);
-      else if (data.id) router.push(`/studio/${data.id}?formato=${format}`);
+      else if (data.id)
+        router.push(`/promocoes/${data.id}/gerar?formato=${format}`);
     } catch {
       setMsg("Não foi possível alcançar o servidor. Tente novamente.");
     } finally {
@@ -88,7 +92,8 @@ export function NewPromo({
           <span className="design-kicker">DA PLANILHA À CAMPANHA</span>
           <h2>Monte sua próxima promoção.</h2>
           <p>
-            Confira produtos, preços e fotos antes de abrir as artes editáveis.
+            Envie a planilha para montar e salvar automaticamente Feed, Stories
+            e cartaz A4.
           </p>
         </div>
       </div>
@@ -97,7 +102,7 @@ export function NewPromo({
         className="promo-builder-form"
         onSubmit={(e) => {
           e.preventDefault();
-          void send(true);
+          void send(false);
         }}
         onChange={() => {
           setPreview(null);
@@ -105,9 +110,35 @@ export function NewPromo({
         }}
       >
         <input type="hidden" name="brand_id" value={company?.id ?? ""} />
+        <label>
+          Empresa da campanha
+          <select
+            aria-label="Empresa da campanha"
+            value={company?.id ?? ""}
+            disabled={busy}
+            onChange={async (e) => {
+              const selected = companies.find((c) => c.id === e.target.value);
+              if (!selected) return;
+              setBusy(true);
+              try {
+                await setScopeAction(selected.slug, "");
+                router.refresh();
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <option value="">Selecione a empresa</option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
         {!company && (
           <p className="notice info">
-            Selecione a empresa no cabeçalho para criar uma promoção.
+            Selecione a empresa acima para liberar o envio da planilha.
           </p>
         )}
         {company && (
@@ -146,6 +177,7 @@ export function NewPromo({
                   onChange={(e) => {
                     const f = e.target.files?.[0] ?? null;
                     setFile(f);
+                    if (f) void send(false, f);
                     if (f && !name)
                       setName(f.name.replace(/\.[^.]+$/, "").slice(0, 120));
                   }}
@@ -258,7 +290,7 @@ export function NewPromo({
                 ? "Processando…"
                 : preview
                   ? "Analisar novamente"
-                  : "Analisar planilha"}{" "}
+                  : "Gerar Feed, Stories e A4"}{" "}
               <ArrowRight size={16} />
             </button>
           </div>

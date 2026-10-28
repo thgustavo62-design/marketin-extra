@@ -16,6 +16,7 @@ import {
 } from "@/lib/promo/store";
 import { parsePromoXlsx } from "@/lib/promo/xlsx";
 import { getSession } from "@/lib/session";
+import { pool } from "@/lib/db";
 import { getScope } from "@/lib/scope";
 import { campaignModel } from "@/lib/promo/model-selection";
 
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
       { error: "A planilha passa de 4 MB." },
       { status: 413 },
     );
-  const themeId = String(fd.get("theme_id") ?? "");
+  let themeId = String(fd.get("theme_id") ?? "");
   const scope = await getScope();
   const companyId = scope.brand?.id ?? null;
   if (!companyId || String(fd.get("brand_id") ?? "") !== companyId)
@@ -70,11 +71,26 @@ export async function POST(req: Request) {
       },
       { status: 409 },
     );
+  const { prepareReferenceIdentity } = await import(
+    "@/lib/promo/reference-identity"
+  );
+  await prepareReferenceIdentity(companyId, user.id);
+  if (!themeId && !fd.get("model_key")) {
+    themeId =
+      (
+        await pool.query(
+          "select id from promo_themes where company_id=$1 and official_code='CP-MF-006' and active",
+          [companyId],
+        )
+      ).rows[0]?.id ?? "";
+  }
   let model;
   try {
     model = await campaignModel(
       {
-        modelKey: String(fd.get("model_key") ?? ""),
+        modelKey: String(
+          fd.get("model_key") || (themeId ? "" : "ofertas-impacto"),
+        ),
         primary: String(fd.get("model_primary") ?? ""),
         accent: String(fd.get("model_accent") ?? ""),
         useBrandColors: fd.get("model_brand_colors") === "1",
