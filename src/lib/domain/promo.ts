@@ -322,7 +322,9 @@ export function normalizeTheme(raw: unknown): ThemeConfig {
     ...(normalizeOfferIdentity(t.offerIdentity)
       ? { offerIdentity: normalizeOfferIdentity(t.offerIdentity) }
       : {}),
-    ...(t.referencePackage === "minas-corta-20261028" ? {referencePackage: "minas-corta-20261028" as const} : {}),
+    ...(t.referencePackage === "minas-corta-20261028"
+      ? { referencePackage: "minas-corta-20261028" as const }
+      : {}),
     colors,
     grid,
     panel,

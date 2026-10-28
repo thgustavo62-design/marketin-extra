@@ -55,9 +55,11 @@ export function OfferPreview({
           if (images.some((x) => !x))
             setError("Uma foto não carregou. Confira a imagem no catálogo.");
           const imgs = images.filter((i): i is HTMLImageElement => !!i);
-          const {campaignArtwork}=await import("@/lib/promo/campaign-artwork");
-          const header=await campaignArtwork(theme);
-          if(!active || !canvas.current)return;
+          const { campaignArtwork } = await import(
+            "@/lib/promo/campaign-artwork"
+          );
+          const header = await campaignArtwork(theme);
+          if (!active || !canvas.current) return;
           drawPage(canvas.current, {
             format: "feed",
             theme: {
@@ -66,7 +68,7 @@ export function OfferPreview({
             },
             title,
             validity,
-            assets: {header},
+            assets: { header },
             items: [{ ...item, img: imgs[0] ?? null, imgs }],
           });
         })

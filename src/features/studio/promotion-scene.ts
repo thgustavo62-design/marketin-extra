@@ -21,7 +21,10 @@ import {
   type RenderItem,
 } from "@/lib/promo/render";
 import type { StudioSource } from "@/lib/studio/store";
-import { relativeStudioImageSource, type StudioScene } from "@/lib/domain/studio";
+import {
+  relativeStudioImageSource,
+  type StudioScene,
+} from "@/lib/domain/studio";
 import { JSON_KEYS } from "./types";
 import { promotionPageCount } from "./page-count";
 export { promotionPageCount } from "./page-count";

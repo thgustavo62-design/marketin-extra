@@ -347,8 +347,8 @@ export async function generateReviewed(
       source &&
       /corta[\s_-]*pre[cç]o/i.test(`${source.name} ${opts.title}`)
     ) {
-      const {prepareReferenceIdentity}=await import("./reference-identity");
-      await prepareReferenceIdentity(source.brand_id,user.id);
+      const { prepareReferenceIdentity } = await import("./reference-identity");
+      await prepareReferenceIdentity(source.brand_id, user.id);
       const official = (
         await pool.query(
           "select id from promo_themes where company_id=$1 and official_code='CP-MF-006' and active",
