@@ -167,6 +167,7 @@ export const Toolbar = ({
         <div className="flex items-center h-full justify-center">
           <Hint label="Cor" side="bottom" sideOffset={5}>
             <Button
+              aria-label="Cor de preenchimento"
               onClick={() => onChangeActiveTool("fill")}
               size="icon"
               variant="ghost"
@@ -184,6 +185,7 @@ export const Toolbar = ({
         <div className="flex items-center h-full justify-center">
           <Hint label="Cor da borda" side="bottom" sideOffset={5}>
             <Button
+              aria-label="Cor da borda"
               onClick={() => onChangeActiveTool("stroke-color")}
               size="icon"
               variant="ghost"
@@ -215,6 +217,7 @@ export const Toolbar = ({
         <div className="flex items-center h-full justify-center">
           <Hint label="Fonte" side="bottom" sideOffset={5}>
             <Button
+              aria-label="Escolher fonte"
               onClick={() => onChangeActiveTool("font")}
               size="icon"
               variant="ghost"

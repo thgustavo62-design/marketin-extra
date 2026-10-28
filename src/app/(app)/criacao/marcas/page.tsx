@@ -13,12 +13,12 @@ export default async function Marcas() {
         <h1>Kit de marca</h1>
         <p>
           <Link href="/criacao">← Criar design</Link> · Logos, cores, fontes e
-          textos oficiais de cada filial. Organize aqui a identidade de cada
+          textos oficiais de cada empresa. Organize aqui a identidade de cada
           marca e use seus arquivos e padrões ao criar as artes.
         </p>
       </header>
       {brands.length === 0 ? (
-        <p className="empty">Você não tem acesso a nenhuma filial.</p>
+        <p className="empty">Você não tem acesso a nenhuma empresa.</p>
       ) : (
         <BrandKitManager
           brands={brands.map((b) => ({ id: b.id, name: b.name }))}

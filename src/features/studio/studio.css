@@ -334,3 +334,39 @@
     max-width: 150px;
   }
 }
+
+.n7-studio .studio-company {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: #dcceff;
+  opacity: 0.85;
+  margin-top: 3px;
+}
+
+/* Keep the active tool drawer above Layers; both remain independently closable. */
+@media (max-width: 1100px) {
+  .n7-studio .studio-body > aside:not(:first-child):not(.studio-layers) {
+    position: absolute;
+    left: 100px;
+    top: 0;
+    bottom: 0;
+    z-index: 70;
+  }
+}
+@media (max-width: 700px) {
+  .n7-studio .studio-body > aside:not(:first-child):not(.studio-layers) {
+    left: 80px;
+  }
+}
+
+@media (max-width: 700px) {
+  .n7-studio .studio-tool-rail button {
+    padding: 14px 4px;
+  }
+  .n7-studio .studio-tool-rail button span {
+    font-size: 11px;
+    white-space: normal;
+    max-width: 100%;
+  }
+}

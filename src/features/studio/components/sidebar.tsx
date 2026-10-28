@@ -3,6 +3,7 @@
 
 import {
   LayoutTemplate,
+  Palette,
   ImageIcon,
   Pencil,
   Settings,
@@ -21,13 +22,22 @@ interface SidebarProps {
 
 export const Sidebar = ({ activeTool, onChangeActiveTool }: SidebarProps) => {
   return (
-    <aside className="bg-white flex flex-col w-[100px] h-full border-r overflow-y-auto">
-      <ul className="flex flex-col">
+    <aside
+      aria-label="Ferramentas de design"
+      className="studio-tool-rail bg-white flex flex-col w-[100px] h-full border-r overflow-y-auto"
+    >
+      <div className="flex flex-col">
         <SidebarItem
           icon={LayoutTemplate}
           label="Modelos"
           isActive={activeTool === "templates"}
           onClick={() => onChangeActiveTool("templates")}
+        />
+        <SidebarItem
+          icon={Palette}
+          label="Estilos"
+          isActive={activeTool === "styles"}
+          onClick={() => onChangeActiveTool("styles")}
         />
         <SidebarItem
           icon={ImageIcon}
@@ -65,7 +75,7 @@ export const Sidebar = ({ activeTool, onChangeActiveTool }: SidebarProps) => {
           isActive={activeTool === "settings"}
           onClick={() => onChangeActiveTool("settings")}
         />
-      </ul>
+      </div>
     </aside>
   );
 };

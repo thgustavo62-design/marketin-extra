@@ -22,22 +22,8 @@ import {
 import type { StudioSource } from "@/lib/studio/store";
 import type { StudioScene } from "@/lib/domain/studio";
 import { JSON_KEYS } from "./types";
-export function promotionPageCount(
-  source: StudioSource,
-  format: PromoFormat,
-): number {
-  if (source.campaign.kind !== "promocao") return source.campaign.design_pages;
-  const cfg = applyOverrides(
-      source.theme?.config ?? normalizeTheme({}),
-      source.campaign.overrides,
-    ),
-    g = cfg.grid[format];
-  return Math.max(
-    1,
-    paginateSections(source.items, g.cols * g.rows, cfg.breakBySection[format])
-      .length,
-  );
-}
+import { promotionPageCount } from "./page-count";
+export { promotionPageCount } from "./page-count";
 async function image(url: string): Promise<HTMLImageElement> {
   const img = await loadImage(url);
   if (!img)

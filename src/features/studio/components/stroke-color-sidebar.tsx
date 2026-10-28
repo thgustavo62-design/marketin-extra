@@ -37,7 +37,7 @@ export const StrokeColorSidebar = ({
     >
       <ToolSidebarHeader
         title="Cor da borda"
-        description="Add stroke color to your element"
+        description="Personalize a borda do elemento selecionado"
       />
       <ScrollArea>
         <div className="p-4 space-y-6">

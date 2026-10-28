@@ -21,6 +21,7 @@ export const SidebarItem = ({
     <Button
       variant="ghost"
       onClick={onClick}
+      aria-pressed={!!isActive}
       className={cn(
         "w-full h-full aspect-video p-3 py-4 flex flex-col rounded-none",
         isActive && "bg-muted text-primary",

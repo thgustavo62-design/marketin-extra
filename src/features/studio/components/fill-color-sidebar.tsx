@@ -37,7 +37,7 @@ export const FillColorSidebar = ({
     >
       <ToolSidebarHeader
         title="Cor de preenchimento"
-        description="Add fill color to your element"
+        description="Personalize a cor do elemento selecionado"
       />
       <ScrollArea>
         <div className="p-4 space-y-6">
