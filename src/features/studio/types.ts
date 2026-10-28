@@ -5,6 +5,7 @@ import { ITextboxOptions } from "fabric/fabric-impl";
 
 export const JSON_KEYS = [
   "name",
+  "layerName",
   "gradientAngle",
   "selectable",
   "hasControls",
@@ -88,6 +89,7 @@ export const colors = [
 ];
 
 export type ActiveTool =
+  | "position"
   | "styles"
   | "select"
   | "shapes"

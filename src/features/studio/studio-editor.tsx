@@ -5,20 +5,7 @@ import { blankDesignScene } from "@/lib/domain/design-presets";
 import { fabric } from "fabric";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ArrowLeft,
-  Undo2,
-  Redo2,
-  Layers,
-  Lock,
-  Unlock,
-  Eye,
-  EyeOff,
-  Group,
-  Ungroup,
-  Save,
-  X,
-} from "lucide-react";
+import { ArrowLeft, Undo2, Redo2, Layers, Save, X } from "lucide-react";
 import { PROMO_FORMATS, PROMO_FORMAT_KEYS } from "@/lib/domain/promo";
 import { validateStudioScene, type StudioScene } from "@/lib/domain/studio";
 import {
@@ -46,6 +33,9 @@ async function promotionScene(
 ) {
   return (await import("./promotion-scene")).promotionScene(...args);
 }
+const LayersPanel = dynamic(() =>
+  import("./components/layers-panel").then((m) => m.LayersPanel),
+);
 export function StudioEditor(
   props: StudioLoaderProps & { initialScene: StudioScene },
 ) {
@@ -111,7 +101,13 @@ export function StudioEditor(
     });
     canvasInstance.current = canvas;
     init({ initialCanvas: canvas, initialContainer: containerRef.current });
-    const update = () => setTick((t) => t + 1);
+    const update = () => {
+      if (
+        !(canvas as fabric.Canvas & { __studioRestoring?: boolean })
+          .__studioRestoring
+      )
+        setTick((t) => t + 1);
+    };
     for (const e of [
       "object:added",
       "object:removed",
@@ -185,11 +181,6 @@ export function StudioEditor(
     },
     [activeTool, editor, canEdit],
   );
-  const refresh = () => {
-    editor?.canvas.fire("object:modified");
-    editor?.canvas.requestRenderAll();
-    setTick((t) => t + 1);
-  };
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     setMessage("");
@@ -243,7 +234,14 @@ export function StudioEditor(
     <div
       className="n7-studio"
       data-testid="nova7-studio"
-      data-editor-ready={Boolean(editor)}
+      data-editor-ready={
+        Boolean(editor) &&
+        !(
+          editor?.canvas as
+            | (fabric.Canvas & { __studioRestoring?: boolean })
+            | undefined
+        )?.__studioRestoring
+      }
     >
       <header className="studio-header">
         <button
@@ -639,92 +637,11 @@ export function StudioEditor(
           <Footer editor={editor} />
         </main>
         {showLayers && (
-          <aside className="studio-layers">
-            <h2>Camadas</h2>
-            {canEdit && (
-              <div className="flex gap-2">
-                <button
-                  aria-label="Agrupar seleção"
-                  onClick={() => {
-                    const o = editor?.canvas.getActiveObject();
-                    if (o?.type === "activeSelection") {
-                      (o as fabric.ActiveSelection).toGroup();
-                      refresh();
-                    }
-                  }}
-                >
-                  <Group size={18} />
-                </button>
-                <button
-                  aria-label="Desagrupar seleção"
-                  onClick={() => {
-                    const o = editor?.canvas.getActiveObject();
-                    if (o?.type === "group") {
-                      (o as fabric.Group).toActiveSelection();
-                      refresh();
-                    }
-                  }}
-                >
-                  <Ungroup size={18} />
-                </button>
-              </div>
-            )}
-            {[...objects].reverse().map((o, i) => (
-              <div
-                className="studio-layer"
-                data-object-type={o.type}
-                key={objects.length - i}
-                data-active={selected === o}
-              >
-                <button
-                  disabled={!canEdit}
-                  onClick={() => {
-                    editor?.canvas.setActiveObject(o);
-                    editor?.canvas.requestRenderAll();
-                    setTick((t) => t + 1);
-                  }}
-                >
-                  {(o as fabric.Text).text?.slice(0, 35) || o.name || o.type}
-                </button>
-                {canEdit && (
-                  <>
-                    <button
-                      aria-label={
-                        o.visible === false
-                          ? "Mostrar camada"
-                          : "Ocultar camada"
-                      }
-                      onClick={() => {
-                        o.set({ visible: o.visible === false });
-                        refresh();
-                      }}
-                    >
-                      {o.visible === false ? (
-                        <EyeOff size={13} />
-                      ) : (
-                        <Eye size={13} />
-                      )}
-                    </button>
-                    <button
-                      aria-label={
-                        o.selectable ? "Bloquear camada" : "Desbloquear camada"
-                      }
-                      onClick={() => {
-                        o.set({
-                          selectable: !o.selectable,
-                          evented: !o.selectable,
-                        });
-                        editor?.canvas.discardActiveObject();
-                        refresh();
-                      }}
-                    >
-                      {o.selectable ? <Unlock size={13} /> : <Lock size={13} />}
-                    </button>
-                  </>
-                )}
-              </div>
-            ))}
-          </aside>
+          <LayersPanel
+            editor={editor}
+            canEdit={canEdit}
+            onClose={() => setShowLayers(false)}
+          />
         )}
       </div>
     </div>

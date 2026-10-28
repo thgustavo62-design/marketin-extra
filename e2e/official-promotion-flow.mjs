@@ -373,6 +373,12 @@ export async function officialPromotionFlow({
         );
         await designStylesFlow({ db, page, campaign, format, check });
       }
+      if (process.env.ENCARTIVA_LAYOUT_TEST === "1") {
+        const { designLayoutFlow } = await import(
+          "./lib/design-layout-flow.mjs"
+        );
+        await designLayoutFlow({ db, page, campaign, format, check });
+      }
       await page.getByText("Exportar", { exact: true }).click();
       const [download] = await Promise.all([
         page.waitForEvent("download"),

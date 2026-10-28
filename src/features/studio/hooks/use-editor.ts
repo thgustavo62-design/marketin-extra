@@ -1,4 +1,6 @@
 // Adapted from canva-clone, Copyright 2025 Alimardon Davronov, Apache-2.0. See THIRD_PARTY_NOTICES.md.
+import { deleteSelection } from "../layout-operations";
+import { withStudioTextDefaults } from "@/lib/domain/studio";
 import { designPrintPoints } from "@/lib/domain/design-presets";
 import { fabric } from "fabric";
 import { studioCanvasJson } from "../scene-json";
@@ -94,7 +96,13 @@ const buildEditor = ({
           if (o.type === "image") {
             const img = o as fabric.Image,
               // SVG already embeds filtered instances; URL references must embed the original pixels.
-              el = (img as fabric.Image & { _originalElement?: HTMLImageElement | HTMLCanvasElement })._originalElement ?? img.getElement() as HTMLImageElement | HTMLCanvasElement,
+              el =
+                (
+                  img as fabric.Image & {
+                    _originalElement?: HTMLImageElement | HTMLCanvasElement;
+                  }
+                )._originalElement ??
+                (img.getElement() as HTMLImageElement | HTMLCanvasElement),
               c = document.createElement("canvas");
             c.width = el.width;
             c.height = el.height;
@@ -175,7 +183,7 @@ const buildEditor = ({
   };
 
   const loadJson = (json: string) => {
-    const data = JSON.parse(json);
+    const data = withStudioTextDefaults(JSON.parse(json));
 
     (canvas as any).__studioRestoring = true;
     canvas.loadFromJSON(data, () => {
@@ -299,9 +307,7 @@ const buildEditor = ({
       );
     },
     delete: () => {
-      canvas.getActiveObjects().forEach((object) => canvas.remove(object));
-      canvas.discardActiveObject();
-      canvas.renderAll();
+      deleteSelection(canvas);
     },
     addText: (value, options) => {
       const object = new fabric.Textbox(value, {

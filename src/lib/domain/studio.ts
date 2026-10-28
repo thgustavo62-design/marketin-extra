@@ -10,6 +10,24 @@ export type StudioPage = {
   source_hash: string;
   updated_at?: string;
 };
+// Fabric 5 assumes text styles exist when serializing a loaded document.
+// Partial/imported scenes can omit this optional field; preserve all actual styling.
+export function withStudioTextDefaults(scene: StudioScene): StudioScene {
+  const copy = structuredClone(scene);
+  const visit = (objects: Record<string, unknown>[]) => {
+    for (const o of objects) {
+      if (!o || typeof o !== "object") continue;
+      if (
+        ["text", "i-text", "textbox"].includes(String(o.type)) &&
+        o.styles == null
+      )
+        o.styles = {};
+      if (Array.isArray(o.objects)) visit(o.objects);
+    }
+  };
+  visit(copy.objects);
+  return copy;
+}
 export function studioKey(format: string, page: number): string | null {
   return ["story", "feed", "a4"].includes(format) &&
     Number.isInteger(page) &&
@@ -70,6 +88,13 @@ export function validateStudioScene(
     if (v === null || typeof v !== "object") return typeof v !== "function";
     if (Array.isArray(v)) return v.every((x) => walk(x, depth + 1));
     const o = v as Record<string, unknown>;
+    if (
+      "layerName" in o &&
+      (typeof o.layerName !== "string" ||
+        !o.layerName.trim() ||
+        o.layerName.length > 80)
+    )
+      return false;
     if (o.type === "pattern" || o.type === "Pattern") return false;
     if (typeof o.type === "string" && ++objects > MAX_STUDIO_OBJECTS)
       return false;
