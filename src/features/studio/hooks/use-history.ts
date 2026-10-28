@@ -5,6 +5,7 @@ import { studioCanvasJson } from "../scene-json";
 type Canvas = fabric.Canvas & {
   __studioRestoring?: boolean;
   __studioReadOnly?: boolean;
+  __studioPendingText?: boolean;
 };
 export function useHistory({
   canvas,
@@ -36,6 +37,7 @@ export function useHistory({
       const c = canvas as Canvas | null;
       if (!c || c.__studioRestoring || c.__studioReadOnly) return;
       const json = studioCanvasJson(c);
+      c.__studioPendingText = false;
       if (canvasHistory.current[index.current] !== json) {
         canvasHistory.current = [
           ...canvasHistory.current.slice(0, index.current + 1),
@@ -64,6 +66,7 @@ export function useHistory({
         c.requestRenderAll();
         setHistoryIndex(n);
         notify(canvasHistory.current[n]);
+        c.fire("studio:ready");
       });
     },
     [canvas, notify, setHistoryIndex],

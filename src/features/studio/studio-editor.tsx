@@ -4,7 +4,7 @@ import { ToolPanel } from "./components/tool-panel";
 import { blankDesignScene } from "@/lib/domain/design-presets";
 import { fabric } from "fabric";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { ArrowLeft, Undo2, Redo2, Layers, Save, X } from "lucide-react";
 import { PROMO_FORMATS, PROMO_FORMAT_KEYS } from "@/lib/domain/promo";
 import { validateStudioScene, type StudioScene } from "@/lib/domain/studio";
@@ -48,7 +48,7 @@ export function StudioEditor(
     canvasInstance = useRef<fabric.Canvas | null>(null);
   const [activeTool, setActiveTool] = useState<ActiveTool>("select"),
     [showLayers, setShowLayers] = useState(false),
-    [tick, setTick] = useState(0),
+    [, setTick] = useState(0),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [templateName, setTemplateName] = useState(""),
@@ -59,6 +59,8 @@ export function StudioEditor(
   docHashRef.current = documentSourceHash;
   const persistence = useStudioPersistence({
     id: c.id,
+    actorId: props.actorId,
+    hasSaved: !!saved,
     format,
     page,
     revision: saved?.revision ?? 0,
@@ -83,14 +85,35 @@ export function StudioEditor(
       ),
     [],
   );
+  const saveNowRef = useRef<() => Promise<boolean>>(async () => false);
+  const flushFromHotkey = useCallback(() => {
+    void saveNowRef.current();
+  }, []);
+  const initialJson = useMemo(
+    () => JSON.stringify(props.initialScene),
+    [props.initialScene],
+  );
+  const persistenceRef = useRef(persistence);
+  persistenceRef.current = persistence;
   const { init, editor } = useEditor({
-    defaultState: JSON.stringify(props.initialScene),
+    defaultState: initialJson,
     defaultWidth: PROMO_FORMATS[format].w,
     defaultHeight: PROMO_FORMATS[format].h,
     readOnly: !canEdit,
     clearSelectionCallback: clearSelection,
     saveCallback: persistence.schedule,
+    flushCallback: flushFromHotkey,
   });
+  const ready =
+    !!editor &&
+    !(editor.canvas as fabric.Canvas & { __studioRestoring?: boolean })
+      .__studioRestoring;
+  const saveNow = async () => {
+    if (!editor || (editor.canvas as any).__studioRestoring) return false;
+    editor.commit();
+    return persistence.flush();
+  };
+  saveNowRef.current = saveNow;
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
     const canvas = new fabric.Canvas(canvasRef.current, {
@@ -115,29 +138,62 @@ export function StudioEditor(
       "selection:created",
       "selection:updated",
       "selection:cleared",
-      "text:changed",
+      "studio:ready",
     ])
       canvas.on(e, update);
+    canvas.on("studio:error", (e: any) =>
+      setMessage(e.message || "Não foi possível concluir a edição."),
+    );
+    const captureText = () => {
+      if (
+        (canvas as fabric.Canvas & { __studioPendingText?: boolean })
+          .__studioPendingText
+      )
+        void saveNowRef.current();
+    };
+    const protectText = (e: BeforeUnloadEvent) => {
+      if (
+        (canvas as fabric.Canvas & { __studioPendingText?: boolean })
+          .__studioPendingText
+      ) {
+        captureText();
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    const hiddenText = () => {
+      if (document.visibilityState === "hidden") captureText();
+    };
+    window.addEventListener("beforeunload", protectText);
+    document.addEventListener("visibilitychange", hiddenText);
     const ready = setInterval(() => {
       if (
         (canvas as fabric.Canvas & { __studioRestoring?: boolean })
           .__studioRestoring
       )
         return;
+      const p = persistenceRef.current;
+      if (!p.recoveryChecked) return;
       clearInterval(ready);
-      if (!saved && canEdit)
-        persistence.schedule({ json: studioCanvasJson(canvas) });
+      if (!saved && canEdit && !p.draft)
+        p.schedule({ json: studioCanvasJson(canvas) });
       setTick((t) => t + 1);
     }, 100);
     return () => {
       clearInterval(ready);
+      window.removeEventListener("beforeunload", protectText);
+      document.removeEventListener("visibilitychange", hiddenText);
+      (
+        canvas as fabric.Canvas & { __studioReadOnly?: boolean }
+      ).__studioReadOnly = true;
       canvasInstance.current = null;
       canvas.dispose();
     };
   }, [init]);
   const lastThumbnail = useRef("");
   useEffect(() => {
-    if (!canEdit || page !== 0 || persistence.status !== "Salvo") return;
+    if (!ready || !canEdit || page !== 0 || persistence.status !== "Salvo")
+      return;
     const t = setTimeout(() => {
       const canvas = canvasInstance.current,
         clip = canvas?.getObjects().find((o) => o.name === "clip");
@@ -168,9 +224,16 @@ export function StudioEditor(
       }
     }, 800);
     return () => clearTimeout(t);
-  }, [canEdit, c.id, page, persistence.status, tick]);
+  }, [ready, canEdit, c.id, page, persistence.status, persistence.revision]);
   const navigate = async (url: string) => {
-    if (await persistence.flush()) router.push(url);
+    if (busy) {
+      setMessage("Aguarde a operação atual terminar antes de sair.");
+      return;
+    }
+    if (await saveNow()) {
+      router.push(url);
+      router.refresh();
+    }
   };
   const tool = useCallback(
     (next: ActiveTool) => {
@@ -182,6 +245,7 @@ export function StudioEditor(
     [activeTool, editor, canEdit],
   );
   const run = async (fn: () => Promise<void>) => {
+    if (busy) return;
     setBusy(true);
     setMessage("");
     try {
@@ -226,22 +290,12 @@ export function StudioEditor(
   };
   const pageCount = promotionPageCount(source, format),
     stale = c.kind === "promocao" && documentSourceHash !== sourceHash,
-    selected = editor?.canvas.getActiveObject(),
-    objects =
-      editor?.canvas.getObjects().filter((o) => o.name !== "clip") ?? [],
     common = { editor, activeTool, onChangeActiveTool: tool };
   return (
     <div
       className="n7-studio"
       data-testid="nova7-studio"
-      data-editor-ready={
-        Boolean(editor) &&
-        !(
-          editor?.canvas as
-            | (fabric.Canvas & { __studioRestoring?: boolean })
-            | undefined
-        )?.__studioRestoring
-      }
+      data-editor-ready={ready}
     >
       <header className="studio-header">
         <button
@@ -305,15 +359,19 @@ export function StudioEditor(
         )}
         <span className="studio-status" role="status">
           {canEdit
-            ? persistence.status
+            ? ready
+              ? persistence.status
+              : "Abrindo arte…"
             : needsMigration
               ? "Banco aguardando atualização"
               : "Somente leitura"}
         </span>
         {canEdit && (
           <button
+            title="Salvar agora (Ctrl+S)"
+            disabled={!ready || busy || persistence.status === "Salvando…"}
             aria-label="Salvar arte"
-            onClick={() => void persistence.flush()}
+            onClick={() => void saveNow()}
           >
             <Save size={16} />
           </button>
@@ -321,10 +379,18 @@ export function StudioEditor(
         <button aria-label="Camadas" onClick={() => setShowLayers((v) => !v)}>
           <Layers size={16} />
         </button>
-        <details className="studio-download">
+        <details className="studio-download" inert={!ready || busy}>
           <summary>Exportar</summary>
           <div>
-            <button onClick={() => editor?.savePng()}>PNG</button>
+            <button
+              onClick={() =>
+                void run(async () => {
+                  editor?.savePng();
+                })
+              }
+            >
+              PNG
+            </button>
             {format === "a4" && (
               <button
                 onClick={() =>
@@ -336,9 +402,33 @@ export function StudioEditor(
                 PDF para impressão
               </button>
             )}
-            <button onClick={() => editor?.saveJpg()}>JPG</button>
-            <button onClick={() => editor?.saveSvg()}>SVG vetorial</button>
-            <button onClick={() => editor?.saveJson()}>JSON editável</button>
+            <button
+              onClick={() =>
+                void run(async () => {
+                  editor?.saveJpg();
+                })
+              }
+            >
+              JPG
+            </button>
+            <button
+              onClick={() =>
+                void run(async () => {
+                  editor?.saveSvg();
+                })
+              }
+            >
+              SVG vetorial
+            </button>
+            <button
+              onClick={() =>
+                void run(async () => {
+                  await editor?.saveJson();
+                })
+              }
+            >
+              JSON editável
+            </button>
           </div>
         </details>
       </header>
@@ -362,12 +452,94 @@ export function StudioEditor(
       {(message || persistence.error) && (
         <div className="studio-message" role="alert">
           {message || persistence.error}
-          <button aria-label="Fechar aviso" onClick={() => setMessage("")}>
-            <X size={14} />
+          {persistence.error && !persistence.conflict && (
+            <button onClick={() => void saveNow()}>
+              Tentar salvar novamente
+            </button>
+          )}
+          {persistence.conflict && (
+            <button
+              onClick={() =>
+                void run(async () => {
+                  await editor?.saveJson();
+                })
+              }
+            >
+              Baixar cópia editável
+            </button>
+          )}
+          {persistence.conflict && (
+            <button
+              onClick={() => {
+                if (
+                  confirm(
+                    "Abrir a versão salva no servidor? Baixe uma cópia das suas alterações antes de continuar.",
+                  )
+                )
+                  location.reload();
+              }}
+            >
+              Reabrir versão salva
+            </button>
+          )}
+          {message && (
+            <button aria-label="Fechar aviso" onClick={() => setMessage("")}>
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      )}
+      {persistence.backupError && (
+        <div className="studio-message" role="alert">
+          {persistence.backupError}
+        </div>
+      )}
+      {persistence.draft && (
+        <div className="studio-message" role="alert">
+          Existe uma edição não salva neste dispositivo.
+          {canEdit &&
+          persistence.draft.revision === (saved?.revision ?? 0) &&
+          persistence.draft.sourceHash === sourceHash ? (
+            <button
+              disabled={!ready}
+              onClick={() => {
+                const draft = persistence.draft;
+                if (!draft || !editor) return;
+                docHashRef.current = draft.documentSourceHash;
+                setDocumentSourceHash(draft.documentSourceHash);
+                editor.loadJson(draft.json);
+                persistence.discardDraft();
+              }}
+            >
+              Recuperar edição
+            </button>
+          ) : (
+            <span>
+              A versão do servidor mudou. Baixe a cópia antes de comparar as
+              alterações.
+            </span>
+          )}
+          <button
+            onClick={() => {
+              const blob = new Blob([persistence.draft!.json], {
+                type: "application/json",
+              });
+              const url = URL.createObjectURL(blob),
+                link = document.createElement("a");
+              link.href = url;
+              link.download = "encartiva-recuperacao.json";
+              link.click();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }}
+          >
+            Baixar recuperação
+          </button>
+          <button onClick={() => persistence.discardDraft()}>
+            Descartar recuperação
           </button>
         </div>
       )}
-      <div className="studio-body">
+      <div className="studio-body" inert={!ready}>
         {canEdit && (
           <Sidebar activeTool={activeTool} onChangeActiveTool={tool} />
         )}
@@ -393,7 +565,9 @@ export function StudioEditor(
                       const file = e.target.files?.[0];
                       if (file)
                         void run(async () => {
-                          editor?.addImage(await uploadStudioImage(c.id, file));
+                          await editor?.addImage(
+                            await uploadStudioImage(c.id, file),
+                          );
                         });
                       e.target.value = "";
                     }}
@@ -405,7 +579,11 @@ export function StudioEditor(
                     <button
                       key={a.id}
                       onClick={() =>
-                        editor?.addImage(`/api/promocoes/asset/${a.id}`)
+                        void run(async () => {
+                          await editor?.addImage(
+                            `/api/promocoes/asset/${a.id}`,
+                          );
+                        })
                       }
                     >
                       <img
@@ -426,7 +604,9 @@ export function StudioEditor(
                         void run(async () => {
                           const r = await useLibraryImageAction(c.id, a.id);
                           if (!r.ok || !r.id) throw new Error(r.error);
-                          editor?.addImage(`/api/promocoes/asset/${r.id}`);
+                          await editor?.addImage(
+                            `/api/promocoes/asset/${r.id}`,
+                          );
                         })
                       }
                     >
@@ -491,7 +671,7 @@ export function StudioEditor(
                       disabled={busy || templateName.trim().length < 2}
                       onClick={() =>
                         void run(async () => {
-                          if (!(await persistence.flush())) return;
+                          if (!(await saveNow())) return;
                           const r = await createTemplateAction(
                             c.id,
                             templateName,
@@ -587,12 +767,7 @@ export function StudioEditor(
           </>
         )}
         <main className="studio-work">
-          {canEdit && (
-            <Toolbar
-              {...common}
-              key={`${tick}:${editor?.selectedObjects.map((o) => objects.indexOf(o)).join(":")}:${selected?.type}:${activeTool}`}
-            />
-          )}
+          {canEdit && <Toolbar {...common} />}
           <div className="studio-stage" ref={containerRef}>
             <canvas ref={canvasRef} aria-label="Área de edição do design" />
           </div>
@@ -601,7 +776,7 @@ export function StudioEditor(
               <button
                 onClick={() =>
                   void run(async () => {
-                    if (!(await persistence.flush())) return;
+                    if (!(await saveNow())) return;
                     const r = await addStudioPageAction(c.id);
                     if (!r.ok || typeof r.page !== "number")
                       throw new Error(r.error);

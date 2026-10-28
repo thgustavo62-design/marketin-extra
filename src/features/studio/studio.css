@@ -296,7 +296,8 @@
     max-width: 180px;
   }
   .n7-studio .studio-status {
-    display: none;
+    display: inline-flex;
+    white-space: nowrap;
   }
 }
 @media (max-width: 700px) {
@@ -369,4 +370,13 @@
     white-space: normal;
     max-width: 100%;
   }
+}
+
+.n7-studio .studio-message {
+  flex-wrap: wrap;
+}
+.n7-studio .studio-message button {
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  padding: 5px 8px;
 }

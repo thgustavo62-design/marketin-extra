@@ -5,18 +5,19 @@ import { isUuid } from "../form";
 export async function campaignAccess(
   id: string,
   itemId?: string,
+  db: Pick<typeof pool, "query"> = pool,
 ): Promise<boolean> {
   if (!isUuid(id) || (itemId !== undefined && !isUuid(itemId))) return false;
   const user = await getSession();
   if (!user || user.mustChange) return false;
   const r = (
-    await pool.query("select brand_id from promo_campaigns where id=$1", [id])
+    await db.query("select brand_id from promo_campaigns where id=$1", [id])
   ).rows[0];
   if (!r || (r.brand_id && !brandAllowed(user, r.brand_id))) return false;
   return (
     itemId === undefined ||
     !!(
-      await pool.query(
+      await db.query(
         "select 1 from promo_items where id=$1 and campaign_id=$2",
         [itemId, id],
       )

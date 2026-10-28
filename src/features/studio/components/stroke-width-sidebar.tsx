@@ -25,7 +25,7 @@ export const StrokeWidthSidebar = ({
   activeTool,
   onChangeActiveTool,
 }: StrokeWidthSidebarProps) => {
-  const widthValue = editor?.getActiveStrokeWidth() || STROKE_WIDTH;
+  const widthValue = editor?.getActiveStrokeWidth() ?? STROKE_WIDTH;
   const typeValue = editor?.getActiveStrokeDashArray() || STROKE_DASH_ARRAY;
 
   const onClose = () => {
@@ -33,7 +33,7 @@ export const StrokeWidthSidebar = ({
   };
 
   const onChangeStrokeWidth = (value: number) => {
-    editor?.changeStrokeWidth(value);
+    editor?.changeStrokeWidth(value, false);
   };
 
   const onChangeStrokeType = (value: number[]) => {
@@ -55,12 +55,17 @@ export const StrokeWidthSidebar = ({
         <div className="p-4 space-y-4 border-b">
           <Label className="text-sm">Espessura da borda</Label>
           <Slider
+            aria-label="Espessura da borda"
+            min={0}
+            max={100}
+            step={1}
+            onValueCommit={(values) => editor?.changeStrokeWidth(values[0])}
             value={[widthValue]}
             onValueChange={(values) => onChangeStrokeWidth(values[0])}
           />
         </div>
         <div className="p-4 space-y-4 border-b">
-          <Label className="text-sm">Stroke type</Label>
+          <Label className="text-sm">Tipo de borda</Label>
           <Button
             onClick={() => onChangeStrokeType([])}
             variant="secondary"

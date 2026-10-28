@@ -69,6 +69,7 @@ export async function saveStudioPage(o: {
 }) {
   if (
     !studioKey(o.format, o.page) ||
+    !/^[a-f0-9]{64}$/.test(o.expectedSourceHash) ||
     !Number.isSafeInteger(o.expectedRevision) ||
     o.expectedRevision < 0 ||
     !/^[a-f0-9]{64}$/.test(o.documentSourceHash)
@@ -76,16 +77,6 @@ export async function saveStudioPage(o: {
     return { ok: false, error: "Página inválida." };
   const valid = validateStudioScene(o.scene);
   if (!valid.ok) return valid;
-  const data = await getCampaign(o.id);
-  if (!data || data.campaign.kind === "template")
-    return { ok: false, error: "Arte não encontrada." };
-  if (sourceHash(data) !== o.expectedSourceHash)
-    return {
-      ok: false,
-      conflict: true,
-      error:
-        "Os dados da promoção mudaram. Reabra a página para conferir e regenerar a arte.",
-    };
   return withTx(async (db) => {
     if (
       !(
@@ -96,19 +87,37 @@ export async function saveStudioPage(o: {
       ).rowCount
     )
       return { ok: false, error: "Arte não encontrada." };
+    const data = await getCampaign(o.id, { workspace: false, db });
+    if (!data || data.campaign.kind === "template")
+      return { ok: false, error: "Arte não encontrada." };
+    if (sourceHash(data) !== o.expectedSourceHash)
+      return {
+        ok: false,
+        conflict: true,
+        error:
+          "Os dados da promoção mudaram. Reabra a página para conferir e regenerar a arte.",
+      };
     const old = (
       await db.query(
-        "select revision from studio_pages where campaign_id=$1 and format=$2 and page=$3 for update",
-        [o.id, o.format, o.page],
+        "select revision,source_hash,scene=$4::jsonb as same_scene from studio_pages where campaign_id=$1 and format=$2 and page=$3 for update",
+        [o.id, o.format, o.page, JSON.stringify(valid.scene)],
       )
     ).rows[0];
-    if ((old?.revision ?? 0) !== o.expectedRevision)
+    if ((old?.revision ?? 0) !== o.expectedRevision) {
+      // A response can be lost after commit. Retrying the exact next revision is safe.
+      if (
+        old?.revision === o.expectedRevision + 1 &&
+        old.same_scene &&
+        old.source_hash === o.documentSourceHash
+      )
+        return { ok: true, revision: old.revision as number };
       return {
         ok: false,
         conflict: true,
         error:
           "Esta página foi salva em outra aba. Recarregue antes de continuar.",
       };
+    }
     const revision = o.expectedRevision + 1;
     await db.query(
       `insert into studio_pages(campaign_id,format,page,scene,revision,source_hash,updated_by) values($1,$2,$3,$4::jsonb,$5,$6,$7) on conflict(campaign_id,format,page) do update set scene=excluded.scene,revision=excluded.revision,source_hash=excluded.source_hash,updated_by=excluded.updated_by,updated_at=now()`,

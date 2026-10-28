@@ -58,7 +58,7 @@ export function AiPanel({
         throw new Error(
           "O serviço ainda está processando. Confira sua conta de IA antes de repetir.",
         );
-      if (alive.current) editor?.addImage(result.src);
+      if (alive.current) await editor?.addImage(result.src);
     } catch (e) {
       if (alive.current)
         onError(
@@ -110,8 +110,8 @@ export function AiPanel({
                 : "Gerar imagem"}
           </button>
           <p className="studio-muted">
-            Usa a integração Replicate configurada pela Encartiva. As solicitações
-            consomem o saldo desse serviço.
+            Usa a integração Replicate configurada pela Encartiva. As
+            solicitações consomem o saldo desse serviço.
           </p>
         </>
       )}

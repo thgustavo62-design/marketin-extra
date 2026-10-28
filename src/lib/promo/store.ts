@@ -105,22 +105,25 @@ export async function listThemes(
   ).rows;
 }
 
-export async function getTheme(id: string): Promise<Theme | null> {
+export async function getTheme(
+  id: string,
+  db: Pick<typeof pool, "query"> = pool,
+): Promise<Theme | null> {
   const t = (
-    await pool.query(
+    await db.query(
       `select id, name, config, fixed,active,version,category from promo_themes where id = $1`,
       [id],
     )
   ).rows[0];
   if (!t) return null;
   const assets = (
-    await pool.query(
+    await db.query(
       `select role, format, width, height, sha256 from promo_theme_assets where theme_id = $1`,
       [id],
     )
   ).rows as ThemeAsset[];
   const arts = (
-    await pool.query(
+    await db.query(
       `select id, name, kind, width, height from promo_theme_arts where theme_id = $1 order by created_at`,
       [id],
     )
@@ -832,14 +835,18 @@ export async function createCampaignFromRows(o: {
 
 export async function getCampaign(
   id: string,
+  options: { workspace?: boolean; db?: Pick<typeof pool, "query"> } = {},
 ): Promise<{
   campaign: Campaign;
   theme: Theme | null;
   items: PromoItem[];
 } | null> {
-  if (!(await campaignAccess(id))) return null;
+  if (!options.db) return withTx((db) => getCampaign(id, { ...options, db }));
+  const db = options.db,
+    workspace = options.workspace !== false;
+  if (!(await campaignAccess(id, undefined, db))) return null;
   const c = (
-    await pool.query(
+    await db.query(
       `select c.id, c.name, c.brand_id, (select co.name from companies co where co.id=c.brand_id) as brand_name, c.theme_id, c.title, c.validity, c.status, u.display_name as approved_by_name, c.approved_at::text as approved_at, c.import_report, c.group_variants, c.overrides, c.layers, c.layers_rev, c.kind, c.design_format, c.design_pages
        from promo_campaigns c left join users u on u.id = c.approved_by where c.id = $1`,
       [id],
@@ -847,7 +854,7 @@ export async function getCampaign(
   ).rows[0];
   if (!c) return null;
   const rows = (
-    await pool.query(
+    await db.query(
       `select i.id, i.position, i.ean, i.product_id, i.name, i.price::float8 as price, i.section, i.variants, i.old_price::float8 as old_price, i.note, i.style, i.photo_image_id, i.photo_image_ids,
             coalesce(i.photo_image_id, (select m.id from product_images m where m.product_id = i.product_id order by m.is_primary desc, m.created_at limit 1)) as photo_id,
             coalesce((select array_agg(m.id order by m.is_primary desc, m.created_at) from product_images m where m.product_id = i.product_id), '{}') as photos
@@ -864,32 +871,36 @@ export async function getCampaign(
   );
   if (overrides.background?.kind === "asset")
     usedIds.add(overrides.background.asset);
-  const assets: CampaignAsset[] = (
-    await pool.query(
-      `select id, width, height from promo_assets where campaign_id = $1 order by created_at`,
-      [id],
-    )
-  ).rows.map((a) => ({
-    id: a.id,
-    width: a.width,
-    height: a.height,
-    used: usedIds.has(a.id),
-  }));
-  const tb = (
-    await pool.query(
-      `select t.id, t.name, array_agg(a.format order by a.format) as formats from promo_themes t join promo_theme_assets a on a.theme_id = t.id and a.role = 'background' group by t.id, t.name order by t.name`,
-    )
-  ).rows;
+  const assets: CampaignAsset[] = workspace
+    ? (
+        await db.query(
+          `select id, width, height from promo_assets where campaign_id = $1 order by created_at`,
+          [id],
+        )
+      ).rows.map((a) => ({
+        id: a.id,
+        width: a.width,
+        height: a.height,
+        used: usedIds.has(a.id),
+      }))
+    : [];
+  const tb = workspace
+    ? (
+        await db.query(
+          `select t.id, t.name, array_agg(a.format order by a.format) as formats from promo_themes t join promo_theme_assets a on a.theme_id = t.id and a.role = 'background' group by t.id, t.name order by t.name`,
+        )
+      ).rows
+    : [];
   return {
     campaign: {
       ...c,
       overrides,
       layers,
       assets,
-      library: await listLibrary(),
+      library: workspace ? await listLibrary(undefined, db) : [],
       themeBackgrounds: tb as Campaign["themeBackgrounds"],
     },
-    theme: c.theme_id ? await getTheme(c.theme_id) : null,
+    theme: c.theme_id ? await getTheme(c.theme_id, db) : null,
     items: rows.map((r) => ({ ...r, style: normalizeItemStyle(r.style) })),
   };
 }
