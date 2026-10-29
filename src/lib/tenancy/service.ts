@@ -132,12 +132,15 @@ export async function saveCompany(
       .slice(0, 60) +
     "-" +
     randomUUID().slice(0, 8);
-  const r = await pool.query(
-    "insert into companies(owner_id,ownership_status,name,slug,segment)values($1,'confirmed',$2,$3,$4)returning id",
-    [ownerId, name.trim().slice(0, 160), slug, segment.trim().slice(0, 80)],
+  const id = randomUUID();
+  // INSERT ... RETURNING also evaluates SELECT RLS before its STABLE ownership
+  // lookup can see the new row. INSERT still enforces the owner and plan guards.
+  await pool.query(
+    "insert into companies(id,owner_id,ownership_status,name,slug,segment)values($1,$2,'confirmed',$3,$4,$5)",
+    [id, ownerId, name.trim().slice(0, 160), slug, segment.trim().slice(0, 80)],
   );
-  await audit("empresa_cadastrada", { userId: actor.id, target: r.rows[0].id });
-  return r.rows[0].id as string;
+  await audit("empresa_cadastrada", { userId: actor.id, target: id });
+  return id;
 }
 export async function companyAdmin(id: string) {
   return (
@@ -191,18 +194,11 @@ export async function saveMembership(
         throw Error(
           "Para um login novo, defina uma senha provisória. Para login existente sem vínculo visível, solicite a vinculação à administração Encartiva.",
         );
-      user = (
-        await db.query(
-          "insert into users(username,username_normalized,display_name,password_hash,role,must_change_password,created_by)values($1,$2,$3,$4,'employee',true,$5)returning id",
-          [
-            o.username,
-            normalizeUsername(o.username),
-            o.name.trim() || o.username,
-            hash,
-            actor.id,
-          ],
-        )
-      ).rows[0];
+      user = { id: randomUUID() };
+      await db.query(
+        "insert into users(id,username,username_normalized,display_name,password_hash,role,must_change_password,created_by)values($1,$2,$3,$4,$5,'employee',true,$6)",
+        [user.id, o.username, normalizeUsername(o.username), o.name.trim() || o.username, hash, actor.id],
+      );
     }
     await db.query(
       "insert into employee_memberships(user_id,company_id,branch_id,role,permissions,created_by)values($1,$2,$3,$4,$5::jsonb,$6)on conflict(user_id,company_id,(coalesce(branch_id,'00000000-0000-0000-0000-000000000000'::uuid)))do update set role=excluded.role,permissions=excluded.permissions,active=true",

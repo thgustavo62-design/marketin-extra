@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 // Disposable PostgreSQL + real Server Actions. No production records are used.
 export async function settingsAccessFlow({ db, page, browser, base, otherCompanyId, multiCompanyId, check }) {
   const one = async (sql, args = []) => (await db.query(sql, args)).rows[0];
-  const status = (form, text) => form.getByRole('status').filter({ hasText: text }).waitFor();
+  const status = async (form, text) => {
+    try { await form.getByRole('status').filter({ hasText: text }).waitFor(); }
+    catch (error) { throw Error(`${text}: ${(await form.getByRole('alert').allTextContents()).join(' ') || error.message}`); }
+  };
   const formFor = (root, button) => root.getByRole('button', { name: button, exact: true }).locator('xpath=ancestor::form[1]');
   const company = await one("select * from companies where name='Empresa criada pela interface'");
   assert.ok(company); check();
@@ -161,7 +164,21 @@ export async function settingsAccessFlow({ db, page, browser, base, otherCompany
     await branchForm.getByLabel('Nome da filial', { exact: true }).fill('Filial da segunda empresa');
     await branchForm.getByRole('button', { name: 'Cadastrar filial', exact: true }).click();
     await status(branchForm, 'Filial cadastrada');
-    assert.ok(await one("select id from branches where brand_id=$1 and name='Filial da segunda empresa'", [second.id])); check();
+    const secondBranch = await one("select id from branches where brand_id=$1 and name='Filial da segunda empresa'", [second.id]);
+    assert.ok(secondBranch); check();
+    const ownerStaff = formFor(ownerPage, 'Criar ou vincular login');
+    await ownerStaff.getByLabel('Login', { exact: true }).fill('owner_staff_settings');
+    await ownerStaff.getByLabel('Nome', { exact: true }).fill('Funcionário do proprietário');
+    await ownerStaff.locator('input[name="password"]').fill('Teste-Seguro-2026');
+    await ownerStaff.getByLabel('Perfil', { exact: true }).selectOption('viewer');
+    await ownerStaff.getByLabel('Escopo', { exact: true }).selectOption(secondBranch.id);
+    await ownerStaff.getByRole('button', { name: 'Criar ou vincular login', exact: true }).click();
+    await status(ownerStaff, 'Vínculo e permissões salvos');
+    const ownedStaff = await one("select m.* from employee_memberships m join users u on u.id=m.user_id where u.username='owner_staff_settings'");
+    assert.equal(ownedStaff.company_id, second.id);
+    assert.equal(ownedStaff.branch_id, secondBranch.id);
+    assert.equal(ownedStaff.role, 'viewer');
+    assert.equal(ownedStaff.permissions.products, 'read'); check();
     const forged = formFor(ownerPage, 'Criar ou vincular login');
     await forged.getByLabel('Login', { exact: true }).fill('forged_settings');
     await forged.locator('input[name="password"]').fill('Teste-Seguro-2026');
