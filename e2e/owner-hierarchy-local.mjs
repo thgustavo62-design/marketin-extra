@@ -574,6 +574,8 @@ try {
         await new Promise((r) => setTimeout(r, 500));
       }
       browserRuntime = await browserTestRuntime(mods);
+      if (process.env.ENCARTIVA_SETTINGS_TEST === '1')
+        browserRuntime.options.args = browserRuntime.options.args.filter((arg) => arg !== '--single-process');
       browser = await require("playwright-core").chromium.launch(
         browserRuntime.options,
       );

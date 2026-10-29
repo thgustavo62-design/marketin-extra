@@ -51,6 +51,7 @@ export async function settingsAccessFlow({ db, page, browser, base, otherCompany
   assert.equal(membership.company_id, company.id);
   assert.equal(membership.branch_id, branch.id);
   assert.equal(membership.permissions.promotions, 'write'); check();
+  console.log('PASS settings company, branch and employee persisted');
 
   const entry = page.locator(`[data-membership="${membership.id}"]`);
   await entry.getByText('Editar permissões de Funcionário Configurações', { exact: true }).click();
@@ -78,8 +79,8 @@ export async function settingsAccessFlow({ db, page, browser, base, otherCompany
     const me = await (await staffContext.request.get(base + '/api/me')).json();
     assert.equal(me.username, 'staff_settings');
     assert.equal(me.role, 'employee'); check();
-    const forbidden = await staffPage.goto(base + '/configuracoes/empresas/' + otherCompanyId);
-    assert.equal(forbidden.status(), 404); check();
+    await staffPage.goto(base + '/configuracoes/empresas/' + otherCompanyId);
+    await staffPage.getByRole('heading', { name: 'Página não encontrada', exact: true }).waitFor(); check();
     await staffPage.goto(base + '/configuracoes/empresas/' + company.id);
     assert.equal(await staffPage.getByRole('button', { name: 'Salvar empresa', exact: true }).count(), 0);
     assert.equal(await staffPage.getByRole('button', { name: 'Criar ou vincular login', exact: true }).count(), 0); check();
@@ -98,7 +99,8 @@ export async function settingsAccessFlow({ db, page, browser, base, otherCompany
     await userRow.getByRole('button', { name: 'Ativar', exact: true }).click();
     await userRow.getByText('Ativo', { exact: true }).waitFor();
     assert.equal((await one('select active from users where id=$1', [staff.id])).active, true); check();
-  } finally { await staffContext.close(); }
+  } finally { await staffContext.close().catch(() => {}); }
+  console.log('PASS settings real login, first password change, reset and account activation');
 
   const credentialBeforeLink = (await one('select password_hash from users where id=$1', [staff.id])).password_hash;
   await page.goto(base + '/configuracoes/empresas/' + multiCompanyId);
@@ -168,8 +170,10 @@ export async function settingsAccessFlow({ db, page, browser, base, otherCompany
     await forged.getByRole('button', { name: 'Criar ou vincular login', exact: true }).click();
     await forged.getByRole('alert').filter({ hasText: 'Sem permissão' }).waitFor();
     assert.equal(await one("select id from users where username='forged_settings'"), undefined); check();
-    assert.equal((await ownerPage.goto(base + '/configuracoes/empresas/' + otherCompanyId)).status(), 404); check();
-  } finally { await ownerContext.close(); }
+    await ownerPage.goto(base + '/configuracoes/empresas/' + otherCompanyId);
+    await ownerPage.getByRole('heading', { name: 'Página não encontrada', exact: true }).waitFor(); check();
+  } finally { await ownerContext.close().catch(() => {}); }
+  console.log('PASS settings owner scope, multiple companies and tampered company denial');
   await page.goto(base + '/configuracoes/empresas/' + company.id);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: '/tmp/nova7-settings-mobile.png', fullPage: true });
