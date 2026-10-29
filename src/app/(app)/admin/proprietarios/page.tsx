@@ -20,7 +20,7 @@ export default async function Owners() {
         <h2>Cadastros</h2>
         {owners.map((o) => (
           <p key={o.id}>
-            <Link href={`/admin/proprietarios/${o.id}`}>{o.name}</Link> ·{" "}
+            <Link href={`/configuracoes/proprietarios/${o.id}`}>{o.name}</Link> ·{" "}
             {o.status === "active" ? "Ativo" : "Suspenso"} · {o.plan_name} ·{" "}
             {o.companies}/{o.max_companies} empresas
           </p>
@@ -51,6 +51,7 @@ export default async function Owners() {
                 }
                 required={!["phone", "email"].includes(name)}
                 autoComplete={name === "password" ? "new-password" : "off"}
+                defaultValue={name === 'plan' ? 'Acesso interno' : undefined}
               />
             </label>
           ))}

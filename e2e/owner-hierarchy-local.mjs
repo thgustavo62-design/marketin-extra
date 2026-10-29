@@ -744,6 +744,10 @@ try {
           check: () => checks++,
         });
       }
+      if (process.env.ENCARTIVA_SETTINGS_TEST === '1') {
+        const { settingsAccessFlow } = await import('./lib/settings-access-flow.mjs');
+        await settingsAccessFlow({ db, page, browser, base: 'https://127.0.0.1:3142', otherCompanyId: cb, multiCompanyId: ca, check: () => checks++ });
+      }
       assert.deepEqual(errors, []);
 
       await page.screenshot({

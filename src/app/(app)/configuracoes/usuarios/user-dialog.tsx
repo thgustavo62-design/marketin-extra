@@ -3,7 +3,6 @@
 import { Pencil, UserPlus, X } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { ActionForm } from '@/components/action-form'
-import { ROLES, type Role } from '@/lib/perms'
 import { createUserAction, updateUserAction } from './actions'
 
 type Brand = { id: string; name: string }
@@ -12,18 +11,17 @@ type UserLite = { id: string; username: string; display_name: string; email: str
 // Janela de "Novo usuário" / "Editar" (mesmo formulário). Fica aberta após criar, para dar tempo de copiar a senha provisória.
 export function UserDialog({ brands, user }: { brands: Brand[]; user?: UserLite }) {
   const ref = useRef<HTMLDialogElement>(null)
-  const [role, setRole] = useState<string>(user?.role ?? 'editor')
+  const [role, setRole] = useState<string>(user?.role ?? 'admin')
   const editing = Boolean(user)
-  const checked = (id: string) => (user?.brand_ids ? user.brand_ids.includes(id) : true)
 
   return (
     <>
       <button type="button" className={editing ? 'mini-btn' : 'cyan-btn'} onClick={() => ref.current?.showModal()}>
-        {editing ? <><Pencil size={13} /> Editar</> : <><UserPlus size={15} /> Novo usuário</>}
+        {editing ? <><Pencil size={13} /> Editar</> : <><UserPlus size={15} /> Novo administrador</>}
       </button>
       <dialog ref={ref} className="modal" onClick={(e) => { if (e.target === ref.current) ref.current?.close() }}>
         <div className="modal-head">
-          <h3>{editing ? `Editar ${user!.display_name}` : 'Novo usuário'}</h3>
+          <h3>{editing ? `Editar ${user!.display_name}` : 'Novo administrador da plataforma'}</h3>
           <button type="button" className="ghost" aria-label="Fechar" onClick={() => ref.current?.close()}><X size={18} /></button>
         </div>
         <ActionForm action={editing ? updateUserAction : createUserAction} submit={editing ? 'Salvar alterações' : 'Criar usuário'} pending="Salvando…">
@@ -41,23 +39,15 @@ export function UserDialog({ brands, user }: { brands: Brand[]; user?: UserLite 
             <>
               <label htmlFor="role-new">Papel</label>
               <select id="role-new" name="role" value={role} onChange={(e) => setRole(e.target.value)}>
-                {(Object.keys(ROLES) as Role[]).map((r) => <option key={r} value={r}>{ROLES[r].label}</option>)}
+                <option value="admin">Administrador da plataforma</option>
               </select>
             </>
           )}
-          <fieldset className="access" disabled={(editing ? user!.role : role) === 'admin'}>
-            <legend>Filiais com acesso</legend>
-            {brands.map((b) => (
-              <label key={b.id} className="check">
-                <input type="checkbox" name="brand" value={b.id} defaultChecked={checked(b.id)} /> {b.name}
-              </label>
-            ))}
-            {(editing ? user!.role : role) === 'admin' && <small className="muted">Administrador acessa todas as filiais.</small>}
-          </fieldset>
+          {editing && user!.role !== 'admin' && <p className="muted">As empresas, filiais e permissões são administradas em Empresas e acessos.</p>}
           {!editing && (
             <>
               <label htmlFor="pw-new">Senha provisória (deixe em branco para gerar uma)</label>
-              <input id="pw-new" name="password" type="text" autoComplete="off" placeholder="mínimo 10 caracteres, com letras e números" />
+              <input id="pw-new" name="password" type="password" autoComplete="new-password" placeholder="mínimo 10 caracteres, com letras e números" />
             </>
           )}
         </ActionForm>

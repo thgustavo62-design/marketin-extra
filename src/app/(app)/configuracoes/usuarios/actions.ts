@@ -148,17 +148,10 @@ export async function updateUserAction(
     return { error: "O nome precisa ter entre 2 e 60 caracteres." };
   const eErr = validateEmail(email);
   if (eErr) return { error: eErr };
-  if (t.role !== "admin")
-    return {
-      error:
-        "Edite o vínculo e as permissões do funcionário em Minhas Empresas.",
-    };
-  const access = await parseAccess(fd, t.role);
-  if (!access.ok) return { error: access.error };
   try {
     await pool.query(
-      `update users set display_name = $1, email = $2, brand_ids = $3 where id = $4`,
-      [displayName, email || null, access.brandIds, t.id],
+      `update users set display_name = $1, email = $2 where id = $3`,
+      [displayName, email || null, t.id],
     );
   } catch (e) {
     const msg = uniqueError(e);
@@ -169,9 +162,10 @@ export async function updateUserAction(
     userId: g.user.id,
     ip: await clientIp(),
     target: t.username,
-    meta: { filiais: access.brandIds?.length ?? "todas" },
+    meta: { cadastro: true },
   });
   revalidatePath(PAGE);
+  revalidatePath('/configuracoes', 'layout');
   return { ok: "Usuário atualizado." };
 }
 
@@ -242,6 +236,7 @@ export async function setActiveAction(
     target: t.username,
   });
   revalidatePath(PAGE);
+  revalidatePath('/configuracoes', 'layout');
   return {
     ok: active ? "Usuário reativado." : "Usuário desativado e desconectado.",
   };
@@ -272,6 +267,7 @@ export async function resetPasswordAction(
     target: t.username,
   });
   revalidatePath(PAGE);
+  revalidatePath('/configuracoes', 'layout');
   return {
     ok: `Nova senha provisória de ${t.username}: ${password} — copie agora, ela não será mostrada de novo. As sessões dele(a) foram encerradas.`,
   };

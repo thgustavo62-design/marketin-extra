@@ -1067,3 +1067,12 @@ a.mini-btn:hover, .light button.mini-btn:hover { border-color: var(--blue); colo
 .tenancy-section h2 { margin-bottom: 12px; }
 .tenancy-section .stack-form { max-width: 760px; }
 .tenancy-section p + p { margin-top: 10px; }
+.settings .tenancy-section { padding: 22px; border-radius: 16px; }
+.settings .tenancy-section > p { margin-bottom: 14px; }
+.access-entry { padding: 14px 0; border-bottom: 1px solid var(--border, #35334d); }
+.access-entry summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
+.access-entry details[open] > summary, details.access-entry[open] > summary { margin-bottom: 12px; }
+.access-entry .stack-form { margin-top: 12px; }
+.users-table .row-form .form-error, .users-table .row-form .form-ok { display: block; white-space: normal; max-width: 340px; }
+.users-table td:nth-child(4) { white-space: normal; min-width: 220px; }
+@media (max-width: 600px) { .settings { padding: 14px 10px; } .settings .tenancy-section { padding: 16px; } }

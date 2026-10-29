@@ -72,12 +72,12 @@ const GROUPS: Group[] = [
     collapsible: true,
     items: [
       {
-        href: "/admin/proprietarios",
+        href: "/configuracoes/proprietarios",
         label: "Proprietários",
         icon: BookOpen,
         admin: true,
       },
-      { href: "/empresas", label: "Minhas Empresas", icon: BookOpen },
+      { href: "/configuracoes/empresas", label: "Minhas Empresas", icon: BookOpen },
       { href: "/criacao/marcas", label: "Kit de marca", icon: PenTool },
       { href: "/gestao", label: "Cadastros", icon: BookOpen },
       { href: "/configuracoes", label: "Configurações", icon: Settings },

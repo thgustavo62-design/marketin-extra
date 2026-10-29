@@ -4,6 +4,24 @@ import { normalizeUsername, audit } from "../auth";
 import { validatePassword, validateUsername, validateEmail } from "../perms";
 import { randomUUID } from "node:crypto";
 import type { SessionUser } from "../session";
+import type { PoolClient } from "pg";
+
+// Settings may manage a different company from the one selected in the header.
+// Resolve the authorized company first; keep the same actor, role and RLS.
+export async function withCompanyScope<T>(companyId: string, fn: (db: PoolClient) => Promise<T>) {
+  return withTx(async (db) => {
+    const company = (await db.query(
+      "select c.slug from companies c where c.id=$1",
+      [companyId],
+    )).rows[0];
+    if (!company) throw Error("Empresa não autorizada.");
+    await db.query(
+      "select set_config('nova7.company_slug',$1,true),set_config('nova7.branch_id','',true)",
+      [company.slug],
+    );
+    return fn(db);
+  });
+}
 export const MODULES = [
   "planning",
   "products",
@@ -148,12 +166,15 @@ export async function saveMembership(
     throw Error("Perfil inválido.");
   const error = validateUsername(o.username);
   if (error) throw Error(error);
+  if (o.name.trim().length > 160) throw Error("O nome pode ter no máximo 160 caracteres.");
   const permissions = Object.fromEntries(
     MODULES.map((m) => [
       m,
-      ["read", "write"].includes(o.permissions[m]) ? o.permissions[m] : "none",
+      o.role === 'manager' ? 'write' : o.role === 'viewer' ? 'read' : ["read", "write"].includes(o.permissions[m]) ? o.permissions[m] : "none",
     ]),
   );
+  if (o.role === "employee" && !Object.values(permissions).some((value) => value !== "none"))
+    throw Error("Selecione pelo menos uma funcionalidade para o funcionário.");
   const hash = o.password ? await hashPassword(o.password) : null;
   if (o.password) {
     const e = validatePassword(o.password);
