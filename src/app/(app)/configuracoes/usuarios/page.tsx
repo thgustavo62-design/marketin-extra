@@ -6,15 +6,22 @@ import { ROLES, roleLabel, type Role } from '@/lib/perms'
 import { resetPasswordAction, setActiveAction } from './actions'
 import { RoleSelect } from './role-select'
 import { UserDialog } from './user-dialog'
+import Link from 'next/link'
+import { pool } from '@/lib/db'
 
 const fmt = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' }) : 'nunca'
 
 export default async function Usuarios() {
   const me = await requireAdmin()
-  const [users, brands] = await Promise.all([listUsers(), getBrands()])
-  const brandName = (id: string) => brands.find((b) => b.id === id)?.name ?? '—'
-  const accessLabel = (ids: string[] | null, role: string) => (role === 'admin' || !ids ? 'Todas' : ids.map(brandName).join(', '))
+  const [users, brands, scopes] = await Promise.all([listUsers(), getBrands(), pool.query(`
+    select m.user_id,c.id as company_id,c.name as company_name,b.name as branch_name,m.role
+    from employee_memberships m join companies c on c.id=m.company_id left join branches b on b.id=m.branch_id where m.active
+    union all
+    select l.user_id,c.id,c.name,null,'owner' from owner_user_links l join companies c on c.owner_id=l.owner_id where l.active
+  `)])
+  const access = new Map<string, { company_id: string; company_name: string; branch_name: string | null; role: string }[]>()
+  for (const scope of scopes.rows) access.set(scope.user_id, [...(access.get(scope.user_id) ?? []), scope])
 
   return (
     <>
@@ -34,10 +41,10 @@ export default async function Usuarios() {
       <section className="dcard panel-card" aria-labelledby="lista">
         <div className="card-head">
           <div>
-            <h2 id="lista">Usuários do sistema</h2>
+            <h2 id="lista">Logins e senhas</h2>
             <p className="sub">Cada pessoa entra com a própria conta — a trilha de auditoria registra quem fez o quê.</p>
           </div>
-          <UserDialog brands={brands} />
+          <div className="row-actions"><Link className="cyan-btn" href="/configuracoes/empresas">Criar funcionário ou gerente</Link><UserDialog brands={brands} /></div>
         </div>
 
         <div className="role-legend">
@@ -47,7 +54,7 @@ export default async function Usuarios() {
         <div className="dark-table users-table">
           <table>
             <thead>
-              <tr><th>Nome</th><th>E-mail</th><th>Papel</th><th>Filiais</th><th>Situação</th><th>Último acesso</th><th className="right">Ações</th></tr>
+              <tr><th>Nome e login</th><th>E-mail</th><th>Papel</th><th>Empresas e filiais autorizadas</th><th>Situação</th><th>Último acesso</th><th className="right">Ações</th></tr>
             </thead>
             <tbody>
               {users.map((u) => {
@@ -56,8 +63,8 @@ export default async function Usuarios() {
                   <tr key={u.id}>
                     <td><b>{u.display_name}</b><br /><small className="muted">@{u.username}{self && ' · você'}</small></td>
                     <td>{u.email ?? '—'}</td>
-                    <td><RoleSelect id={u.id} role={u.role} disabled={self} /></td>
-                    <td>{accessLabel(u.brand_ids, u.role)}</td>
+                    <td>{u.role === 'admin' ? <RoleSelect id={u.id} role={u.role} disabled={self} /> : roleLabel(u.role)}</td>
+                    <td>{u.role === 'admin' ? 'Administração da plataforma' : (access.get(u.id) ?? []).map((scope, index) => <div key={`${scope.company_id}-${index}`}><Link href={`/configuracoes/empresas/${scope.company_id}`}>{scope.company_name}</Link> · {scope.branch_name || 'Todas as filiais da empresa'} · {roleLabel(scope.role)}</div>)}{u.role !== 'admin' && !access.has(u.id) && 'Sem vínculo ativo'}</td>
                     <td>
                       {u.active ? <span className="st on">Ativo</span> : <span className="st off">Inativo</span>}
                       {u.must_change_password && <span className="st warn">Senha provisória</span>}

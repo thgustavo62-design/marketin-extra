@@ -574,6 +574,8 @@ try {
         await new Promise((r) => setTimeout(r, 500));
       }
       browserRuntime = await browserTestRuntime(mods);
+      if (process.env.ENCARTIVA_SETTINGS_TEST === '1')
+        browserRuntime.options.args = browserRuntime.options.args.filter((arg) => arg !== '--single-process');
       browser = await require("playwright-core").chromium.launch(
         browserRuntime.options,
       );
@@ -743,6 +745,10 @@ try {
           ownerId: a,
           check: () => checks++,
         });
+      }
+      if (process.env.ENCARTIVA_SETTINGS_TEST === '1') {
+        const { settingsAccessFlow } = await import('./lib/settings-access-flow.mjs');
+        await settingsAccessFlow({ db, page, browser, base: 'https://127.0.0.1:3142', otherCompanyId: cb, multiCompanyId: ca, check: () => checks++ });
       }
       assert.deepEqual(errors, []);
 

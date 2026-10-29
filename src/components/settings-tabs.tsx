@@ -9,7 +9,7 @@ export function SettingsTabs({ tabs }: { tabs: { href: string; label: string }[]
   return (
     <nav className="stabs" aria-label="Configurações">
       {tabs.map((t) => (
-        <Link key={t.href} href={t.href} className={`stab${path === t.href || path.startsWith(t.href + '/') ? ' active' : ''}`} aria-current={path === t.href ? 'page' : undefined}>
+        <Link key={t.href} href={t.href} className={`stab${path === t.href || path.startsWith(t.href + '/') ? ' active' : ''}`} aria-current={path === t.href || path.startsWith(t.href + '/') ? 'page' : undefined}>
           {t.label}
         </Link>
       ))}

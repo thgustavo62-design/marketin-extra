@@ -4,6 +4,24 @@ import { normalizeUsername, audit } from "../auth";
 import { validatePassword, validateUsername, validateEmail } from "../perms";
 import { randomUUID } from "node:crypto";
 import type { SessionUser } from "../session";
+import type { PoolClient } from "pg";
+
+// Settings may manage a different company from the one selected in the header.
+// Resolve the authorized company first; keep the same actor, role and RLS.
+export async function withCompanyScope<T>(companyId: string, fn: (db: PoolClient) => Promise<T>) {
+  return withTx(async (db) => {
+    const company = (await db.query(
+      "select c.slug from companies c where c.id=$1",
+      [companyId],
+    )).rows[0];
+    if (!company) throw Error("Empresa não autorizada.");
+    await db.query(
+      "select set_config('nova7.company_slug',$1,true),set_config('nova7.branch_id','',true)",
+      [company.slug],
+    );
+    return fn(db);
+  });
+}
 export const MODULES = [
   "planning",
   "products",
@@ -114,12 +132,15 @@ export async function saveCompany(
       .slice(0, 60) +
     "-" +
     randomUUID().slice(0, 8);
-  const r = await pool.query(
-    "insert into companies(owner_id,ownership_status,name,slug,segment)values($1,'confirmed',$2,$3,$4)returning id",
-    [ownerId, name.trim().slice(0, 160), slug, segment.trim().slice(0, 80)],
+  const id = randomUUID();
+  // INSERT ... RETURNING also evaluates SELECT RLS before its STABLE ownership
+  // lookup can see the new row. INSERT still enforces the owner and plan guards.
+  await pool.query(
+    "insert into companies(id,owner_id,ownership_status,name,slug,segment)values($1,$2,'confirmed',$3,$4,$5)",
+    [id, ownerId, name.trim().slice(0, 160), slug, segment.trim().slice(0, 80)],
   );
-  await audit("empresa_cadastrada", { userId: actor.id, target: r.rows[0].id });
-  return r.rows[0].id as string;
+  await audit("empresa_cadastrada", { userId: actor.id, target: id });
+  return id;
 }
 export async function companyAdmin(id: string) {
   return (
@@ -148,12 +169,15 @@ export async function saveMembership(
     throw Error("Perfil inválido.");
   const error = validateUsername(o.username);
   if (error) throw Error(error);
+  if (o.name.trim().length > 160) throw Error("O nome pode ter no máximo 160 caracteres.");
   const permissions = Object.fromEntries(
     MODULES.map((m) => [
       m,
-      ["read", "write"].includes(o.permissions[m]) ? o.permissions[m] : "none",
+      o.role === 'manager' ? 'write' : o.role === 'viewer' ? 'read' : ["read", "write"].includes(o.permissions[m]) ? o.permissions[m] : "none",
     ]),
   );
+  if (o.role === "employee" && !Object.values(permissions).some((value) => value !== "none"))
+    throw Error("Selecione pelo menos uma funcionalidade para o funcionário.");
   const hash = o.password ? await hashPassword(o.password) : null;
   if (o.password) {
     const e = validatePassword(o.password);
@@ -170,18 +194,11 @@ export async function saveMembership(
         throw Error(
           "Para um login novo, defina uma senha provisória. Para login existente sem vínculo visível, solicite a vinculação à administração Encartiva.",
         );
-      user = (
-        await db.query(
-          "insert into users(username,username_normalized,display_name,password_hash,role,must_change_password,created_by)values($1,$2,$3,$4,'employee',true,$5)returning id",
-          [
-            o.username,
-            normalizeUsername(o.username),
-            o.name.trim() || o.username,
-            hash,
-            actor.id,
-          ],
-        )
-      ).rows[0];
+      user = { id: randomUUID() };
+      await db.query(
+        "insert into users(id,username,username_normalized,display_name,password_hash,role,must_change_password,created_by)values($1,$2,$3,$4,$5,'employee',true,$6)",
+        [user.id, o.username, normalizeUsername(o.username), o.name.trim() || o.username, hash, actor.id],
+      );
     }
     await db.query(
       "insert into employee_memberships(user_id,company_id,branch_id,role,permissions,created_by)values($1,$2,$3,$4,$5::jsonb,$6)on conflict(user_id,company_id,(coalesce(branch_id,'00000000-0000-0000-0000-000000000000'::uuid)))do update set role=excluded.role,permissions=excluded.permissions,active=true",

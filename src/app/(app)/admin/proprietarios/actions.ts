@@ -11,7 +11,16 @@ import {
   safeError,
   MODULES,
   companyAdmin,
+  withCompanyScope,
 } from "@/lib/tenancy/service";
+
+function refreshAccess(companyId?: string, ownerId?: string) {
+  revalidatePath('/configuracoes', 'layout');
+  revalidatePath('/empresas');
+  revalidatePath('/admin/proprietarios');
+  if (companyId) revalidatePath(`/empresas/${companyId}`);
+  if (ownerId) revalidatePath(`/admin/proprietarios/${ownerId}`);
+}
 export async function createOwnerAction(
   _p: FormState,
   fd: FormData,
@@ -34,6 +43,7 @@ export async function createOwnerAction(
       g.user,
     );
     revalidatePath("/admin/proprietarios");
+    refreshAccess();
     return {
       ok: `Proprietário cadastrado. Abra seu perfil para cadastrar as empresas. Código: ${id}`,
     };
@@ -54,6 +64,7 @@ export async function companyAction(
     await saveCompany(owner, str(fd, "name"), str(fd, "segment"), g.user);
     revalidatePath("/empresas");
     revalidatePath(`/admin/proprietarios/${owner}`);
+    refreshAccess(undefined, owner);
     return {
       ok: "Empresa cadastrada com proprietário. Abra a empresa para cadastrar as filiais.",
     };
@@ -84,6 +95,7 @@ export async function membershipAction(
       g.user,
     );
     revalidatePath(`/empresas/${c}`);
+    refreshAccess(c);
     return {
       ok: "Vínculo e permissões salvos. O seletor de empresa não altera essas permissões.",
     };
@@ -105,6 +117,7 @@ export async function transferAction(
     await transferCompany(c, o, str(fd, "reason"), g.user);
     revalidatePath("/admin/proprietarios");
     revalidatePath("/empresas");
+    refreshAccess();
     return {
       ok: "Titularidade registrada com auditoria. Em transferências entre donos, vínculos antigos de funcionários são revogados.",
     };
@@ -159,6 +172,7 @@ export async function ownerStatusAction(
       meta: { status },
     });
     revalidatePath(`/admin/proprietarios/${id}`);
+    refreshAccess(undefined, id);
     return { ok: "Cadastro e contrato atualizados." };
   } catch (e) {
     return { error: safeError(e) };
@@ -174,20 +188,25 @@ export async function branchAction(
   if (!isUuid(c) || !(await companyAdmin(c)))
     return { error: "Sem permissão para cadastrar filiais." };
   try {
-    await pool.query(
-      "insert into branches(brand_id,name,city,address,phone,hours)values($1,$2,$3,$4,$5,$6)",
-      [
-        c,
-        str(fd, "name"),
-        str(fd, "city"),
-        str(fd, "address"),
-        str(fd, "phone"),
-        str(fd, "hours"),
-      ],
-    );
+    const branch = str(fd, 'branch_id');
+    if (branch && !isUuid(branch)) return { error: 'Filial inválida.' };
+    const name = str(fd, 'name');
+    if (!name || name.length > 160) return { error: 'Informe um nome de filial com até 160 caracteres.' };
+    await withCompanyScope(c, async (db) => {
+      const values = [c, name, str(fd, 'city'), str(fd, 'address'), str(fd, 'phone'), str(fd, 'hours')];
+      if (branch) {
+        const updated = await db.query(
+          'update branches set name=$2,city=$3,address=$4,phone=$5,hours=$6 where brand_id=$1 and id=$7 returning id',
+          [...values, branch],
+        );
+        if (!updated.rowCount) throw Error('Filial não encontrada nesta empresa.');
+      } else await db.query('insert into branches(brand_id,name,city,address,phone,hours)values($1,$2,$3,$4,$5,$6)', values);
+    });
+    await audit(branch ? 'filial_atualizada' : 'filial_cadastrada', { userId: g.user.id, target: branch || c, meta: { companyId: c } });
     revalidatePath(`/empresas/${c}`);
+    refreshAccess(c);
     return {
-      ok: "Filial cadastrada. O proprietário já tem acesso automaticamente.",
+      ok: branch ? 'Filial atualizada.' : "Filial cadastrada. O proprietário já tem acesso automaticamente.",
     };
   } catch (e) {
     return { error: safeError(e) };
@@ -216,10 +235,28 @@ export async function revokeMembershipAction(
       meta: { company },
     });
     revalidatePath(`/empresas/${company}`);
+    refreshAccess(company);
     return {
       ok: "Vínculo revogado. Os demais vínculos do funcionário são preservados.",
     };
   } catch (e) {
     return { error: safeError(e) };
   }
+}
+
+export async function companyProfileAction(_p: FormState, fd: FormData): Promise<FormState> {
+  const g = await writerOrError();
+  if (!g.ok) return { error: g.error };
+  const id = str(fd, 'company_id');
+  if (!isUuid(id) || !(await companyAdmin(id))) return { error: 'Empresa não autorizada.' };
+  const name = str(fd, 'name'), segment = str(fd, 'segment');
+  if (!name || name.length > 160 || !segment || segment.length > 80)
+    return { error: 'Informe o nome (até 160 caracteres) e o segmento (até 80 caracteres).' };
+  try {
+    const result = await pool.query('update companies set name=$2,segment=$3 where id=$1 returning id', [id, name, segment]);
+    if (!result.rowCount) return { error: 'Empresa não encontrada.' };
+    await audit('empresa_atualizada', { userId: g.user.id, target: id });
+    refreshAccess(id);
+    return { ok: 'Dados da empresa atualizados.' };
+  } catch (e) { return { error: safeError(e) }; }
 }
