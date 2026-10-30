@@ -1,10 +1,14 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useState, type CSSProperties } from 'react';
 import { PUBLIC_PLANS, whatsappLink, type PublicPresentation } from '@/lib/domain/public-presentation';
 import { presentationScreens, screensReady } from './screens';
 import './presentation.css';
 import { EditorialShowcase } from './editorial-showcase';
+import { CampaignSeal } from './campaign-seal';
+
+const PresentationModelPreview = dynamic(() => import('./model-preview').then(m => m.PresentationModelPreview), { ssr: false, loading: () => <p className="p-preview-loading">Carregando exemplos de encartes…</p> });
 
 const sampleProducts = [
   ['Shampoo', '14,90'], ['Sabonete', '3,99'], ['Creme dental', '6,90'],
@@ -18,7 +22,7 @@ function ProductDrawing({ index }: { index: number }) {
 }
 function OfferSheet({ plain = false, compact = false }: { plain?: boolean; compact?: boolean }) {
   return <div className={'p-offer-sheet' + (plain ? ' p-offer-plain' : '') + (compact ? ' p-offer-compact' : '')} aria-label="Exemplo ilustrativo de encarte com seis ofertas">
-    <div className="p-offer-heading"><small>{plain ? 'MERCADO' : 'SUA MARCA'}</small><strong>{plain ? 'OFERTAS' : 'OFERTAS\nDA SEMANA'}</strong><span>{plain ? 'Produtos em promoção' : 'Uma identidade que é sua.'}</span></div>
+    <div className="p-offer-heading"><small>{plain ? 'MERCADO' : 'SUA MARCA'}</small>{plain ? <strong>OFERTAS</strong> : <CampaignSeal kind="week" />}<span>{plain ? 'Produtos em promoção' : 'Uma identidade que é sua.'}</span></div>
     <div className="p-product-grid">{sampleProducts.map(([name, price], index) => <div key={name} className="p-product">
       <ProductDrawing index={index} /><span>{name}</span><b><small>R$</small> {price}</b>
     </div>)}</div>
@@ -39,23 +43,23 @@ export function PresentationLanding({ contact, preview = false }: { contact: Pub
   const [screen, setScreen] = useState(0);
   const href = whatsappLink(contact.whatsappPhone, contact.ctaMessage);
   const module = presentationScreens[screen];
-  return <div className="presentation" id="topo">
+  return <div className="presentation p-documentary" id="topo">
     <a className="p-skip" href="#conteudo">Pular para o conteúdo</a>
     {preview && <div className="p-preview">Prévia privada · somente administradores <a href="/configuracoes/site-apresentacao">Voltar às configurações</a></div>}
     <header className="p-header">
       <a href="#topo" aria-label="Encartiva — início"><img className="p-logo" src="/brand/encartiva/grafite.png" alt="Encartiva" width="190" height="48" /></a>
-      <nav aria-label="Apresentação"><a href="#colecao">Possibilidades</a><a href="#como-funciona">Como funciona</a><a href="#plataforma">Plataforma</a><a href="#planos">Planos</a></nav>
+      <nav aria-label="Apresentação"><a href="#colecao">Na prática</a><a href="#como-funciona">Como funciona</a><a href="#plataforma">Plataforma</a><a href="#planos">Planos</a></nav>
       <a className="p-header-contact" href={href} target="_blank" rel="noopener noreferrer">Saiba mais <span aria-hidden="true">↗</span></a>
     </header>
     <main id="conteudo">
       <section className="p-hero" aria-labelledby="p-title">
         <div className="p-hero-top"><p className="p-eyebrow">ENCARTIVA / IDENTIDADE + AUTOMAÇÃO</p><span>FEITO PARA O VAREJO.<br />PENSADO PARA A SUA MARCA.</span></div>
         <div className="p-hero-copy">
-          <h1 id="p-title" aria-label="Oferta todo mundo tem. Identidade é outra história."><span>OFERTA TODO</span><span>MUNDO TEM.</span><em>Identidade é outra história.</em></h1>
-          <div className="p-hero-bottom"><p className="p-lead">A sua próxima oferta pode ter preço novo.<br />E a mesma personalidade da sua marca.</p><a className="p-round-link" href="#colecao" aria-label="Explorar as possibilidades da Encartiva">Explore<br /><span aria-hidden="true">↓</span></a></div>
+          <h1 id="p-title" aria-label="É a sua marca. Dá para ver."><span>É A SUA</span><span>MARCA.</span><em>Dá para ver.</em></h1>
+          <div className="p-hero-bottom"><p className="p-lead">Do selo da campanha à etiqueta de preço.<br />A mesma personalidade, em cada ponto de contato.</p><a className="p-round-link" href="#colecao" aria-label="Explorar as possibilidades da Encartiva">Explore<br /><span aria-hidden="true">↓</span></a></div>
         </div>
-        <div className="p-hero-art" aria-hidden="true"><span>PREÇO<br /><i>BAIXO.</i><br />PRESENÇA<br /><i>ALTA.</i></span><img src="/brand/encartiva/simbolo.png" alt="" width="110" height="110" /></div>
-        <div className="p-hero-caption"><span>01 — IDENTIDADE EM CADA OFERTA</span><a href={href} target="_blank" rel="noopener noreferrer">Saiba mais ↗</a></div>
+        <div className="p-hero-seals"><CampaignSeal kind="sale" /><div className="p-hero-seal-small"><CampaignSeal kind="black" /></div><span>SELOS PRÓPRIOS. CAMPANHAS COM PRESENÇA.</span></div>
+        <div className="p-hero-caption"><span>IDENTIDADE QUE SAI DA TELA.</span><a href={href} target="_blank" rel="noopener noreferrer">Saiba mais ↗</a></div>
       </section>
       <div className="p-ribbon" aria-label="O que a Encartiva conecta"><span>SUA MARCA.</span><b aria-hidden="true">↗</b><span>SEU RITMO.</span><b aria-hidden="true">↗</b><span>SUAS OFERTAS.</span></div>
       <EditorialShowcase />
@@ -89,7 +93,7 @@ export function PresentationLanding({ contact, preview = false }: { contact: Pub
         <div className="p-section-heading"><p className="p-eyebrow">04 / Conheça a plataforma</p><h2>Bonita por fora.<br /><em>Organizada por dentro.</em></h2></div>
         <div className="p-module-tabs" role="group" aria-label="Módulos da plataforma">{presentationScreens.map((item, index) => <button key={item.key} type="button" aria-pressed={screen === index} onClick={() => setScreen(index)}>{item.name}</button>)}</div>
         <div className="p-module-stage"><div className="p-window-bar"><span /><span /><span /><p>ENCARTIVA / AMBIENTE DE DEMONSTRAÇÃO</p></div>
-          {screensReady ? <img key={module.key} src={'/presentation/' + module.key + '.webp'} alt={'Tela ilustrativa do módulo ' + module.name + ', com dados de exemplo'} width="1200" height="750" loading="lazy" /> : <div className="p-screen-example"><strong>{module.name}</strong><p>Identidade da sua empresa · arquivos e produtos organizados</p><div><OfferSheet compact /><div className="p-example-rows">{sampleProducts.map(([name, price]) => <p key={name}><span>{name}</span><b>R$ {price}</b></p>)}</div></div></div>}
+          {module.key === 'promotions' ? <PresentationModelPreview /> : screensReady ? <img key={module.key} src={'/presentation/' + module.key + '.webp'} alt={'Tela ilustrativa do módulo ' + module.name + ', com dados de exemplo'} width="1200" height="750" loading="lazy" /> : <div className="p-screen-example"><strong>{module.name}</strong><p>Identidade da sua empresa · arquivos e produtos organizados</p><div><OfferSheet compact /><div className="p-example-rows">{sampleProducts.map(([name, price]) => <p key={name}><span>{name}</span><b>R$ {price}</b></p>)}</div></div></div>}
         </div>
         <div className="p-module-caption" aria-live="polite"><h3>{module.title}</h3><p>{module.text}</p></div>
         <p className="p-caption">Demonstração ilustrativa com dados fictícios. Esta apresentação não acessa o workspace nem os dados de clientes.</p>
