@@ -132,7 +132,8 @@
 .p-format-study b { font: 700 7px/1 var(--font-interface); letter-spacing: .08em; }
 .p-format-study>p { width: 100%; text-align: center; }
 .p-type-band { background: var(--lime); color: var(--ink); overflow: hidden; padding: 22px 0 15px; }
-.p-type-band>div { display: flex; align-items: center; gap: 40px; width: max-content; animation: p-band 28s infinite linear; }
+.p-band-set { display: flex; align-items: center; gap: 40px; padding-right: 40px; }
+.p-type-band>div { display: flex; align-items: center; width: max-content; animation: p-band 28s infinite linear; }
 .p-type-band span { font: 400 clamp(48px,6vw,90px)/1 var(--display); white-space: nowrap; }
 .p-type-band b { font-size: 50px; font-weight: 500; }
 .p-platform { background: var(--paper); color: var(--ink); }
@@ -245,7 +246,7 @@
   .p-flow-item h3 { font-size: 17px; }
   .p-flow-item p { font-size: 14px; }
   .p-flow-stage { position: static; }
-  .p-process-visual { max-width: 540px; margin-inline: auto; padding: 25px; aspect-ratio: 1.15; }
+  .p-process-visual { max-width: 540px; margin-inline: auto; padding: 25px; aspect-ratio: 1.15; min-height: 390px; }
   .p-brand-study strong { font-size: 76px; }
   .p-color-study { margin-block: 15px; }
   .p-color-study i { width: 24px; height: 24px; }
@@ -257,7 +258,7 @@
   .p-type-band { padding-block: 18px 12px; }
   .p-type-band span { font-size: 50px; }
   .p-type-band b { font-size: 34px; }
-  .p-type-band>div { gap: 25px; }
+  .p-band-set { gap: 25px; padding-right: 25px; }
   .p-platform-layout { grid-template-columns: 1fr; gap: 30px; margin-top: 35px; }
   .p-module-tabs>button { font-size: 22px; padding-block: 17px; }
   .p-feature-panel { padding: 25px; min-height: 340px; }
@@ -270,7 +271,7 @@
   .p-plan-grid { grid-template-columns: 1fr; gap: 17px; margin-top: 35px; }
   .p-plan { padding: 25px; }
   .p-plan h3 { margin-top: 35px; font-size: 28px; }
-  .p-plan-price { font-size: 72px; }
+  .p-plan-price { font-size: clamp(58px,18vw,72px); }
   .p-plan-detail { min-height: 0; }
   .p-plan>.p-button { margin-top: 25px; }
   .p-plan-note { font-size: 11px; }
