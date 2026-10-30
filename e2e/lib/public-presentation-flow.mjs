@@ -101,7 +101,7 @@ export async function publicPresentationFlow({ db, page, context, browser, base,
     assert.equal((await one('select version from nova7_private.public_presentation')).version, settings.version); check();
     assert.ok((await anonymous.request.get(base + '/apresentacao-preview')).url().endsWith('/login')); check();
     await page.goto(base + '/apresentacao-preview');
-    await page.getByRole('heading', { name: /Sua marca não nasceu/ }).waitFor(); check();
+    await page.getByRole('heading', { name: /Oferta todo mundo tem/ }).waitFor(); check();
     await page.goto(base + '/configuracoes/site-apresentacao');
     form = formFor(page, 'Publicar apresentação');
     await form.getByRole('button', { name: 'Publicar apresentação', exact: true }).click();
@@ -112,7 +112,7 @@ export async function publicPresentationFlow({ db, page, context, browser, base,
     const response = await visitor.goto(originalUrl);
     assert.equal(response.status(), 200);
     assert.match(response.headers()['cache-control'], /no-store/);
-    await visitor.getByRole('heading', { name: /Sua marca não nasceu/ }).waitFor(); check();
+    await visitor.getByRole('heading', { name: /Oferta todo mundo tem/ }).waitFor(); check();
     const html = await visitor.content();
     for (const forbidden of ['company-a', 'owner_browser', 'password_hash', 'DATABASE_URL', 'service_role', '__Host-extra_session', 'schema_migrations'])
       assert.ok(!html.includes(forbidden), forbidden + ' must not appear in public HTML');
