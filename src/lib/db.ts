@@ -64,10 +64,11 @@ async function context() {
 }
 export async function withTx<T>(
   fn: (client: pg.PoolClient) => Promise<T>,
+  anonymous = false,
 ): Promise<T> {
   const client = await runtimePool().connect();
   try {
-    const ctx = await context(),
+    const ctx = anonymous ? { hash: "", slug: "", branch: "" } : await context(),
       role = process.env.NOVA7_DB_ROLE || "nova7_app";
     if (!/^[a-z][a-z0-9_]{0,62}$/.test(role))
       throw Error("Papel de banco inválido.");

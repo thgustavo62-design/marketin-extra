@@ -9,6 +9,7 @@ export default async function ConfiguracoesLayout({ children }: { children: Reac
       ? [
           { href: '/configuracoes/proprietarios', label: 'Proprietários' },
           { href: '/configuracoes/usuarios', label: 'Logins e senhas' },
+          { href: '/configuracoes/site-apresentacao', label: 'Site de apresentação' },
           { href: '/configuracoes/fluxo', label: 'Fluxo de aprovação' },
           { href: '/configuracoes/integracoes', label: 'Integrações' },
           { href: '/configuracoes/auditoria', label: 'Auditoria' },
