@@ -12,8 +12,8 @@ type Props = { params: Promise<{ token: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { token } = await params;
   if (!(await lookup(token))) return { title: 'Página não encontrada' };
-  const title = 'Encartiva — primeiro, sua marca. Depois, a automação.';
-  const description = 'Personalizamos a comunicação das suas ofertas e organizamos a criação de campanhas para farmácias, supermercados e varejo.';
+  const title = 'Encartiva — sua marca. Outro ritmo.';
+  const description = 'Conheça o processo da Encartiva: identidade, planilha, revisão, criação e exportação para farmácias, supermercados e varejo.';
   return {
     title, description, manifest: null, robots: { index: false, follow: false },
     alternates: { canonical: presentationOrigin() + '/apresentacao/' + token },
