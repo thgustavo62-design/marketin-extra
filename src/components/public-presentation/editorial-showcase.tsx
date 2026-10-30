@@ -1,15 +1,15 @@
-const collections = [
-  { name: 'Cuidado que aparece.', segment: 'FARMÁCIAS', className: 'care', headline: <>BEM<br />CUIDADO.<br /><i>BEM SEU.</i></>, detail: 'Campanhas de beleza, higiene e bem-estar com a personalidade da sua farmácia.' },
-  { name: 'Presença na rotina.', segment: 'SUPERMERCADOS', className: 'market', headline: <>A SEMANA<br />COMEÇA<br /><i>AQUI.</i></>, detail: 'Ofertas da semana, hortifruti e datas comerciais com uma identidade consistente.' },
+const pieces = [
+  { image: 'minas-ofertas.webp', brand: 'MINAS FARMA', kind: 'Fotografia original', title: 'A oferta faz parte do lugar.', text: 'Produtos, etiquetas e comunicação no ponto de venda. Um registro do acervo, com a identidade presente na rotina da loja.', alt: 'Produtos e etiquetas promocionais fotografados dentro da Minas Farma', className: 'store', width: 1000, height: 1333 },
+  { image: 'farma-club-peca.webp', brand: 'FARMA CLUB / FARMA E FARMA', kind: 'Peça do acervo', title: 'A marca também orienta.', text: 'Uma peça de comunicação do Farma Club sobre a confirmação de resgate. Identidade aplicada a uma mensagem concreta.', alt: 'Peça do acervo Farma Club com instruções de confirmação do resgate de produtos', className: 'campaign', width: 1000, height: 1319 },
 ];
-
 export function EditorialShowcase() {
   return <section className="p-collection p-section p-wrap" id="colecao" aria-labelledby="collection-title">
-    <div className="p-collection-intro"><p className="p-eyebrow">A MESMA PLATAFORMA. OUTRAS PERSONALIDADES.</p><h2 id="collection-title">Parece com<br /><em>a sua marca.</em><br />Porque é para ser.</h2><p>Antes de automatizar, damos forma à sua comunicação. Cores, etiquetas e composições que fazem sentido para o seu negócio.</p></div>
-    <div className="p-collection-grid">{collections.map((item, index) => <figure key={item.className} className={'p-collection-item p-collection-' + item.className}>
-      <div className="p-editorial-poster"><header><span>ESTUDO VISUAL / 0{index + 1}</span><span>ENCARTIVA ↗</span></header><strong>{item.headline}</strong><div className="p-poster-object" aria-hidden="true">{index === 0 ? <><div className="p-bottle-cap" /><div className="p-bottle"><span>cuidado<br /><b>diário.</b></span></div><div className="p-soap">ESSENCIAL<br /><b>PARA VOCÊ.</b></div></> : <><div className="p-orange p-orange-one" /><div className="p-orange p-orange-two" /><div className="p-market-sticker">BONS<br /><b>ENCONTROS.</b><span>NA SUA CESTA.</span></div></>}</div><footer><span>{item.segment}</span><span>SUA MARCA TEM LUGAR AQUI.</span></footer></div>
-      <figcaption><div><span>0{index + 1} / {item.segment}</span><h3>{item.name}</h3></div><span aria-hidden="true">↗</span><p>{item.detail}</p></figcaption>
+    <div className="p-collection-intro"><p className="p-eyebrow">ACERVO SELECIONADO / FOTOGRAFIA + COMUNICAÇÃO</p><h2 id="collection-title">O varejo tem rosto.<br /><em>E tem identidade.</em></h2><p>Um negócio de verdade tem produtos, rotina e um jeito próprio de se comunicar. É desse contexto que a criação precisa partir.</p></div>
+    <div className="p-real-grid">{pieces.map((piece, index) => <figure key={piece.image} className={'p-real-piece p-real-' + piece.className}>
+      <div className="p-real-image"><img src={'/presentation/real/' + piece.image} width={piece.width} height={piece.height} alt={piece.alt} loading="lazy" /><span>{piece.kind}</span></div>
+      <figcaption><div className="p-real-piece-index"><span>0{index + 1} / {piece.brand}</span><span aria-hidden="true">↗</span></div><h3>{piece.title}</h3><p>{piece.text}</p></figcaption>
     </figure>)}</div>
-    <p className="p-caption">Estudos gráficos ilustrativos da Encartiva. A identidade de cada empresa é definida na implantação.</p>
+    <div className="p-real-detail"><img src="/presentation/real/minas-cuidados.webp" alt="Produtos de cuidados pessoais e etiquetas fotografados na loja Minas Farma" width="900" height="1200" loading="lazy" /><div><p className="p-eyebrow">A FOTOGRAFIA É REAL. O CONTEXTO TAMBÉM.</p><h3>O produto muda.<br />O seu jeito de<br /><em>apresentar, fica.</em></h3><p>A Encartiva conecta a identidade da empresa aos modelos de campanha. Você organiza produtos, revisa as informações e prepara as próximas ofertas.</p><a href="#como-funciona">Conheça o processo <span aria-hidden="true">↗</span></a></div></div>
+    <p className="p-caption">Fotografias originais e peça do acervo de comunicação, apresentadas como portfólio. Preços, produtos e condições retratados são registros históricos, sem validade comercial nesta apresentação.</p>
   </section>;
 }

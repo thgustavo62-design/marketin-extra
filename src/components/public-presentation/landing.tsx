@@ -39,23 +39,23 @@ export function PresentationLanding({ contact, preview = false }: { contact: Pub
   const [screen, setScreen] = useState(0);
   const href = whatsappLink(contact.whatsappPhone, contact.ctaMessage);
   const module = presentationScreens[screen];
-  return <div className="presentation" id="topo">
+  return <div className="presentation p-documentary" id="topo">
     <a className="p-skip" href="#conteudo">Pular para o conteúdo</a>
     {preview && <div className="p-preview">Prévia privada · somente administradores <a href="/configuracoes/site-apresentacao">Voltar às configurações</a></div>}
     <header className="p-header">
       <a href="#topo" aria-label="Encartiva — início"><img className="p-logo" src="/brand/encartiva/grafite.png" alt="Encartiva" width="190" height="48" /></a>
-      <nav aria-label="Apresentação"><a href="#colecao">Possibilidades</a><a href="#como-funciona">Como funciona</a><a href="#plataforma">Plataforma</a><a href="#planos">Planos</a></nav>
+      <nav aria-label="Apresentação"><a href="#colecao">Na prática</a><a href="#como-funciona">Como funciona</a><a href="#plataforma">Plataforma</a><a href="#planos">Planos</a></nav>
       <a className="p-header-contact" href={href} target="_blank" rel="noopener noreferrer">Saiba mais <span aria-hidden="true">↗</span></a>
     </header>
     <main id="conteudo">
       <section className="p-hero" aria-labelledby="p-title">
         <div className="p-hero-top"><p className="p-eyebrow">ENCARTIVA / IDENTIDADE + AUTOMAÇÃO</p><span>FEITO PARA O VAREJO.<br />PENSADO PARA A SUA MARCA.</span></div>
         <div className="p-hero-copy">
-          <h1 id="p-title" aria-label="Oferta todo mundo tem. Identidade é outra história."><span>OFERTA TODO</span><span>MUNDO TEM.</span><em>Identidade é outra história.</em></h1>
-          <div className="p-hero-bottom"><p className="p-lead">A sua próxima oferta pode ter preço novo.<br />E a mesma personalidade da sua marca.</p><a className="p-round-link" href="#colecao" aria-label="Explorar as possibilidades da Encartiva">Explore<br /><span aria-hidden="true">↓</span></a></div>
+          <h1 id="p-title" aria-label="É a sua marca. Dá para ver."><span>É A SUA</span><span>MARCA.</span><em>Dá para ver.</em></h1>
+          <div className="p-hero-bottom"><p className="p-lead">Da fachada à próxima publicação.<br />A mesma personalidade, em cada ponto de contato.</p><a className="p-round-link" href="#colecao" aria-label="Explorar as possibilidades da Encartiva">Explore<br /><span aria-hidden="true">↓</span></a></div>
         </div>
-        <div className="p-hero-art" aria-hidden="true"><span>PREÇO<br /><i>BAIXO.</i><br />PRESENÇA<br /><i>ALTA.</i></span><img src="/brand/encartiva/simbolo.png" alt="" width="110" height="110" /></div>
-        <div className="p-hero-caption"><span>01 — IDENTIDADE EM CADA OFERTA</span><a href={href} target="_blank" rel="noopener noreferrer">Saiba mais ↗</a></div>
+        <figure className="p-hero-photograph"><img src="/presentation/real/minas-fachada.webp" alt="Fotografia original da fachada da Minas Farma, com comunicação visual na vitrine" width="1080" height="1440" fetchPriority="high" /><figcaption><span>NO VAREJO DE VERDADE.</span><b>Minas Farma / acervo fotográfico</b></figcaption></figure>
+        <div className="p-hero-caption"><span>IDENTIDADE QUE SAI DA TELA.</span><a href={href} target="_blank" rel="noopener noreferrer">Saiba mais ↗</a></div>
       </section>
       <div className="p-ribbon" aria-label="O que a Encartiva conecta"><span>SUA MARCA.</span><b aria-hidden="true">↗</b><span>SEU RITMO.</span><b aria-hidden="true">↗</b><span>SUAS OFERTAS.</span></div>
       <EditorialShowcase />
