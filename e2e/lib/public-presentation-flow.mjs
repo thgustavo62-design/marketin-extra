@@ -101,7 +101,7 @@ export async function publicPresentationFlow({ db, page, context, browser, base,
     assert.equal((await one('select version from nova7_private.public_presentation')).version, settings.version); check();
     assert.ok((await anonymous.request.get(base + '/apresentacao-preview')).url().endsWith('/login')); check();
     await page.goto(base + '/apresentacao-preview');
-    await page.getByRole('heading', { name: /É a sua marca/ }).waitFor(); check();
+    await page.getByRole('heading', { name: /Sua marca. Outro ritmo/ }).waitFor(); check();
     await page.goto(base + '/configuracoes/site-apresentacao');
     form = formFor(page, 'Publicar apresentação');
     await form.getByRole('button', { name: 'Publicar apresentação', exact: true }).click();
@@ -112,7 +112,7 @@ export async function publicPresentationFlow({ db, page, context, browser, base,
     const response = await visitor.goto(originalUrl);
     assert.equal(response.status(), 200);
     assert.match(response.headers()['cache-control'], /no-store/);
-    await visitor.getByRole('heading', { name: /É a sua marca/ }).waitFor(); check();
+    await visitor.getByRole('heading', { name: /Sua marca. Outro ritmo/ }).waitFor(); check();
     const html = await visitor.content();
     for (const forbidden of ['company-a', 'owner_browser', 'password_hash', 'DATABASE_URL', 'service_role', '__Host-extra_session', 'schema_migrations'])
       assert.ok(!html.includes(forbidden), forbidden + ' must not appear in public HTML');
@@ -125,11 +125,15 @@ export async function publicPresentationFlow({ db, page, context, browser, base,
       assert.equal(url.pathname, '/5527997010954');
       assert.ok(url.searchParams.get('text').includes('Encartiva'));
     } check();
-    await visitor.getByRole('button', { name: 'Ver depois', exact: true }).click();
-    assert.equal(await visitor.getByRole('slider').inputValue(), '100'); check();
+    assert.equal(await visitor.locator('.p-offer-sheet, .p-seal-gallery, .p-live-models, img[src*="/presentation/real/"]').count(), 0); check();
+    await visitor.getByRole('button', { name: 'Pausar movimento', exact: true }).click();
+    assert.equal(await visitor.locator('.presentation').getAttribute('data-motion'), 'paused');
+    assert.equal(await visitor.locator('.p-word-reel').evaluate(element => getComputedStyle(element).animationPlayState), 'paused');
+    await visitor.getByRole('button', { name: 'Retomar movimento', exact: true }).click();
+    assert.equal(await visitor.locator('.presentation').getAttribute('data-motion'), 'playing'); check();
     await visitor.getByRole('group', { name: 'Etapas da criação', exact: true }).getByRole('button', { name: /Revisão/ }).click();
     await visitor.getByRole('heading', { name: 'Você confere cada detalhe.', exact: true }).waitFor(); check();
-    await visitor.getByRole('button', { name: 'Produtos', exact: true }).click();
+    await visitor.getByRole('button', { name: /Produtos/ }).click();
     await visitor.getByRole('heading', { name: 'Seu catálogo, organizado.', exact: true }).waitFor(); check();
     assert.equal((await anonymous.request.get(base + '/api/me')).status(), 401);
     assert.equal((await anonymous.request.post(base + '/api/promocoes/biblioteca', { data: {}, headers: { origin: base } })).status(), 401); check();
@@ -143,7 +147,9 @@ export async function publicPresentationFlow({ db, page, context, browser, base,
       await visitor.screenshot({ path: '/tmp/encartiva-presentation-' + width + '.png', fullPage: true }); check();
     }
     await visitor.emulateMedia({ reducedMotion: 'reduce' });
-    assert.equal(await visitor.locator('.p-hero-copy').evaluate((element) => getComputedStyle(element).animationName), 'none'); check();
+    assert.equal(await visitor.locator('.p-hero-copy').evaluate((element) => getComputedStyle(element).animationName), 'none');
+    assert.equal(await visitor.locator('.p-word-reel').evaluate((element) => getComputedStyle(element).animationName), 'none');
+    assert.equal(await visitor.getByRole('button', { name: 'Pausar movimento', exact: true }).isVisible(), false); check();
     form = formFor(page, 'Despublicar apresentação');
     await form.getByRole('button', { name: 'Despublicar apresentação', exact: true }).click();
     await done(formFor(page, 'Publicar apresentação'), 'Apresentação despublicada');
