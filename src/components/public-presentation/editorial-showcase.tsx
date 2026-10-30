@@ -9,7 +9,8 @@ export function EditorialShowcase() {
       <div className="p-real-image"><img src={'/presentation/real/' + piece.image} width={piece.width} height={piece.height} alt={piece.alt} loading="lazy" /><span>{piece.kind}</span></div>
       <figcaption><div className="p-real-piece-index"><span>0{index + 1} / {piece.brand}</span><span aria-hidden="true">↗</span></div><h3>{piece.title}</h3><p>{piece.text}</p></figcaption>
     </figure>)}</div>
-    <div className="p-real-detail"><img src="/presentation/real/minas-cuidados.webp" alt="Produtos de cuidados pessoais e etiquetas fotografados na loja Minas Farma" width="900" height="1200" loading="lazy" /><div><p className="p-eyebrow">A FOTOGRAFIA É REAL. O CONTEXTO TAMBÉM.</p><h3>O produto muda.<br />O seu jeito de<br /><em>apresentar, fica.</em></h3><p>A Encartiva conecta a identidade da empresa aos modelos de campanha. Você organiza produtos, revisa as informações e prepara as próximas ofertas.</p><a href="#como-funciona">Conheça o processo <span aria-hidden="true">↗</span></a></div></div>
+    <div className="p-real-detail"><img src="/presentation/real/minas-cuidados.webp" alt="Produtos de cuidados pessoais e etiquetas fotografados na loja Minas Farma" width="900" height="1200" loading="lazy" /><div><p className="p-eyebrow">A FOTOGRAFIA É REAL. O CONTEXTO TAMBÉM.</p><h3>O produto muda.<br />O seu jeito de<br /><em>apresentar fica.</em></h3><p>A Encartiva conecta a identidade da empresa aos modelos de campanha. Você organiza produtos, revisa as informações e prepara as próximas ofertas.</p><a href="#como-funciona">Conheça o processo <span aria-hidden="true">↗</span></a></div></div>
     <p className="p-caption">Fotografias originais e peça do acervo de comunicação, apresentadas como portfólio. Preços, produtos e condições retratados são registros históricos, sem validade comercial nesta apresentação.</p>
   </section>;
 }
+
