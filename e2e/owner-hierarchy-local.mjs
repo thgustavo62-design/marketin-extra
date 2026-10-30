@@ -17,6 +17,8 @@ import { readdir, readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 const db = await tenantTestDatabase();
 try {
+  // Supabase provisions these roles; disposable plain PostgreSQL does not.
+  await db.exec("create role anon nologin;create role authenticated nologin");
   if (process.env.NOVA7_TEST_MIGRATION_ROLE === "limited") {
     await db.exec("create role migration_actor login createrole createdb");
     await db.exec(
@@ -534,6 +536,7 @@ try {
           NOVA7_BUILD_DIR: ".next-owners",
           DATABASE_URL: db.adminUrl,
           DATABASE_RUNTIME_URL: db.runtimeUrl,
+          PUBLIC_SITE_ORIGIN: 'https://127.0.0.1:3142',
         },
         stdio: ["ignore", logfile, logfile],
       },
@@ -574,7 +577,7 @@ try {
         await new Promise((r) => setTimeout(r, 500));
       }
       browserRuntime = await browserTestRuntime(mods);
-      if (process.env.ENCARTIVA_SETTINGS_TEST === '1')
+      if (process.env.ENCARTIVA_SETTINGS_TEST === '1' || process.env.ENCARTIVA_PRESENTATION_TEST === '1')
         browserRuntime.options.args = browserRuntime.options.args.filter((arg) => arg !== '--single-process');
       browser = await require("playwright-core").chromium.launch(
         browserRuntime.options,
@@ -749,6 +752,10 @@ try {
       if (process.env.ENCARTIVA_SETTINGS_TEST === '1') {
         const { settingsAccessFlow } = await import('./lib/settings-access-flow.mjs');
         await settingsAccessFlow({ db, page, browser, base: 'https://127.0.0.1:3142', otherCompanyId: cb, multiCompanyId: ca, check: () => checks++ });
+      }
+      if (process.env.ENCARTIVA_PRESENTATION_TEST === '1') {
+        const { publicPresentationFlow } = await import('./lib/public-presentation-flow.mjs');
+        await publicPresentationFlow({ db, page, context, browser, base: 'https://127.0.0.1:3142', ownerId: a, adminId: admin, check: () => checks++ });
       }
       assert.deepEqual(errors, []);
 
