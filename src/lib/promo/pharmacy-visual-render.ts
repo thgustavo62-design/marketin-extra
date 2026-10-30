@@ -1,3 +1,4 @@
+import { drawCampaignSealHeader } from "./campaign-seal-render.ts";
 import type { ThemeConfig } from "../domain/promo.ts";
 import { modelInk } from "../domain/pharmacy-models.ts";
 
@@ -66,6 +67,10 @@ export function drawPharmacyHeader(
   rawTitle: string,
   validity: string | null,
 ) {
+  if (theme.visual?.seal === "retail-v2") {
+    drawCampaignSealHeader(ctx, theme, w, h, rawTitle, validity);
+    return;
+  }
   const visual = theme.visual!;
   const c = theme.colors;
   ctx.save();

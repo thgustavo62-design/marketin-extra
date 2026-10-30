@@ -237,3 +237,13 @@ test("Ten reusable price labels are validated independently from the company mod
     undefined,
   );
 });
+
+test('Campaign seal version persists for new models while legacy snapshots remain unchanged', () => {
+  const selected = pharmacyModelTheme('farma-essencial', normalizeTheme({}));
+  assert.equal(selected.visual?.seal, 'retail-v2');
+  assert.equal(normalizeTheme(JSON.parse(JSON.stringify(selected))).visual?.seal, 'retail-v2');
+  const legacy = structuredClone(selected);
+  delete legacy.visual!.seal;
+  assert.equal(normalizeTheme(legacy).visual?.seal, undefined);
+  assert.equal(normalizeTheme({visual:{style:'essential',eyebrow:'OFERTAS',seal:'invalid'}}).visual?.seal, undefined);
+});

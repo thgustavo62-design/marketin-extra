@@ -147,6 +147,7 @@ export type PharmacyModel = (typeof PHARMACY_MODELS)[number];
 export type CampaignVisual = {
   style: PharmacyModel["style"];
   eyebrow: string;
+  seal?: "retail-v2";
   artwork?: "corta-preco-v1";
 };
 export type ModelSnapshot = { key: string; version: 1; theme: ThemeConfig };
@@ -188,6 +189,7 @@ export function pharmacyModelTheme(
     offerIdentity: undefined,
     visual: {
       style: m.style,
+      seal: "retail-v2",
       eyebrow: m.eyebrow,
       ...("artwork" in m ? { artwork: m.artwork } : {}),
     },
@@ -234,6 +236,7 @@ export function normalizeCampaignVisual(
   if (!PHARMACY_MODELS.some((m) => m.style === v.style)) return undefined;
   return {
     style: v.style as CampaignVisual["style"],
+    ...(v.seal === "retail-v2" ? { seal: "retail-v2" as const } : {}),
     ...(v.artwork === "corta-preco-v1"
       ? { artwork: "corta-preco-v1" as const }
       : {}),

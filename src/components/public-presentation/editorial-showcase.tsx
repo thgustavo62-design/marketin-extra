@@ -1,16 +1,17 @@
-const pieces = [
-  { image: 'minas-ofertas.webp', brand: 'MINAS FARMA', kind: 'Fotografia original', title: 'A oferta faz parte do lugar.', text: 'Produtos, etiquetas e comunicação no ponto de venda. Um registro do acervo, com a identidade presente na rotina da loja.', alt: 'Produtos e etiquetas promocionais fotografados dentro da Minas Farma', className: 'store', width: 1000, height: 1333 },
-  { image: 'farma-club-peca.webp', brand: 'FARMA CLUB / FARMA E FARMA', kind: 'Peça do acervo', title: 'A marca também orienta.', text: 'Uma peça de comunicação do Farma Club sobre a confirmação de resgate. Identidade aplicada a uma mensagem concreta.', alt: 'Peça do acervo Farma Club com instruções de confirmação do resgate de produtos', className: 'campaign', width: 1000, height: 1319 },
+import { CampaignSeal, type SealKind } from './campaign-seal';
+const seals: { kind: SealKind; title: string; text: string }[] = [
+  { kind: 'week', title: 'Ofertas da semana', text: 'Letra forte, faixa de contraste e leitura direta.' },
+  { kind: 'sale', title: 'Mega Saldão', text: 'Composição inclinada para campanhas de impacto.' },
+  { kind: 'black', title: 'Black Friday', text: 'Preto e lima com o preço no centro da atenção.' },
+  { kind: 'beauty', title: 'Beleza em oferta', text: 'Selo oval e tons de perfumaria e autocuidado.' },
+  { kind: 'fresh', title: 'Hora do Horti', text: 'Verde, recortes orgânicos e acento de cor quente.' },
+  { kind: 'baby', title: 'Mundo Bebê', text: 'Contornos suaves e uma assinatura de campanha própria.' },
 ];
 export function EditorialShowcase() {
   return <section className="p-collection p-section p-wrap" id="colecao" aria-labelledby="collection-title">
-    <div className="p-collection-intro"><p className="p-eyebrow">ACERVO SELECIONADO / FOTOGRAFIA + COMUNICAÇÃO</p><h2 id="collection-title">O varejo tem rosto.<br /><em>E tem identidade.</em></h2><p>Um negócio de verdade tem produtos, rotina e um jeito próprio de se comunicar. É desse contexto que a criação precisa partir.</p></div>
-    <div className="p-real-grid">{pieces.map((piece, index) => <figure key={piece.image} className={'p-real-piece p-real-' + piece.className}>
-      <div className="p-real-image"><img src={'/presentation/real/' + piece.image} width={piece.width} height={piece.height} alt={piece.alt} loading="lazy" /><span>{piece.kind}</span></div>
-      <figcaption><div className="p-real-piece-index"><span>0{index + 1} / {piece.brand}</span><span aria-hidden="true">↗</span></div><h3>{piece.title}</h3><p>{piece.text}</p></figcaption>
-    </figure>)}</div>
-    <div className="p-real-detail"><img src="/presentation/real/minas-cuidados.webp" alt="Produtos de cuidados pessoais e etiquetas fotografados na loja Minas Farma" width="900" height="1200" loading="lazy" /><div><p className="p-eyebrow">A FOTOGRAFIA É REAL. O CONTEXTO TAMBÉM.</p><h3>O produto muda.<br />O seu jeito de<br /><em>apresentar fica.</em></h3><p>A Encartiva conecta a identidade da empresa aos modelos de campanha. Você organiza produtos, revisa as informações e prepara as próximas ofertas.</p><a href="#como-funciona">Conheça o processo <span aria-hidden="true">↗</span></a></div></div>
-    <p className="p-caption">Fotografias originais e peça do acervo de comunicação, apresentadas como portfólio. Preços, produtos e condições retratados são registros históricos, sem validade comercial nesta apresentação.</p>
+    <div className="p-collection-intro"><p className="p-eyebrow">SELOS + ETIQUETAS + COMPOSIÇÃO</p><h2 id="collection-title">A campanha tem<br /><em>uma assinatura.</em></h2><p>O nome da campanha ganha forma. O preço ganha hierarquia. E cada oferta continua falando a linguagem da sua marca.</p></div>
+    <div className="p-seal-gallery">{seals.map((seal, i) => <article className={'p-seal-card p-seal-card-' + seal.kind} key={seal.kind}><div><span className="p-seal-index">0{i + 1} / SELO DE CAMPANHA</span><CampaignSeal kind={seal.kind} /></div><h3>{seal.title}</h3><p>{seal.text}</p></article>)}</div>
+    <div className="p-label-showcase"><div><p className="p-eyebrow">O PREÇO TAMBÉM TEM DESIGN.</p><h3>Uma oferta.<br /><em>Vários jeitos de destacar.</em></h3><p>Faixas, etiquetas inclinadas e selos com tipografia de preço bem definida. Valores sempre dinâmicos nos modelos de campanha.</p></div><div className="p-label-samples" aria-label="Exemplos ilustrativos de etiquetas de preço"><div className="p-price-sample p-price-red"><span>POR APENAS</span><b><small>R$</small>29<sup>,99</sup></b></div><div className="p-price-sample p-price-ticket"><span>OFERTA DA VEZ</span><b><small>R$</small>4<sup>,99</sup></b></div><div className="p-price-sample p-price-black"><span>BLACK FRIDAY</span><b><small>R$</small>199<sup>,99</sup></b></div></div></div>
+    <p className="p-caption">Composições originais e genéricas da Encartiva. Valores ilustrativos. Identidade, produtos e condições são definidos por cada empresa.</p>
   </section>;
 }
-
